@@ -39,6 +39,8 @@ export interface ChartOptions {
   panMotion?: boolean;
   /** Ease zoom, axis resizing and autoscale changes. Default true; honors reduced motion. */
   scaleMotion?: boolean;
+  /** Keep an auto price scale fitted to visible candles while dragging the plot. Default false. */
+  autoscaleOnPan?: boolean;
   onStats?: (stats: RendererStats) => void;
   onHover?: (bar: Candle | null) => void;
   drawingTools?: readonly DrawingToolDefinition[];
@@ -206,6 +208,8 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     y: number;
     appliedX: number;
     appliedY: number;
+    /** Price follows the visible candles, so vertical drag is ignored. */
+    autoscale: boolean;
   } | null = null;
   let scaleMotion: ScaleMotion | null = null;
   let drawingPointerId: number | null = null;
@@ -344,19 +348,27 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
         type: 'viewport.set',
         fromMs: current.from - shift,
         toMs: current.to - shift,
-        priceScale: {
-          mode: 'manual',
-          ...panPriceScale(
-            current.min,
-            current.max,
-            offset.y,
-            current.height,
-            state.feed.instrument.tickSize,
-          ),
-        },
+        ...(current.autoscale
+          ? {}
+          : {
+              priceScale: {
+                mode: 'manual' as const,
+                ...panPriceScale(
+                  current.min,
+                  current.max,
+                  offset.y,
+                  current.height,
+                  state.feed.instrument.tickSize,
+                ),
+              },
+            }),
       });
     }
     if (!drag && !current.motion.active && pan === current) pan = null;
+  }
+
+  function autoscalesOnPan(): boolean {
+    return !!options.autoscaleOnPan && state.document.priceScale.mode === 'auto';
   }
 
   function grabDisplayedRanges(): void {
@@ -366,7 +378,8 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     }
     const target = createGeometry(state, width, height, theme.chart);
     const timeChanged = geometry.fromMs !== target.fromMs || geometry.toMs !== target.toMs;
-    const priceChanged = geometry.minPrice !== target.minPrice || geometry.maxPrice !== target.maxPrice;
+    const priceChanged =
+      !autoscalesOnPan() && (geometry.minPrice !== target.minPrice || geometry.maxPrice !== target.maxPrice);
     // Start a grab at the rendered position, not at an unfinished zoom destination.
     if (timeChanged)
       runtime.execute({
@@ -750,18 +763,18 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
               intervalMs: state.feed.intervalMs,
             };
             const tickSize = state.feed.instrument.tickSize;
+            const autoscale = autoscalesOnPan();
             const motion = new PanMotion(origin.started, {
               smooth: options.panMotion !== false && !reducedMotion.matches,
               constrain(offset) {
                 const time = panTimeScale(origin.from, origin.to, offset.x, origin.width, history);
+                const x = ((origin.from - time.fromMs) / (origin.to - origin.from)) * origin.width;
+                if (autoscale) return { x, y: 0 };
                 const price = panPriceScale(origin.min, origin.max, offset.y, origin.height, tickSize);
-                return {
-                  x: ((origin.from - time.fromMs) / (origin.to - origin.from)) * origin.width,
-                  y: ((price.minPrice - origin.min) / (origin.max - origin.min)) * origin.height,
-                };
+                return { x, y: ((price.minPrice - origin.min) / (origin.max - origin.min)) * origin.height };
               },
             });
-            pan = { ...origin, motion, appliedX: 0, appliedY: 0 };
+            pan = { ...origin, motion, appliedX: 0, appliedY: 0, autoscale };
           }
           const now = performance.now();
           pan.motion.move(pointer.x - pan.x, pointer.y - pan.y, now);

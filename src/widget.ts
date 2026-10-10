@@ -5,6 +5,7 @@ import type { ThemeInput } from './themes.ts';
 import { applyWidgetTheme } from './widget-theme.ts';
 import { createThemeEditor } from './theme-editor.ts';
 import { createChart } from './chart.ts';
+import { createGeometry } from './geometry.ts';
 import type { ChartApi, ChartOptions } from './chart.ts';
 import { createDrawingWorkbench } from './drawing-workbench.ts';
 import { drawingWorkbenchStyles } from './drawing-workbench-style.ts';
@@ -65,7 +66,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
   <div class="widget-body"><aside class="tool-rail" aria-label="Drawing tools"><button id="cursor" class="rail-button active" aria-label="Cursor tool" data-tooltip="Cursor">${icon('cursor')}</button><span class="rail-separator"></span><button id="trend" class="rail-button">${icon('trendline')}</button><span class="rail-separator"></span><button id="undo" class="rail-button" aria-label="Undo last edit" data-tooltip="Undo · ⌘ / Ctrl Z">${icon('undo')}</button><button id="clear" class="rail-button" aria-label="Clear drawings" data-tooltip="Clear drawings">${icon('trash')}</button><button id="fit" class="rail-button" aria-label="Fit chart to live data" data-tooltip="Fit chart">${icon('fit')}</button><button id="help" class="rail-button rail-bottom" aria-label="Chart controls and shortcuts" data-tooltip="Help & shortcuts">${icon('help')}</button></aside>
   <section class="chart-panel" aria-label="Price chart"><div class="chart-toolbar"><div class="market-summary"><span class="market-name" id="market-name"></span><span class="market-kind" id="market-kind"></span><span class="price-heading">Last price</span><strong id="price" class="market-price">—</strong></div><div class="ohlc-values"><span>O <b id="open-value">—</b></span><span>H <b id="high-value">—</b></span><span>L <b id="low-value">—</b></span><span>C <b id="close-value">—</b></span><span class="hover-time" id="hover-time">Latest candle</span></div><div class="chart-legend"><span class="legend-indicator"><i></i><span id="indicator-name"></span></span><span class="legend-volume">Volume</span></div></div><div class="connection-notice" hidden><span id="connection-message"></span><button id="retry">Reconnect</button></div><div id="chart-host"></div></section>
   <aside class="book-panel" aria-label="Live order book" hidden><div class="panel-title"><h2>Order book</h2><div><span id="book-state" class="book-badge"></span><button id="book-close" class="icon-button" aria-label="Close order book">${icon('close', 16)}</button></div></div><div class="book-subtitle"><span id="book-coverage"></span><span id="book-tick"></span></div><div class="book-columns"><span>Price <small id="book-quote"></small></span><span>Size <small id="book-base"></small></span><span>Total</span></div><div id="asks" class="book-side asks"></div><div class="spread-row"><strong id="book-price">—</strong><span>Spread <b id="spread">—</b></span></div><div id="bids" class="book-side bids"></div><p class="book-note" id="book-note"></p></aside></div>
-  <footer class="widget-footer"><div class="range-buttons" aria-label="Visible candle count"><button data-bars="60">60</button><button data-bars="180">180</button><button data-bars="360">360</button><button data-bars="all">All</button></div><span class="footer-divider"></span><select id="source" class="source-picker" aria-label="Data source"></select><span class="feed-state" id="feed-state"></span><button class="follow-button" id="follow">Following live</button><button id="inspect" class="icon-button" aria-label="Inspect state" data-tooltip="Inspect chart state">${icon('code', 16)}</button><span class="wordmark">OpenChart<span> / </span></span></footer>
+  <footer class="widget-footer"><div class="range-buttons" aria-label="Visible candle count"><button data-bars="60">60</button><button data-bars="180">180</button><button data-bars="360">360</button><button data-bars="all">All</button></div><span class="footer-divider"></span><select id="source" class="source-picker" aria-label="Data source"></select><span class="feed-state" id="feed-state"></span><button class="follow-button" id="follow">Following live</button><button class="autoscale-button" id="autoscale" aria-pressed="true" aria-label="Autoscale price" data-tooltip="Fit price to visible candles">Auto</button><button id="inspect" class="icon-button" aria-label="Inspect state" data-tooltip="Inspect chart state">${icon('code', 16)}</button><span class="wordmark">OpenChart<span> / </span></span></footer>
   <div class="widget-tooltip" role="tooltip" hidden></div><div class="widget-toast" role="status" hidden></div><section class="widget-dialog" role="dialog" aria-label="Chart panel" hidden><header class="dialog-heading"><h2></h2><button class="icon-button" aria-label="Close dialog">${icon('close')}</button></header><div class="dialog-content"></div></section>`;
   shadow.append(style, root);
   container.append(mount);
@@ -362,6 +363,9 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
         if (button.getAttribute('aria-pressed') !== pressed) button.setAttribute('aria-pressed', pressed);
       }
       set('follow', state.document.viewport.following ? 'Following live' : 'Return to live');
+      const autoscale = String(state.document.priceScale.mode === 'auto');
+      if ($('#autoscale').getAttribute('aria-pressed') !== autoscale)
+        $('#autoscale').setAttribute('aria-pressed', autoscale);
       $('.legend-indicator').hidden = !state.document.layers.indicator || !options.indicators?.length;
       $('.legend-volume').hidden = !state.document.layers.volume;
       const span = state.document.viewport.toMs - state.document.viewport.fromMs;
@@ -477,6 +481,15 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
       chart.execute({ type: 'priceScale.reset' });
     });
     on('#follow', () => chart.execute({ type: 'viewport.reset' }));
+    on('#autoscale', () => {
+      if (!lastState) return;
+      if (lastState.document.priceScale.mode === 'manual') chart.execute({ type: 'priceScale.reset' });
+      else {
+        // Lock the range currently fitted to the visible candles.
+        const { minPrice, maxPrice } = createGeometry(lastState, 1, 1);
+        chart.execute({ type: 'priceScale.set', minPrice, maxPrice });
+      }
+    });
     on('#cursor', () => chart.setTool('cursor'));
     on('#undo', () => chart.execute({ type: 'history.undo' }));
     on('#clear', () => {
