@@ -12,6 +12,8 @@ import { createDrawingWorkbench } from './drawing-workbench.ts';
 import { drawingWorkbenchStyles } from './drawing-workbench-style.ts';
 import { uiIcon as icon } from './ui-icons.ts';
 import { widgetStyles } from './widget-style.ts';
+import { createIndicatorPanel, indicatorPanelStyles } from './indicator-panel.ts';
+import { stateTimeScale } from './geometry.ts';
 import { resolveMarketFeed, validateMarketSources } from './widget-market.ts';
 import type { WidgetMarketSource } from './widget-market.ts';
 import type { Candle, ChartDocument, Interval, Layer, RuntimeState } from './types.ts';
@@ -55,19 +57,19 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
   Object.assign(mount.style, { width: '100%', height: '100%', minWidth: '0', minHeight: '0' });
   const shadow = mount.attachShadow({ mode: 'open' });
   const style = doc.createElement('style');
-  style.textContent = widgetStyles + drawingWorkbenchStyles;
+  style.textContent = widgetStyles + drawingWorkbenchStyles + indicatorPanelStyles;
   const root = doc.createElement('section');
   root.className = 'widget';
   root.setAttribute('aria-label', 'Chart widget');
   root.innerHTML = `<header class="widget-header">
     <div class="market-controls"><span class="asset-mark" id="asset-mark" aria-hidden="true">B</span><select id="symbol" class="symbol-picker" aria-label="Symbol"></select><span class="toolbar-divider"></span><select id="interval" class="interval-picker" aria-label="Candle interval"></select></div>
-    <div class="analysis-controls"><button data-layer="indicator" aria-label="Toggle indicators" aria-pressed="true" data-tooltip="Indicators">${icon('indicators')}<span>Indicators</span></button><button data-layer="volume" aria-label="Toggle volume" aria-pressed="true" data-tooltip="Volume">${icon('volume')}<span>Volume</span></button></div>
+    <div class="analysis-controls"><button data-layer="indicator" aria-label="Toggle indicators" aria-pressed="true" data-tooltip="Indicators">${icon('indicators')}<span>Indicators</span></button><button id="indicator-menu" class="icon-button" aria-label="Add or edit indicators" aria-haspopup="dialog" data-tooltip="Add or edit indicators"><b aria-hidden="true" class="add-mark">+</b></button><button data-layer="volume" aria-label="Toggle volume" aria-pressed="true" data-tooltip="Volume">${icon('volume')}<span>Volume</span></button></div>
     <div class="widget-actions"><button id="book-toggle" aria-label="Toggle order book" aria-pressed="false" data-tooltip="Order book">${icon('book')}<span>Order book</span></button><span class="toolbar-divider"></span><button id="pause" class="icon-button" aria-label="Pause feed" data-tooltip="Pause feed">${icon('pause')}</button><button id="save" class="save-button" aria-label="Save layout" data-tooltip="Save layout">${icon('save', 18)}<span>Save</span></button><button id="restore" class="icon-button" aria-label="Restore layout" data-tooltip="Restore layout">${icon('restore')}</button><button id="theme" class="icon-button" aria-label="Chart appearance" data-tooltip="Appearance">${icon('palette')}</button><button id="export" class="icon-button" aria-label="Export PNG" data-tooltip="Export image">${icon('camera')}</button></div>
   </header>
   <div class="widget-body"><aside class="tool-rail" aria-label="Drawing tools"><button id="cursor" class="rail-button active" aria-label="Cursor tool" data-tooltip="Cursor">${icon('cursor')}</button><span class="rail-separator"></span><button id="trend" class="rail-button">${icon('trendline')}</button><span class="rail-separator"></span><button id="undo" class="rail-button" aria-label="Undo last edit" data-tooltip="Undo · ⌘ / Ctrl Z">${icon('undo')}</button><button id="clear" class="rail-button" aria-label="Clear drawings" data-tooltip="Clear drawings">${icon('trash')}</button><button id="fit" class="rail-button" aria-label="Fit chart to live data" data-tooltip="Fit chart">${icon('fit')}</button><button id="help" class="rail-button rail-bottom" aria-label="Chart controls and shortcuts" data-tooltip="Help & shortcuts">${icon('help')}</button></aside>
   <section class="chart-panel" aria-label="Price chart"><div class="chart-toolbar"><div class="market-summary"><span class="market-name" id="market-name"></span><span class="market-kind" id="market-kind"></span><span class="price-heading">Last price</span><strong id="price" class="market-price">—</strong></div><div class="ohlc-values"><span>O <b id="open-value">—</b></span><span>H <b id="high-value">—</b></span><span>L <b id="low-value">—</b></span><span>C <b id="close-value">—</b></span><span class="hover-time" id="hover-time">Latest candle</span></div><div class="chart-legend"><span class="legend-indicator"><i></i><span id="indicator-name"></span></span><span class="legend-volume">Volume</span></div></div><div class="connection-notice" hidden><span id="connection-message"></span><button id="retry">Reconnect</button></div><div id="chart-host"></div></section>
   <aside class="book-panel" aria-label="Live order book" hidden><div class="panel-title"><h2>Order book</h2><div><span id="book-state" class="book-badge"></span><button id="book-close" class="icon-button" aria-label="Close order book">${icon('close', 16)}</button></div></div><div class="book-subtitle"><span id="book-coverage"></span><span id="book-tick"></span></div><div class="book-columns"><span>Price <small id="book-quote"></small></span><span>Size <small id="book-base"></small></span><span>Total</span></div><div id="asks" class="book-side asks"></div><div class="spread-row"><strong id="book-price">—</strong><span>Spread <b id="spread">—</b></span></div><div id="bids" class="book-side bids"></div><p class="book-note" id="book-note"></p></aside></div>
-  <footer class="widget-footer"><div class="range-buttons" aria-label="Visible candle count"><button data-bars="60">60</button><button data-bars="180">180</button><button data-bars="360">360</button><button data-bars="all">All</button></div><span class="footer-divider"></span><select id="source" class="source-picker" aria-label="Data source"></select><span class="feed-state" id="feed-state"></span><button class="follow-button" id="follow">Following live</button><button class="autoscale-button" id="autoscale" aria-pressed="true" aria-label="Autoscale price" data-tooltip="Fit price to visible candles">Auto</button><button id="inspect" class="icon-button" aria-label="Inspect state" data-tooltip="Inspect chart state">${icon('code', 16)}</button><span class="wordmark">OpenChart<span> / </span></span></footer>
+  <footer class="widget-footer"><div class="range-buttons" aria-label="Visible candle count"><button data-bars="60">60</button><button data-bars="180">180</button><button data-bars="360">360</button><button data-bars="all">All</button></div><span class="footer-divider"></span><select id="source" class="source-picker" aria-label="Data source"></select><span class="feed-state" id="feed-state"></span><button class="follow-button" id="follow">Following live</button><button class="autoscale-button" id="autoscale" aria-pressed="true" aria-label="Autoscale price" data-tooltip="Fit price to visible candles">Auto</button><button class="autoscale-button" id="log-scale" aria-pressed="false" aria-label="Logarithmic price scale" data-tooltip="Log scale: equal heights for equal percentage moves">Log</button><button id="inspect" class="icon-button" aria-label="Inspect state" data-tooltip="Inspect chart state">${icon('code', 16)}</button><span class="wordmark">OpenChart<span> / </span></span></footer>
   <div class="widget-tooltip" role="tooltip" hidden></div><div class="widget-toast" role="status" hidden></div><section class="widget-dialog" role="dialog" aria-label="Chart panel" hidden><header class="dialog-heading"><h2></h2><button class="icon-button" aria-label="Close dialog">${icon('close')}</button></header><div class="dialog-content"></div></section>`;
   shadow.append(style, root);
   container.append(mount);
@@ -79,6 +81,18 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
   const abort = new AbortController();
   let disposed = false,
     toastTimer: ReturnType<typeof setTimeout> | undefined;
+  let indicatorPanel: ReturnType<typeof createIndicatorPanel> | undefined;
+  // Ranges count bars, not milliseconds, so session gaps do not shrink them.
+  const barsRange = (state: RuntimeState, bars: number) => {
+    const scale = stateTimeScale(state);
+    const end = scale.logical(state.candles.at(-1)!.timeMs) + 12;
+    return { fromMs: scale.time(end - bars), toMs: scale.time(end) };
+  };
+  const allRange = (state: RuntimeState) => {
+    const scale = stateTimeScale(state);
+    const end = scale.logical(state.candles.at(-1)!.timeMs) + 12;
+    return barsRange(state, Math.min(2200, Math.max(20, end - scale.logical(state.candles[0].timeMs))));
+  };
   let lastState: RuntimeState | undefined,
     latestStats: RendererStats | undefined,
     hovering = false;
@@ -371,17 +385,28 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
       const autoscale = String(state.document.priceScale.mode === 'auto');
       if ($('#autoscale').getAttribute('aria-pressed') !== autoscale)
         $('#autoscale').setAttribute('aria-pressed', autoscale);
-      $('.legend-indicator').hidden = !state.document.layers.indicator || !options.indicators?.length;
+      const overlays = state.indicators.filter(i => i.visible && i.plugin.pane !== 'separate');
+      $('.legend-indicator').hidden = !state.document.layers.indicator || !overlays.length;
+      set('indicator-name', overlays.map(i => i.plugin.name).join(' · '));
+      const log = String(!!state.document.priceScale.log);
+      if ($('#log-scale').getAttribute('aria-pressed') !== log)
+        $('#log-scale').setAttribute('aria-pressed', log);
+      if (
+        indicatorPanel &&
+        !popup.hidden &&
+        popupContent.contains(indicatorPanel.element) &&
+        previous?.document.indicators !== state.document.indicators &&
+        JSON.stringify(previous?.document.indicators) !== JSON.stringify(state.document.indicators)
+      )
+        indicatorPanel.render();
       $('.legend-volume').hidden = !state.document.layers.volume;
-      const span = state.document.viewport.toMs - state.document.viewport.fromMs;
-      const allFrom = state.candles.length
-        ? Math.min(state.candles[0].timeMs, state.candles.at(-1)!.timeMs - 8 * state.feed.intervalMs)
-        : 0;
+      const span = stateTimeScale(state).bars(state.document.viewport.fromMs, state.document.viewport.toMs);
+      const allFrom = state.candles.length ? allRange(state).fromMs : 0;
       for (const button of root.querySelectorAll<HTMLButtonElement>('[data-bars]')) {
         const selected =
           button.dataset.bars === 'all'
             ? !!state.candles.length && state.document.viewport.fromMs === allFrom
-            : Math.abs(span - Number(button.dataset.bars) * state.feed.intervalMs) < 1;
+            : Math.abs(span - Number(button.dataset.bars)) < 1e-6;
         const pressed = String(selected);
         if (button.getAttribute('aria-pressed') !== pressed) button.setAttribute('aria-pressed', pressed);
         button.disabled = !state.candles.length;
@@ -480,8 +505,13 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
           }),
         { signal: abort.signal },
       );
-    if (!options.indicators?.length) $<HTMLButtonElement>('[data-layer="indicator"]').hidden = true;
-    else set('indicator-name', options.indicators.map(p => p.name).join(' · '));
+    on('#indicator-menu', () => {
+      indicatorPanel = createIndicatorPanel(chart, doc, report);
+      openPanel('Indicators', indicatorPanel.element);
+    });
+    on('#log-scale', () =>
+      chart.execute({ type: 'priceScale.log', enabled: !lastState?.document.priceScale.log }),
+    );
     on('#fit', () => {
       chart.execute({ type: 'viewport.reset' });
       chart.execute({ type: 'priceScale.reset' });
@@ -509,12 +539,12 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
           attempt(() => {
             const state = lastState!;
             if (!state.candles.length) return;
-            const end = state.candles.at(-1)!.timeMs + 12 * state.feed.intervalMs;
-            const from =
-              button.dataset.bars === 'all'
-                ? Math.min(state.candles[0].timeMs, end - 20 * state.feed.intervalMs)
-                : end - Number(button.dataset.bars) * state.feed.intervalMs;
-            chart.execute({ type: 'viewport.set', fromMs: from, toMs: end });
+            chart.execute({
+              type: 'viewport.set',
+              ...(button.dataset.bars === 'all'
+                ? allRange(state)
+                : barsRange(state, Number(button.dataset.bars))),
+            });
           }),
         { signal: abort.signal },
       );

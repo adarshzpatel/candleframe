@@ -27,7 +27,7 @@ The build creates the static demo in `dist/` and ES modules with TypeScript decl
 - Drag the plot to pan time and price together without changing their spacing. Fit or double-click the plot to restore the full view. Drag the bottom axis right to widen candle spacing or left to compress it. Drag the right axis up to widen price spacing or down to compress it.
 - Double-click an axis to reset that scale. Focus an axis and use arrow keys to resize or Home to reset. Scroll over the plot to zoom time without scrolling the page. Touch drags stay inside the chart. Use `+` / `-` when the plot is focused.
 - Plot drags ease toward the pointer and glide briefly on release. Zoom, axis resizing, automatic price changes and Fit animate their ranges. A new grab takes control at the displayed position. Reduced-motion preferences disable these effects.
-- Toggle volume and SMA. Choose from 30 drawing tools in the left toolbar: lines, channels, Fibonacci tools, shapes, annotations, freehand, measurements and position plans. Select and move drawings, edit handles, style, lock, hide, duplicate and reorder them in Objects. Undo/redo preserves market data and scales. See the [drawing suite guide](docs/drawing-suite.md).
+- Toggle volume and indicators. Use **+** to add SMA, EMA, Bollinger Bands, RSI or MACD; oscillators get their own panes. **Log** switches the price axis to a log scale. Choose from 30 drawing tools in the left toolbar: lines, channels, Fibonacci tools, shapes, annotations, freehand, measurements and position plans. Select and move drawings, edit handles, style, lock, hide, duplicate and reorder them in Objects. Undo/redo preserves market data and scales. See the [drawing suite guide](docs/drawing-suite.md).
 - Save and restore a layout for the selected source, symbol and interval. Export opens a PNG preview and download link.
 - Toggle the integrated order book. Stale depth is dimmed independently of the candle stream.
 - Open **Inspect state** for the same semantic state available to an embedding app or agent.
@@ -97,9 +97,9 @@ Evergreen is the default theme. The Appearance picker also includes Graphite, Mi
 
 ## Current scope
 
-The PoC implements candles, volume, SMA, a 30-tool drawing suite with undo/redo, order-book reconstruction, independent stream health, market switching, axis scaling, layout persistence, structured commands and GPU restoration. WebGL2 draws geometry; Canvas2D draws text and overlays; HTML supplies accessible controls and a candle table.
+The PoC implements candles, volume, five indicators with separate panes, log and linear price scales, session gaps, history paging, a 30-tool drawing suite with undo/redo, order-book reconstruction, independent stream health, market switching, axis scaling, layout persistence, structured commands and GPU restoration. WebGL2 draws geometry; Canvas2D draws text and overlays; HTML supplies accessible controls and a candle table.
 
-Interfaces remain experimental. Multiple panes, session calendars, log scales, paging older history, scripting, broker execution and full TradingView feature parity are not implemented. Rendering and calculations run on the main thread. No comparative performance claim has been established.
+Interfaces remain experimental. Scripting, broker execution and full TradingView feature parity are not implemented. Rendering and calculations run on the main thread. No comparative performance claim has been established.
 
 OpenChart is released under the [MIT license](LICENSE). Bundled fonts use the SIL Open Font License; see `src/fonts/`.
 

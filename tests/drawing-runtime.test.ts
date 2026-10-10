@@ -52,15 +52,15 @@ test('v1/v2 documents and legacy drawing commands migrate to owned v3 drawing re
   runtime.execute({ type: 'drawing.add', drawing: legacy });
   legacy.start.price = 999;
   const saved = runtime.exportDocument();
-  assert.equal(saved.version, 3);
+  assert.equal(saved.version, 4);
   assert.equal(saved.drawings[0].type, 'trendline');
   assert.deepEqual(saved.drawings[0].points, [anchor(100), anchor(110, minute)]);
   const old = { ...saved, version: 2, drawings: [{ id: 'old', start: anchor(90), end: anchor(95, minute) }] };
   const migrated = parseDocument(old, feed.descriptor);
-  assert.equal(migrated.version, 3);
+  assert.equal(migrated.version, 4);
   assert.deepEqual(migrated.drawings[0].points, [anchor(90), anchor(95, minute)]);
   const { feedId: _feedId, interval: _interval, ...v1 } = old;
-  assert.equal(parseDocument({ ...v1, version: 1 }, feed.descriptor).version, 3);
+  assert.equal(parseDocument({ ...v1, version: 1 }, feed.descriptor).version, 4);
   assert.throws(
     () => parseDocument({ ...v1, version: 1 }, { ...feed.descriptor, simulated: false }),
     /LEGACY_MARKET_MISMATCH/,

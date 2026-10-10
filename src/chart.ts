@@ -1,8 +1,9 @@
 import { ChartError, toChartError } from './errors.ts';
 import { resolveTheme, themeColor, themeColorCSS } from './themes.ts';
 import type { ResolvedChartTheme, ThemeInput } from './themes.ts';
-import { createGeometry, geometryForRanges, stateTimeScale } from './geometry.ts';
+import { createGeometry, geometryForRanges, geometryLayout, stateTimeScale } from './geometry.ts';
 import type { TimeScale } from './time-scale.ts';
+import type { IndicatorDefinition } from './indicators.ts';
 import { createTimeFormats } from './time-format.ts';
 import type { ChartGeometry } from './geometry.ts';
 import { ChartRuntime } from './runtime.ts';
@@ -18,7 +19,7 @@ import type {
   DrawingStyle,
   DrawingToolDefinition,
 } from './drawing-types.ts';
-import { dragPriceScale, dragTimeScale, panPriceScale, panTimeScale } from './scales.ts';
+import { dragTimeScale, panTimeScale, priceAxisMath } from './scales.ts';
 import { WebGL2Renderer } from './webgl-renderer.ts';
 import type { ChartRenderer, RendererStats } from './webgl-renderer.ts';
 import type {
@@ -37,6 +38,8 @@ export interface ChartOptions {
   heatmap?: boolean;
   indicators?: readonly IndicatorPlugin[];
   renderer?: ChartRenderer;
+  /** Extra indicator kinds for `indicator.add`, saved layouts and the widget's indicator menu. */
+  indicatorDefinitions?: readonly IndicatorDefinition[];
   /** Candles kept in memory, including paged history. Default 10,000. */
   maxCandles?: number;
   /** IANA zone for axis and crosshair labels, such as `America/New_York`. Default `UTC`. */
@@ -87,6 +90,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     heatmap: options.heatmap,
     drawingTools: options.drawingTools,
     maxCandles: options.maxCandles,
+    indicatorDefinitions: options.indicatorDefinitions,
   });
   const renderer = options.renderer ?? new WebGL2Renderer();
   const root = document.createElement('div');
@@ -271,12 +275,14 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
         )
           scaleMotion = new ScaleMotion(target);
         else scaleMotion.retarget(target, now, drag ? 40 : 90);
+        const ranges = scaleMotion.sample(now);
         geometry = geometryForRanges(
-          scaleMotion.sample(now),
+          ranges,
           width,
           height,
           theme.chart,
           stateTimeScale(state),
+          geometryLayout(state, ranges.fromMs, ranges.toMs),
         );
         timeAxis.hidden = priceAxis.hidden = !state.candles.length;
         Object.assign(timeAxis.style, {
@@ -366,13 +372,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
           : {
               priceScale: {
                 mode: 'manual' as const,
-                ...panPriceScale(
-                  current.min,
-                  current.max,
-                  offset.y,
-                  current.height,
-                  state.feed.instrument.tickSize,
-                ),
+                ...axis().pan(current.min, current.max, offset.y, current.height),
               },
             }),
       });
@@ -485,13 +485,15 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     ctx.fillStyle = themeColor(theme, theme.chart.axisColor);
     ctx.textAlign = 'left';
     for (let i = 0; i <= theme.chart.gridRows; i++) {
-      const p = g.maxPrice - ((g.maxPrice - g.minPrice) / theme.chart.gridRows) * i;
+      // Grid rows are evenly spaced in pixels; on a log axis the prices between them are not.
+      const y = g.top + (g.plotHeight / theme.chart.gridRows) * i;
       ctx.fillText(
-        formatPrice.format(p),
+        formatPrice.format(g.price(y)),
         g.left + g.plotWidth + theme.chart.axisLabelPadding,
-        g.top + (g.plotHeight / theme.chart.gridRows) * i + theme.typography.axisSize * 0.4,
+        y + theme.typography.axisSize * 0.4,
       );
     }
+    drawPanes(g);
     ctx.textAlign = 'center';
     const spanMs = g.toMs - g.fromMs;
     const tickWidth =
@@ -564,26 +566,82 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     );
   }
 
+  /** Titles, latest values, guide levels and axis labels for indicator panes. */
+  function drawPanes(g: ChartGeometry): void {
+    if (!ctx || !g.panes.length) return;
+    const pad = theme.chart.axisLabelPadding,
+      size = theme.typography.axisSize;
+    for (const pane of g.panes) {
+      const item = state.indicators.find(i => i.plugin.id === pane.id);
+      if (!item) continue;
+      const { plugin, series } = item;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(g.left, pane.top, g.plotWidth, pane.height);
+      ctx.clip();
+      ctx.strokeStyle = themeColorCSS(theme, theme.chart.axisColor, 0.45);
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 4]);
+      for (const level of plugin.levels ?? []) {
+        const y = Math.round(pane.y(level)) + 0.5;
+        ctx.beginPath();
+        ctx.moveTo(g.left, y);
+        ctx.lineTo(g.left + g.plotWidth, y);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      ctx.restore();
+      ctx.font = `${size}px ${theme.typography.numberFamily}`;
+      ctx.textAlign = 'left';
+      let x = g.left + pad * 0.4;
+      const baseline = pane.top + size * 1.1;
+      ctx.fillStyle = theme.palette.textFaint;
+      ctx.fillText(plugin.name, x, baseline);
+      x += ctx.measureText(plugin.name).width + pad;
+      (plugin.outputs?.length ? plugin.outputs : [{ name: '', color: plugin.color }]).forEach((output, k) => {
+        const value = series[k]?.at(-1);
+        if (value === undefined || !Number.isFinite(value)) return;
+        const [r, gr, b] = output.color;
+        ctx.fillStyle = `rgb(${Math.round(r * 255)} ${Math.round(gr * 255)} ${Math.round(b * 255)})`;
+        const text = formatValue(value, pane.max - pane.min);
+        ctx.fillText(text, x, baseline);
+        x += ctx.measureText(text).width + pad * 0.75;
+      });
+      ctx.fillStyle = themeColor(theme, theme.chart.axisColor);
+      const marks = plugin.levels?.length ? plugin.levels : [pane.max, (pane.max + pane.min) / 2, pane.min];
+      for (const value of marks) {
+        const y = Math.max(
+          pane.top + size * 0.5,
+          Math.min(pane.top + pane.height - size * 0.2, pane.y(value)),
+        );
+        ctx.fillText(formatValue(value, pane.max - pane.min), g.left + g.plotWidth + pad, y + size * 0.4);
+      }
+    }
+  }
+  /** Pane values span many magnitudes (RSI 0 to 100, MACD fractions); keep four significant digits. */
+  function formatValue(value: number, span: number): string {
+    if (!Number.isFinite(value)) return '—';
+    // Enough decimals to tell apart values a hundredth of the pane apart.
+    const digits = Math.max(0, Math.min(6, 2 - Math.floor(Math.log10(Math.max(1e-9, span)))));
+    return value.toFixed(digits);
+  }
   function drawCursor(): void {
     if (!cursorCtx) return;
     const ctx = cursorCtx,
       g = geometry;
     clearOverlay(cursorCanvas, ctx);
     if (!state.candles.length) return;
-    if (
-      pointer &&
-      pointer.x >= g.left &&
-      pointer.x <= g.left + g.plotWidth &&
-      pointer.y >= g.top &&
-      pointer.y <= g.top + g.plotHeight
-    ) {
+    const inPrice = !!pointer && pointer.y >= g.top && pointer.y <= g.top + g.plotHeight;
+    const at = pointer;
+    const pane = at && g.panes.find(p => at.y >= p.top && at.y <= p.top + p.height);
+    if (pointer && pointer.x >= g.left && pointer.x <= g.left + g.plotWidth && (inPrice || pane)) {
       ctx.strokeStyle = themeColorCSS(theme, theme.chart.crosshairColor, theme.chart.crosshairOpacity);
       ctx.lineWidth = theme.chart.crosshairWidth;
       ctx.setLineDash([...theme.chart.crosshairDash]);
       if (theme.chart.crosshairWidth > 0) {
         ctx.beginPath();
         ctx.moveTo(pointer.x, g.top);
-        ctx.lineTo(pointer.x, g.volumeTop + g.volumeHeight);
+        ctx.lineTo(pointer.x, g.bottom);
         ctx.moveTo(g.left, pointer.y);
         ctx.lineTo(g.left + g.plotWidth, pointer.y);
         ctx.stroke();
@@ -594,7 +652,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
         background = themeColor(theme, theme.chart.crosshairLabelBackground);
       label(
         ctx,
-        formatPrice.format(anchor.price),
+        pane ? formatValue(pane.value(pointer.y), pane.max - pane.min) : formatPrice.format(anchor.price),
         g.left + g.plotWidth + theme.effects.borderWidth,
         pointer.y,
         text,
@@ -628,6 +686,10 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
   function point(event: MouseEvent): { x: number; y: number } {
     const r = root.getBoundingClientRect();
     return { x: event.clientX - r.left, y: event.clientY - r.top };
+  }
+  /** Price-axis math for the current scale type. */
+  function axis() {
+    return priceAxisMath(!!state.document.priceScale.log, state.feed.instrument.tickSize);
   }
   /** Runs a time-range calculation in bar units and converts the result back to time. */
   function inBars(
@@ -674,13 +736,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       if (event.target === priceAxis) {
         runtime.execute({
           type: 'priceScale.set',
-          ...dragPriceScale(
-            targetGeometry.minPrice,
-            targetGeometry.maxPrice,
-            delta,
-            geometry.plotHeight,
-            state.feed.instrument.tickSize,
-          ),
+          ...axis().drag(targetGeometry.minPrice, targetGeometry.maxPrice, delta, geometry.plotHeight),
         });
       } else
         zoom(
@@ -780,13 +836,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       } else if (drag?.kind === 'price') {
         runtime.execute({
           type: 'priceScale.set',
-          ...dragPriceScale(
-            drag.min,
-            drag.max,
-            pointer.y - drag.y,
-            drag.height,
-            state.feed.instrument.tickSize,
-          ),
+          ...axis().drag(drag.min, drag.max, pointer.y - drag.y, drag.height),
         });
       } else if (drag) {
         const dx = pointer.x - drag.x,
@@ -806,7 +856,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
               lastMs: scale.logical(state.candles.at(-1)!.timeMs),
               intervalMs: 1,
             };
-            const tickSize = state.feed.instrument.tickSize;
+            const priceMath = axis();
             const autoscale = autoscalesOnPan();
             const motion = new PanMotion(origin.started, {
               smooth: options.panMotion !== false && !reducedMotion.matches,
@@ -814,8 +864,11 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
                 const time = panTimeScale(from, to, offset.x, origin.width, history);
                 const x = ((from - time.fromMs) / (to - from)) * origin.width;
                 if (autoscale) return { x, y: 0 };
-                const price = panPriceScale(origin.min, origin.max, offset.y, origin.height, tickSize);
-                return { x, y: ((price.minPrice - origin.min) / (origin.max - origin.min)) * origin.height };
+                const price = priceMath.pan(origin.min, origin.max, offset.y, origin.height);
+                return {
+                  x,
+                  y: priceMath.offset({ minPrice: origin.min, maxPrice: origin.max }, price, origin.height),
+                };
               },
             });
             pan = { ...origin, motion, scale, appliedX: 0, appliedY: 0, autoscale };
@@ -1032,13 +1085,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
             const target = createGeometry(state, width, height, theme.chart);
             runtime.execute({
               type: 'priceScale.set',
-              ...dragPriceScale(
-                target.minPrice,
-                target.maxPrice,
-                dy,
-                geometry.plotHeight,
-                state.feed.instrument.tickSize,
-              ),
+              ...axis().drag(target.minPrice, target.maxPrice, dy, geometry.plotHeight),
             });
           }
           return;
