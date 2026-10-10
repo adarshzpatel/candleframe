@@ -108,6 +108,7 @@ OpenChart is released under the [MIT license](LICENSE). Bundled fonts use the SI
 - [Drawing suite and extension API](docs/drawing-suite.md)
 - [Self-contained widget integration](docs/embedding.md)
 - [Drawing design decisions](docs/drawing-suite-design.md)
+- [Driving a chart from an agent](docs/agents.md): batches, preview, query, schemas and the MCP server
 - [Implementation and verification](docs/poc.md)
 - [Version 0.2 design decisions](docs/v0.2-design.md)
 - [Research and feature comparison](docs/research.md)

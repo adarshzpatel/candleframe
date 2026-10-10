@@ -1,4 +1,4 @@
-import { ChartError } from './errors.ts';
+import { ChartError, toChartError } from './errors.ts';
 import { binBook, HeatmapStore } from './heatmap.ts';
 import { OrderBook } from './order-book.ts';
 import { DrawingRegistry, translateDrawing } from './drawing-tools.ts';
@@ -6,6 +6,7 @@ import type { DrawingToolDefinition } from './drawing-types.ts';
 import { intervalToMs, isAligned } from './intervals.ts';
 import { createTimeScale } from './time-scale.ts';
 import { IndicatorRegistry } from './indicators.ts';
+import { chartCommandTypes } from './command-schema.ts';
 import type { IndicatorDefinition } from './indicators.ts';
 
 interface IndicatorSlot {
@@ -34,6 +35,36 @@ import type {
   StreamHealth,
 } from './types.ts';
 
+export interface DataQuery {
+  fromMs?: number;
+  toMs?: number;
+  /** Use the current viewport instead of fromMs/toMs. */
+  visible?: boolean;
+  /** Newest bars kept when the range holds more. 1 to 5,000; default 500. */
+  limit?: number;
+  /** Default true. */
+  indicators?: boolean;
+}
+export interface DataResult {
+  candles: Candle[];
+  indicators: { id: string; kind: string; name: string; outputs: Record<string, (number | null)[]> }[];
+  /** True when the range held more than `limit` bars; the newest were kept. */
+  truncated: boolean;
+  firstCandleTimeMs: number | null;
+  lastCandleTimeMs: number | null;
+}
+export interface ExecuteOptions {
+  /** A retry with the same key and commands returns the first result without applying again. */
+  idempotencyKey?: string;
+}
+export interface CommandResult {
+  documentRevision: number;
+  /** Ids created by the commands: added indicators (including generated ids) and drawings. */
+  created: string[];
+}
+export type PreviewResult =
+  | { ok: true; document: ChartDocument; created: string[] }
+  | { ok: false; error: ReturnType<ChartError['toJSON']> };
 export interface RuntimeOptions {
   heatmap?: boolean;
   drawingTools?: readonly DrawingToolDefinition[];
@@ -286,6 +317,10 @@ export class ChartRuntime {
   private initializedViewport = false;
   private streams: Record<Stream, StreamHealth> = { candles: loading(), depth: loading() };
   private olderHistory: OlderHistory = { status: 'unavailable', message: null };
+  private batching = false;
+  private remembered = 0;
+  private created: string[] = [];
+  private idempotency = new Map<string, { fingerprint: string; result: CommandResult }>();
   readonly maxCandles: number;
   private scaleCache?: { candles: readonly Candle[]; descriptor: FeedDescriptor; scale: TimeScale };
   readonly heatmapEnabled: boolean;
@@ -716,8 +751,175 @@ export class ChartRuntime {
         details: { expected, actual: this.documentRevision },
       });
   }
-  execute(command: ChartCommand, expectedRevision?: number): void {
+  /**
+   * Applies one command, or a batch atomically. A batch is one undo step and one
+   * revision; if any command fails, nothing changes and the error path starts with
+   * the command index. With `idempotencyKey`, a retry of the same commands returns
+   * the first result instead of applying them again.
+   */
+  execute(
+    input: ChartCommand | readonly ChartCommand[],
+    expectedRevision?: number,
+    options: ExecuteOptions = {},
+  ): CommandResult {
+    if (this.disposed) throw new ChartError('DISPOSED');
+    const key = options.idempotencyKey;
+    const fingerprint = key === undefined ? '' : JSON.stringify(input);
+    if (key !== undefined) {
+      if (typeof key !== 'string' || !key || key.length > 128)
+        throw new ChartError('INVALID_IDEMPOTENCY_KEY', 'use a string of 1 to 128 characters', {
+          path: 'idempotencyKey',
+        });
+      const prior = this.idempotency.get(key);
+      if (prior) {
+        if (prior.fingerprint !== fingerprint)
+          throw new ChartError('IDEMPOTENCY_CONFLICT', 'this key was used for different commands', {
+            path: 'idempotencyKey',
+            details: { key },
+          });
+        return structuredClone(prior.result);
+      }
+    }
     this.assertRevision(expectedRevision);
+    let result: CommandResult;
+    if (Array.isArray(input)) result = this.batch(input as readonly ChartCommand[], false);
+    else {
+      this.created = [];
+      this.apply(input as ChartCommand);
+      result = { documentRevision: this.documentRevision, created: this.created };
+    }
+    if (key !== undefined) {
+      this.idempotency.set(key, { fingerprint, result: structuredClone(result) });
+      if (this.idempotency.size > 200) this.idempotency.delete(this.idempotency.keys().next().value!);
+    }
+    return result;
+  }
+  /**
+   * Reads candles and indicator values for a time range, the visible range, or the
+   * latest bars. Values are aligned with `candles`; warmup and missing values are null.
+   */
+  query(request: DataQuery = {}): DataResult {
+    if (this.disposed) throw new ChartError('DISPOSED');
+    if (!request || typeof request !== 'object')
+      throw new ChartError('INVALID_QUERY', 'pass an object', { path: 'request' });
+    const limit = request.limit ?? 500;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 5000)
+      throw new ChartError('INVALID_QUERY', 'limit must be an integer from 1 to 5000', { path: 'limit' });
+    for (const key of ['fromMs', 'toMs'] as const)
+      if (request[key] !== undefined && !Number.isFinite(request[key]))
+        throw new ChartError('INVALID_QUERY', `${key} must be a finite number`, { path: key });
+    const viewport = this.document.viewport;
+    const fromMs = request.visible ? viewport.fromMs : (request.fromMs ?? -Infinity);
+    const toMs = request.visible ? viewport.toMs : (request.toMs ?? Infinity);
+    let start = this.candles.findIndex(bar => bar.timeMs >= fromMs);
+    if (start < 0) start = this.candles.length;
+    let end = start;
+    while (end < this.candles.length && this.candles[end].timeMs <= toMs) end++;
+    const truncated = end - start > limit;
+    if (truncated) start = end - limit;
+    const clean = (values: readonly number[] | undefined) =>
+      Array.from({ length: end - start }, (_, i) => {
+        const value = values?.[start + i];
+        return value === undefined || Number.isNaN(value) ? null : value;
+      });
+    return structuredClone({
+      candles: this.candles.slice(start, end),
+      indicators:
+        request.indicators === false
+          ? []
+          : this.indicators
+              .filter(slot => slot.plugin)
+              .map(({ entry, plugin, series }) => ({
+                id: entry.id,
+                kind: entry.kind,
+                name: plugin!.name,
+                outputs: Object.fromEntries(
+                  (plugin!.outputs ?? [{ id: 'value' }]).map((output, i) => [output.id, clean(series[i])]),
+                ),
+              })),
+      truncated,
+      firstCandleTimeMs: this.candles[0]?.timeMs ?? null,
+      lastCandleTimeMs: this.candles.at(-1)?.timeMs ?? null,
+    });
+  }
+  /** Validates and applies commands to a copy. Returns the resulting document or the first error. */
+  preview(commands: readonly ChartCommand[], expectedRevision?: number): PreviewResult {
+    try {
+      this.assertRevision(expectedRevision);
+      const result = this.batch(commands, true);
+      return { ok: true, document: result.document!, created: result.created };
+    } catch (error) {
+      return { ok: false, error: toChartError(error).toJSON() };
+    }
+  }
+  private batch(
+    commands: readonly ChartCommand[],
+    dryRun: boolean,
+  ): CommandResult & { document?: ChartDocument } {
+    if (!Array.isArray(commands) || commands.length > 500)
+      throw new ChartError('INVALID_BATCH', 'send an array of at most 500 commands', { path: 'commands' });
+    commands.forEach((command, index) => {
+      if (['feed.pause', 'history.undo', 'history.redo'].includes(command?.type))
+        throw new ChartError('INVALID_BATCH', `${command.type} cannot run inside a batch`, {
+          path: `${index}.type`,
+          details: { index, type: command.type },
+        });
+    });
+    const snapshot = {
+      document: this.document,
+      documentRevision: this.documentRevision,
+      history: [...this.history],
+      future: [...this.future],
+      indicators: this.indicators,
+      remembered: this.remembered,
+    };
+    const restore = () => {
+      this.document = snapshot.document;
+      this.documentRevision = snapshot.documentRevision;
+      this.history = snapshot.history;
+      this.future = snapshot.future;
+      this.indicators = snapshot.indicators;
+      this.remembered = snapshot.remembered;
+    };
+    this.batching = true;
+    this.created = [];
+    try {
+      commands.forEach((command, index) => {
+        try {
+          this.apply(command);
+        } catch (cause) {
+          const error = toChartError(cause);
+          const hint = error.message.slice(error.code.length).replace(/^:\s*/, '');
+          throw new ChartError(error.code, hint || undefined, {
+            path: error.path === undefined ? `${index}` : `${index}.${error.path}`,
+            details: { ...error.details, index, type: command?.type },
+            cause,
+          });
+        }
+      });
+    } catch (error) {
+      restore();
+      throw error;
+    } finally {
+      this.batching = false;
+    }
+    const created = this.created;
+    if (dryRun) {
+      const document = this.exportDocument();
+      restore();
+      return { documentRevision: snapshot.documentRevision, created, document };
+    }
+    const changed = this.documentRevision !== snapshot.documentRevision;
+    // Collapse the batch's content edits into one undo step.
+    if (this.remembered !== snapshot.remembered) {
+      this.history = [...snapshot.history, structuredClone(snapshot.document)].slice(-40);
+      this.future = [];
+    }
+    this.documentRevision = snapshot.documentRevision + (changed ? 1 : 0);
+    if (changed) this.publish();
+    return { documentRevision: this.documentRevision, created };
+  }
+  private apply(command: ChartCommand): void {
     if (command.type === 'feed.pause') {
       if (typeof command.paused !== 'boolean') throw new ChartError('INVALID_COMMAND');
       if (this.paused === command.paused) return;
@@ -815,9 +1017,12 @@ export class ChartRuntime {
       case 'heatmap.intensity':
         next.intensity = command.value;
         break;
-      case 'drawing.add':
-        next.drawings.push(this.drawingRegistry.normalize(command.drawing));
+      case 'drawing.add': {
+        const drawing = this.drawingRegistry.normalize(command.drawing);
+        this.created.push(drawing.id);
+        next.drawings.push(drawing);
         break;
+      }
       case 'drawing.update': {
         const index = this.drawingIndex(next, command.id);
         const drawing = next.drawings[index],
@@ -861,6 +1066,7 @@ export class ChartRuntime {
         next.drawings.push(
           this.drawingRegistry.normalize({ ...copied, id: command.newId, locked: false, visible: true }),
         );
+        this.created.push(command.newId);
         break;
       }
       case 'drawing.order': {
@@ -894,12 +1100,18 @@ export class ChartRuntime {
           const candidate = n === 1 ? given.kind : `${given.kind}-${n}`;
           if (!next.indicators.some(entry => entry.id === candidate)) id = candidate;
         }
-        next.indicators.push({
-          id,
-          kind: given.kind,
-          inputs: this.indicatorRegistry.inputs(given.kind, given.inputs ?? {}),
-          visible: true,
-        });
+        let inputs: Record<string, number>;
+        try {
+          inputs = this.indicatorRegistry.inputs(given.kind, given.inputs ?? {});
+        } catch (cause) {
+          const error = toChartError(cause);
+          throw new ChartError(error.code, error.message.slice(error.code.length + 2) || undefined, {
+            path: `indicator.${error.path ?? 'inputs'}`,
+            details: error.details,
+          });
+        }
+        this.created.push(id);
+        next.indicators.push({ id, kind: given.kind, inputs, visible: true });
         break;
       }
       case 'indicator.update': {
@@ -944,6 +1156,7 @@ export class ChartRuntime {
     if (stack.length > 40) stack.shift();
   }
   private remember(): void {
+    this.remembered++;
     this.pushHistory(this.history);
     this.future = [];
   }
@@ -998,6 +1211,8 @@ export class ChartRuntime {
       streams: this.streams,
       capabilities: {
         heatmap: this.heatmapEnabled,
+        commands: chartCommandTypes,
+        maxBatch: 500,
         drawingTools: this.drawingRegistry
           .list()
           .map(({ type, label, group, points, hint, editableText, editableProperties, create }) => ({
@@ -1053,6 +1268,7 @@ export class ChartRuntime {
     return () => this.listeners.delete(listener);
   }
   private publish(): void {
+    if (this.batching) return;
     const state = this.state();
     for (const listener of this.listeners) listener(state);
   }

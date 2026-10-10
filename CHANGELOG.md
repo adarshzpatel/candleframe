@@ -4,6 +4,10 @@ All notable changes are listed here. The project follows [Semantic Versioning](h
 
 ## Unreleased
 
+- `execute` accepts a batch: atomic, one undo step, one revision. It returns `{ documentRevision, created }`.
+- `preview(commands)` dry-runs a batch. `idempotencyKey` makes retries safe. `query()` returns candles and aligned indicator values for a range.
+- `chartCommandSchema` and `chartCommandBatchSchema` describe every command as JSON Schema. `inspect()` lists available commands and indicator kinds.
+- `examples/mcp-server.ts` exposes a headless chart to agents over MCP, with no dependencies. See `docs/agents.md`.
 - Indicator panes: RSI and MACD draw in their own panes with guide levels. The crosshair spans every pane.
 - New indicators: EMA, Bollinger Bands, RSI and MACD, alongside SMA. Plugins can return several outputs and draw histograms.
 - Indicators are saved in layouts (document version 4) and change through `indicator.add`, `indicator.update` and `indicator.remove`, all undoable. Hosts register more kinds with `indicatorDefinitions`.
