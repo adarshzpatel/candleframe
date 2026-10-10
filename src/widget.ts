@@ -1,3 +1,4 @@
+import { ChartError } from './errors.ts';
 import { loadWidgetFonts } from './widget-fonts.ts';
 import { chartThemes, resolveTheme } from './themes.ts';
 import type { ThemeInput } from './themes.ts';
@@ -33,7 +34,7 @@ export interface ChartWidgetOptions extends ChartOptions {
 export function createChartWidget(container: HTMLElement, options: ChartWidgetOptions): ChartApi {
   const markets = options.markets ?? [];
   validateMarketSources(markets);
-  if (options.layoutStore && !options.storageKey?.trim()) throw new Error('WIDGET_STORAGE_KEY_REQUIRED');
+  if (options.layoutStore && !options.storageKey?.trim()) throw new ChartError('WIDGET_STORAGE_KEY_REQUIRED');
   const doc = container.ownerDocument,
     mount = doc.createElement('div');
   const themeKey = options.storageKey ? JSON.stringify([options.storageKey, 'appearance']) : null;
@@ -428,7 +429,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     function changeMarket() {
       attempt(() => {
         const source = markets.find(s => s.id === $<HTMLSelectElement>('#source').value);
-        if (!source || !lastState) throw new Error('MARKET_SOURCE_UNAVAILABLE');
+        if (!source || !lastState) throw new ChartError('MARKET_SOURCE_UNAVAILABLE');
         const oldSymbol = $<HTMLSelectElement>('#symbol').value,
           oldInterval = $<HTMLSelectElement>('#interval').value as Interval;
         const symbol = source.symbols.includes(oldSymbol)
@@ -540,7 +541,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
           return;
         }
         if (chart.inspect().generation !== before.generation)
-          throw new Error('MARKET_CHANGED_DURING_RESTORE');
+          throw new ChartError('MARKET_CHANGED_DURING_RESTORE');
         chart.restoreDocument(saved, before.documentRevision);
         report('Layout restored.');
       } catch (error) {

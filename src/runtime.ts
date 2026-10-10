@@ -1,3 +1,4 @@
+import { ChartError } from './errors.ts';
 import { binBook, HeatmapStore } from './heatmap.ts';
 import { OrderBook } from './order-book.ts';
 import { DrawingRegistry, translateDrawing } from './drawing-tools.ts';
@@ -43,7 +44,7 @@ function validateInstrument(i: Instrument): void {
     i.tickSize <= 0 ||
     ![i.pricePrecision, i.quantityPrecision].every(n => Number.isInteger(n) && n >= 0 && n <= 12)
   )
-    throw new Error('INVALID_INSTRUMENT');
+    throw new ChartError('INVALID_INSTRUMENT');
 }
 function validateDescriptor(d: FeedDescriptor): FeedDescriptor {
   if (
@@ -60,7 +61,7 @@ function validateDescriptor(d: FeedDescriptor): FeedDescriptor {
     d.depth.levels < 1 ||
     d.depth.levels > 2048
   )
-    throw new Error('INVALID_FEED');
+    throw new ChartError('INVALID_FEED');
   validateInstrument(d.instrument);
   return structuredClone(d);
 }
@@ -74,7 +75,10 @@ function validateViewport(value: unknown, intervalMs: number): ChartDocument['vi
     v.toMs - v.fromMs > 2200 * intervalMs ||
     typeof v.following !== 'boolean'
   )
-    throw new Error('INVALID_VIEWPORT');
+    throw new ChartError('INVALID_VIEWPORT', 'span must be 20 to 2200 intervals', {
+      path: 'viewport',
+      details: { minSpanMs: 20 * intervalMs, maxSpanMs: 2200 * intervalMs },
+    });
   return { fromMs: v.fromMs, toMs: v.toMs, following: v.following };
 }
 function validatePriceScale(value: unknown, tickSize: number): ChartDocument['priceScale'] {
@@ -89,7 +93,10 @@ function validatePriceScale(value: unknown, tickSize: number): ChartDocument['pr
     scale.minPrice <= 0 ||
     scale.maxPrice - scale.minPrice < tickSize
   )
-    throw new Error('INVALID_PRICE_SCALE');
+    throw new ChartError('INVALID_PRICE_SCALE', 'minPrice must be positive and below maxPrice by a tick', {
+      path: 'priceScale',
+      details: { tickSize },
+    });
   return { mode: 'manual', minPrice: scale.minPrice, maxPrice: scale.maxPrice };
 }
 export function parseDocument(
@@ -98,46 +105,60 @@ export function parseDocument(
   heatmapEnabled = false,
   registry = new DrawingRegistry(),
 ): ChartDocument {
-  if (!value || typeof value !== 'object') throw new Error('INVALID_DOCUMENT');
+  if (!value || typeof value !== 'object') throw new ChartError('INVALID_DOCUMENT');
   // v1 had no provider or interval. Only the original simulated one-minute market is unambiguous.
   const input = value as Record<string, unknown>;
   let normalized = value;
   if (input.version === 1) {
     if (!feed.simulated || feed.interval !== '1m' || feed.instrument.symbol !== 'BTC/USD')
-      throw new Error('LEGACY_MARKET_MISMATCH');
+      throw new ChartError('LEGACY_MARKET_MISMATCH');
     normalized = { ...input, version: 2, feedId: feed.id, interval: '1m' };
   }
   const doc = normalized as Partial<Omit<ChartDocument, 'version' | 'drawings'>> & {
     version?: number;
     drawings?: unknown[];
   };
-  if (doc.version !== 2 && doc.version !== 3) throw new Error('UNSUPPORTED_DOCUMENT_VERSION');
-  if (doc.symbol !== feed.instrument.symbol) throw new Error('SYMBOL_MISMATCH');
-  if (doc.feedId !== feed.id || doc.interval !== feed.interval) throw new Error('MARKET_MISMATCH');
+  if (doc.version !== 2 && doc.version !== 3)
+    throw new ChartError('UNSUPPORTED_DOCUMENT_VERSION', undefined, {
+      path: 'version',
+      details: { version: doc.version, supported: [1, 2, 3] },
+    });
+  if (doc.symbol !== feed.instrument.symbol)
+    throw new ChartError('SYMBOL_MISMATCH', undefined, {
+      path: 'symbol',
+      details: { expected: feed.instrument.symbol, actual: doc.symbol },
+    });
+  if (doc.feedId !== feed.id || doc.interval !== feed.interval)
+    throw new ChartError('MARKET_MISMATCH', undefined, {
+      details: {
+        expected: { feedId: feed.id, interval: feed.interval },
+        actual: { feedId: doc.feedId, interval: doc.interval },
+      },
+    });
   if (
     !doc.layers ||
     !['heatmap', 'candles', 'volume', 'indicator'].every(
       k => typeof doc.layers?.[k as keyof ChartDocument['layers']] === 'boolean',
     )
   )
-    throw new Error('INVALID_LAYERS');
+    throw new ChartError('INVALID_LAYERS');
   if (
     typeof doc.intensity !== 'number' ||
     !Number.isFinite(doc.intensity) ||
     doc.intensity < 0.2 ||
     doc.intensity > 2
   )
-    throw new Error('INVALID_INTENSITY');
+    throw new ChartError('INVALID_INTENSITY');
   const v = validateViewport(doc.viewport, feed.intervalMs);
   const priceScale = validatePriceScale(doc.priceScale, feed.instrument.tickSize);
-  if (!Array.isArray(doc.drawings) || doc.drawings.length > 100) throw new Error('INVALID_DRAWINGS');
+  if (!Array.isArray(doc.drawings) || doc.drawings.length > 100) throw new ChartError('INVALID_DRAWINGS');
   const drawings = doc.drawings.map(drawing => registry.normalize(drawing));
-  if (new Set(drawings.map(d => d.id)).size !== drawings.length) throw new Error('DUPLICATE_DRAWING_ID');
+  if (new Set(drawings.map(d => d.id)).size !== drawings.length) throw new ChartError('DUPLICATE_DRAWING_ID');
   if (
     drawings.reduce((count, drawing) => count + drawing.points.length, 0) > 8192 ||
     new TextEncoder().encode(JSON.stringify(drawings)).byteLength > 256 * 1024
   )
-    throw new Error('DRAWING_LIMIT_EXCEEDED');
+    throw new ChartError('DRAWING_LIMIT_EXCEEDED');
   return structuredClone({
     version: 3,
     feedId: feed.id,
@@ -182,7 +203,7 @@ export class ChartRuntime {
     this.descriptor = validateDescriptor(feed.descriptor);
     this.heatmapEnabled = options.heatmap ?? false;
     this.drawingRegistry = new DrawingRegistry(options.drawingTools);
-    if (new Set(plugins.map(p => p.id)).size !== plugins.length) throw new Error('DUPLICATE_PLUGIN');
+    if (new Set(plugins.map(p => p.id)).size !== plugins.length) throw new ChartError('DUPLICATE_PLUGIN');
     this.indicators = plugins.map(plugin => ({ plugin, values: [] }));
     this.document = this.newDocument();
   }
@@ -201,7 +222,7 @@ export class ChartRuntime {
     };
   }
   start(): void {
-    if (this.disposed) throw new Error('DISPOSED');
+    if (this.disposed) throw new ChartError('DISPOSED');
     if (this.started) return;
     this.started = true;
     if (!this.paused) this.connect();
@@ -285,7 +306,7 @@ export class ChartRuntime {
         values.length !== candles.length ||
         values.some(v => typeof v !== 'number' || v === Infinity || v === -Infinity)
       )
-        throw new Error(`INVALID_INDICATOR: ${plugin.id}`);
+        throw new ChartError('INVALID_INDICATOR', `${plugin.id}`);
       return values;
     });
     this.indicators.forEach((indicator, index) => {
@@ -314,7 +335,7 @@ export class ChartRuntime {
             event.instrument.base !== this.descriptor.instrument.base ||
             event.instrument.quote !== this.descriptor.instrument.quote
           )
-            throw new Error('INSTRUMENT_MISMATCH');
+            throw new ChartError('INSTRUMENT_MISMATCH');
           this.descriptor = { ...this.descriptor, instrument: { ...event.instrument } };
           this.dataRevision++;
           this.publish();
@@ -326,7 +347,7 @@ export class ChartRuntime {
             !event.candles.every(b => validCandle(b, this.descriptor.intervalMs)) ||
             event.candles.some((bar, i) => i > 0 && bar.timeMs <= event.candles[i - 1].timeMs)
           )
-            throw new Error('INVALID_HISTORY');
+            throw new ChartError('INVALID_HISTORY');
           const candles = event.candles.slice(-2000).map(b => ({ ...b }));
           this.calculate(candles, 0);
           this.candles = candles;
@@ -337,16 +358,16 @@ export class ChartRuntime {
           break;
         }
         case 'candle': {
-          if (!validCandle(event.candle, this.descriptor.intervalMs)) throw new Error('INVALID_CANDLE');
+          if (!validCandle(event.candle, this.descriptor.intervalMs)) throw new ChartError('INVALID_CANDLE');
           const last = this.candles.at(-1);
-          if (!last) throw new Error('MISSING_HISTORY');
+          if (!last) throw new ChartError('MISSING_HISTORY');
           const candles = this.candles.slice();
           let changed = candles.findIndex(b => b.timeMs === event.candle.timeMs);
           if (changed >= 0) candles[changed] = { ...event.candle };
           else {
-            if (event.candle.timeMs < last.timeMs) throw new Error('UNKNOWN_CORRECTION');
+            if (event.candle.timeMs < last.timeMs) throw new ChartError('UNKNOWN_CORRECTION');
             if (event.candle.timeMs !== last.timeMs + this.descriptor.intervalMs)
-              throw new Error('CANDLE_GAP: reconnect to refresh history');
+              throw new ChartError('CANDLE_GAP', 'reconnect to refresh history');
             changed = candles.length;
             candles.push({ ...event.candle });
             if (candles.length > 2000) {
@@ -402,13 +423,16 @@ export class ChartRuntime {
     this.document.viewport = { fromMs: end - span, toMs: end, following: true };
   }
   private assertRevision(expected?: number): void {
-    if (this.disposed) throw new Error('DISPOSED');
-    if (expected !== undefined && expected !== this.documentRevision) throw new Error('REVISION_CONFLICT');
+    if (this.disposed) throw new ChartError('DISPOSED');
+    if (expected !== undefined && expected !== this.documentRevision)
+      throw new ChartError('REVISION_CONFLICT', 'the document changed; inspect() again and retry', {
+        details: { expected, actual: this.documentRevision },
+      });
   }
   execute(command: ChartCommand, expectedRevision?: number): void {
     this.assertRevision(expectedRevision);
     if (command.type === 'feed.pause') {
-      if (typeof command.paused !== 'boolean') throw new Error('INVALID_COMMAND');
+      if (typeof command.paused !== 'boolean') throw new ChartError('INVALID_COMMAND');
       if (this.paused === command.paused) return;
       this.paused = command.paused;
       for (const stream of ['candles', 'depth'] as const)
@@ -476,9 +500,12 @@ export class ChartRuntime {
     switch (command.type) {
       case 'layer.set':
         if (!Object.hasOwn(next.layers, command.layer) || typeof command.visible !== 'boolean')
-          throw new Error('INVALID_LAYER');
+          throw new ChartError('INVALID_LAYER', undefined, {
+            path: 'layer',
+            details: { layer: command.layer, allowed: Object.keys(next.layers) },
+          });
         if (command.layer === 'heatmap' && command.visible && !this.heatmapEnabled)
-          throw new Error('HEATMAP_DISABLED');
+          throw new ChartError('HEATMAP_DISABLED');
         next.layers[command.layer] = command.visible;
         break;
       case 'heatmap.intensity':
@@ -499,13 +526,13 @@ export class ChartRuntime {
             key => !['points', 'style', 'locked', 'visible', 'text', 'levels'].includes(key),
           )
         )
-          throw new Error('INVALID_DRAWING_PATCH');
-        if (drawing.locked && patch.points !== undefined) throw new Error('DRAWING_LOCKED');
+          throw new ChartError('INVALID_DRAWING_PATCH');
+        if (drawing.locked && patch.points !== undefined) throw new ChartError('DRAWING_LOCKED');
         if (
           patch.style !== undefined &&
           (!patch.style || typeof patch.style !== 'object' || Array.isArray(patch.style))
         )
-          throw new Error('INVALID_DRAWING_STYLE');
+          throw new ChartError('INVALID_DRAWING_STYLE');
         next.drawings[index] = this.drawingRegistry.normalize({
           ...drawing,
           ...patch,
@@ -520,7 +547,7 @@ export class ChartRuntime {
         const drawing = next.drawings[this.drawingIndex(next, command.id)];
         const offset = command.offset ?? { timeMs: this.descriptor.intervalMs * 3, price: 0 };
         if (!offset || !Number.isFinite(offset.timeMs) || !Number.isFinite(offset.price))
-          throw new Error('INVALID_DRAWING_OFFSET');
+          throw new ChartError('INVALID_DRAWING_OFFSET');
         const copied = translateDrawing(
           drawing,
           offset.timeMs,
@@ -533,21 +560,25 @@ export class ChartRuntime {
         break;
       }
       case 'drawing.order': {
-        if (command.where !== 'front' && command.where !== 'back') throw new Error('INVALID_DRAWING_ORDER');
+        if (command.where !== 'front' && command.where !== 'back')
+          throw new ChartError('INVALID_DRAWING_ORDER');
         const [drawing] = next.drawings.splice(this.drawingIndex(next, command.id), 1);
         if (command.where === 'front') next.drawings.push(drawing);
         else next.drawings.unshift(drawing);
         break;
       }
       case 'drawing.lockAll':
-        if (typeof command.locked !== 'boolean') throw new Error('INVALID_DRAWING_PATCH');
+        if (typeof command.locked !== 'boolean') throw new ChartError('INVALID_DRAWING_PATCH');
         next.drawings = next.drawings.map(drawing => ({ ...drawing, locked: command.locked }));
         break;
       case 'drawing.clear':
         next.drawings = [];
         break;
       default:
-        throw new Error('UNKNOWN_COMMAND');
+        throw new ChartError('UNKNOWN_COMMAND', undefined, {
+          path: 'type',
+          details: { type: (command as { type?: unknown }).type },
+        });
     }
     const validated = parseDocument(next, this.descriptor, this.heatmapEnabled, this.drawingRegistry);
     this.remember();
@@ -557,7 +588,7 @@ export class ChartRuntime {
   }
   private drawingIndex(document: ChartDocument, id: string): number {
     const index = document.drawings.findIndex(drawing => drawing.id === id);
-    if (index < 0) throw new Error('DRAWING_NOT_FOUND');
+    if (index < 0) throw new ChartError('DRAWING_NOT_FOUND', undefined, { path: 'id', details: { id } });
     return index;
   }
   private pushHistory(stack: ChartDocument[]): void {
@@ -650,7 +681,7 @@ export class ChartRuntime {
     });
   }
   subscribe(listener: (state: RuntimeState) => void): () => void {
-    if (this.disposed) throw new Error('DISPOSED');
+    if (this.disposed) throw new ChartError('DISPOSED');
     this.listeners.add(listener);
     listener(this.state());
     return () => this.listeners.delete(listener);

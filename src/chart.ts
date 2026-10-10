@@ -1,3 +1,4 @@
+import { ChartError, toChartError } from './errors.ts';
 import { resolveTheme, themeColor, themeColorCSS } from './themes.ts';
 import type { ResolvedChartTheme, ThemeInput } from './themes.ts';
 import { createGeometry, geometryForRanges } from './geometry.ts';
@@ -45,7 +46,7 @@ export interface ChartOptions {
   onDrawingChange?: (state: DrawingInteractionState) => void;
   /** Owned drawing copy. Text opens after placement; editable properties open on double-click or Enter. */
   onDrawingEdit?: (drawing: Drawing) => void;
-  onError?: (error: Error) => void;
+  onError?: (error: ChartError) => void;
 }
 export interface ChartApi {
   setTheme(theme: ThemeInput): void;
@@ -153,7 +154,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
   const cursorCtx = cursorCanvas.getContext('2d');
   if (!ctx || !cursorCtx) {
     root.remove();
-    throw new Error('CANVAS2D_UNAVAILABLE');
+    throw new ChartError('CANVAS2D_UNAVAILABLE');
   }
   let state = runtime.state();
   let formatPrice = new Intl.NumberFormat('en-US', {
@@ -219,7 +220,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       invalidate('overlay');
     },
     error(error) {
-      options.onError?.(error);
+      options.onError?.(toChartError(error));
     },
   });
   const abort = new AbortController();
@@ -933,7 +934,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
             drawings.select(id);
           }
         } catch (error) {
-          options.onError?.(error instanceof Error ? error : new Error(String(error)));
+          options.onError?.(toChartError(error));
         }
         invalidate();
         return;
@@ -1150,7 +1151,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       invalidate();
     },
     capture() {
-      if (renderError) throw new Error('RENDERER_UNAVAILABLE');
+      if (renderError) throw new ChartError('RENDERER_UNAVAILABLE');
       // Copy synchronously after drawing, before the browser clears the default framebuffer.
       cancelAnimationFrame(frame);
       marketDirty = overlayDirty = true;

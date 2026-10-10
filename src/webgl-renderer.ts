@@ -1,3 +1,4 @@
+import { ChartError } from './errors.ts';
 import { chartThemes, colorRGBA, themeColor } from './themes.ts';
 import type { ResolvedChartTheme } from './themes.ts';
 import type { ChartGeometry } from './geometry.ts';
@@ -181,7 +182,8 @@ export class WebGL2Renderer implements ChartRenderer {
       stencil: false,
       preserveDrawingBuffer: false,
     });
-    if (!gl) throw new Error('WEBGL2_UNAVAILABLE: This device or browser could not create a WebGL2 context.');
+    if (!gl)
+      throw new ChartError('WEBGL2_UNAVAILABLE', 'This device or browser could not create a WebGL2 context.');
     this.gl = gl;
     canvas.addEventListener('webglcontextlost', this.onLost);
     canvas.addEventListener('webglcontextrestored', this.onRestored);
@@ -210,7 +212,7 @@ export class WebGL2Renderer implements ChartRenderer {
     gl.deleteShader(fs);
     if (!ok) {
       gl.deleteProgram(program);
-      throw new Error(`SHADER_ERROR: ${log}`);
+      throw new ChartError('SHADER_ERROR', `${log}`);
     }
     return program;
   }

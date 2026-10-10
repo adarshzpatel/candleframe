@@ -11,3 +11,7 @@ for (const name of ['Hanken-Grotesk-OFL.txt', 'Newsreader-OFL.txt']) {
     new URL(`../dist/licenses/${name}`, import.meta.url),
   );
 }
+await cp(
+  new URL('../demo/fonts/Paper-Mono-OFL.txt', import.meta.url),
+  new URL('../dist/licenses/Paper-Mono-OFL.txt', import.meta.url),
+);

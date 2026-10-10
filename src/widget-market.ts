@@ -1,3 +1,4 @@
+import { ChartError } from './errors.ts';
 import { INTERVAL_MS } from './types.ts';
 import type { FeedAdapter, Interval } from './types.ts';
 
@@ -16,7 +17,7 @@ const isInterval = (value: unknown): value is Interval =>
 
 /** Empty catalogs are valid for fixed-market widgets. Factories are never invoked here. */
 export function validateMarketSources(sources: readonly WidgetMarketSource[]): void {
-  if (!Array.isArray(sources)) throw new Error('INVALID_MARKET_SOURCES');
+  if (!Array.isArray(sources)) throw new ChartError('INVALID_MARKET_SOURCES');
   const ids = new Set<string>();
   for (const source of sources) {
     if (
@@ -34,8 +35,8 @@ export function validateMarketSources(sources: readonly WidgetMarketSource[]): v
       !source.intervals.every(isInterval) ||
       new Set(source.intervals).size !== source.intervals.length
     )
-      throw new Error('INVALID_MARKET_SOURCE');
-    if (ids.has(source.id)) throw new Error('DUPLICATE_MARKET_SOURCE');
+      throw new ChartError('INVALID_MARKET_SOURCE');
+    if (ids.has(source.id)) throw new ChartError('DUPLICATE_MARKET_SOURCE');
     ids.add(source.id);
   }
 }
@@ -51,13 +52,13 @@ export function resolveMarketFeed(
     !source.symbols.includes(selection.symbol) ||
     !source.intervals.includes(selection.interval)
   )
-    throw new Error('UNSUPPORTED_MARKET_SELECTION');
+    throw new ChartError('UNSUPPORTED_MARKET_SELECTION');
   const { symbol, interval } = selection,
     sourceId = source.id;
   // Pass an owned selection so factory code cannot change the caller's request.
   const feed = source.createFeed({ symbol, interval });
   if (!feed || typeof feed !== 'object' || typeof feed.connect !== 'function' || !feed.descriptor)
-    throw new Error('INVALID_MARKET_FEED');
+    throw new ChartError('INVALID_MARKET_FEED');
   const descriptor = feed.descriptor;
   if (
     descriptor.id !== sourceId ||
@@ -65,6 +66,6 @@ export function resolveMarketFeed(
     descriptor.interval !== interval ||
     descriptor.intervalMs !== INTERVAL_MS[interval]
   )
-    throw new Error('MARKET_FEED_MISMATCH');
+    throw new ChartError('MARKET_FEED_MISMATCH');
   return feed;
 }

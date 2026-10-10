@@ -1,3 +1,4 @@
+import { ChartError } from './errors.ts';
 import type { BookView, DepthColumn, HeatmapGrid } from './types.ts';
 
 export function binBook(book: BookView, grid: HeatmapGrid, timeMs: number): DepthColumn {
@@ -34,7 +35,7 @@ export class HeatmapStore {
       !Number.isFinite(grid.intervalMs) ||
       grid.intervalMs <= 0
     )
-      throw new Error('INVALID_HEATMAP_GRID');
+      throw new ChartError('INVALID_HEATMAP_GRID');
     this.grid = { ...grid };
     this.capacity = capacity;
     this.columns = Array.from({ length: capacity });
@@ -48,11 +49,11 @@ export class HeatmapStore {
       column.values.length !== this.grid.rows ||
       column.values.some(value => !Number.isFinite(value) || value < 0)
     )
-      throw new Error('INVALID_HEATMAP_COLUMN');
+      throw new ChartError('INVALID_HEATMAP_COLUMN');
     const timeMs = Math.floor(column.timeMs / this.grid.intervalMs) * this.grid.intervalMs;
     const lastSlot = (this.startSlot + this.count - 1 + this.capacity) % this.capacity;
     const last = this.columns[lastSlot];
-    if (last && this.count && timeMs < last.timeMs) throw new Error('OUT_OF_ORDER_DEPTH');
+    if (last && this.count && timeMs < last.timeMs) throw new ChartError('OUT_OF_ORDER_DEPTH');
     if (last && this.count && timeMs === last.timeMs) {
       this.columns[lastSlot] = { ...column, timeMs, valid: last.valid && column.valid };
       this.stamps[lastSlot] = ++this.revision;

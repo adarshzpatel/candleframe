@@ -1,3 +1,4 @@
+import { ChartError } from './errors.ts';
 import type { BookView, DepthDelta, DepthSnapshot, Level } from './types.ts';
 
 function validateLevels(levels: readonly Level[]): void {
@@ -10,7 +11,7 @@ function validateLevels(levels: readonly Level[]): void {
       quantity < 0 ||
       prices.has(price)
     ) {
-      throw new Error('INVALID_DEPTH: prices must be unique and positive, quantities non-negative.');
+      throw new ChartError('INVALID_DEPTH', 'prices must be unique and positive, quantities non-negative.');
     }
     prices.add(price);
   }
@@ -35,10 +36,11 @@ export class OrderBook {
   }
 
   private commit(bids: Map<number, number>, asks: Map<number, number>, sequence: number): void {
-    if (!Number.isSafeInteger(sequence) || sequence < 0) throw new Error('INVALID_SEQUENCE');
-    if (bids.size > 2048 || asks.size > 2048) throw new Error('DEPTH_LIMIT: maximum 2048 levels per side.');
+    if (!Number.isSafeInteger(sequence) || sequence < 0) throw new ChartError('INVALID_SEQUENCE');
+    if (bids.size > 2048 || asks.size > 2048)
+      throw new ChartError('DEPTH_LIMIT', 'maximum 2048 levels per side.');
     if (bids.size && asks.size && Math.max(...bids.keys()) >= Math.min(...asks.keys()))
-      throw new Error('CROSSED_BOOK');
+      throw new ChartError('CROSSED_BOOK');
     this.bids = bids;
     this.asks = asks;
     this.sequence = sequence;
@@ -60,7 +62,7 @@ export class OrderBook {
   delta(delta: DepthDelta): 'applied' | 'duplicate' | 'gap' {
     if (!Number.isSafeInteger(delta.sequence) || !Number.isSafeInteger(delta.previousSequence)) {
       this.status = 'stale';
-      throw new Error('INVALID_SEQUENCE');
+      throw new ChartError('INVALID_SEQUENCE');
     }
     if (delta.sequence <= this.sequence) return 'duplicate';
     if (

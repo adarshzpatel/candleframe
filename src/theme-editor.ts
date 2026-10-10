@@ -1,3 +1,4 @@
+import { ChartError } from './errors.ts';
 import type { ChartApi } from './chart.ts';
 import { chartThemes, createTheme, resolveTheme, themeColor, themeTokenSchema } from './themes.ts';
 import type { ResolvedChartTheme, ThemeInput, ThemeOverrides, ThemeToken } from './themes.ts';
@@ -231,7 +232,7 @@ export function createThemeEditor(chart: ChartApi, doc: Document) {
     'click',
     () =>
       attempt(() => {
-        if (json.value.length > 64_000) throw new Error('THEME_JSON_TOO_LARGE');
+        if (json.value.length > 64_000) throw new ChartError('THEME_JSON_TOO_LARGE');
         chart.setTheme(resolveTheme(JSON.parse(json.value) as ThemeInput));
       }),
     { signal: abort.signal },

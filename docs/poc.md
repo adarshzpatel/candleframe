@@ -85,7 +85,7 @@ chart.capture();              // PNG data URL.
 chart.dispose();
 ```
 
-Commands include `layer.set`, `viewport.set`, `viewport.reset`, `priceScale.set`, `priceScale.reset`, `feed.pause` and experimental `heatmap.intensity`. Drawing commands cover add, update, remove, duplicate, ordering, lock-all and clear, with `history.undo` and `history.redo`; see the [drawing API](drawing-suite.md). Validation occurs before document replacement. Errors include `INVALID_PRICE_SCALE`, `MARKET_MISMATCH`, `HEATMAP_DISABLED` and `REVISION_CONFLICT`. Error formatting is not yet a stable structured protocol.
+Commands include `layer.set`, `viewport.set`, `viewport.reset`, `priceScale.set`, `priceScale.reset`, `feed.pause` and experimental `heatmap.intensity`. Drawing commands cover add, update, remove, duplicate, ordering, lock-all and clear, with `history.undo` and `history.redo`; see the [drawing API](drawing-suite.md). Validation occurs before document replacement. Failures throw `ChartError`, which has a stable `code`, an optional `path` to the bad input and `details`. Examples: `INVALID_PRICE_SCALE` (path `priceScale`, details `{ tickSize }`), `MARKET_MISMATCH` (expected and actual market), `REVISION_CONFLICT` (expected and actual revision) and `DRAWING_NOT_FOUND` (the id). `JSON.stringify(error)` gives `{ code, message, path, details }`. `onError` always receives a `ChartError`; `toChartError()` converts anything else.
 
 `inspect()` and `exportDocument()` return owned copies. Subscription views and `state()` are borrowed; do not mutate them. Data and explicit document edits have separate revisions. A live-following viewport moves with ticks without incrementing the document revision. The revision guards edits, not a frozen market snapshot.
 
