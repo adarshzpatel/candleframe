@@ -39,7 +39,7 @@ export function createPositionEditor(chart: ChartApi, panel: HTMLElement) {
     session = null;
     element.hidden = true;
     if (restoreFocus && previous && element.contains(tree.activeElement))
-      (previous.focus?.isConnected ? previous.focus : panel.querySelector<HTMLElement>('.oc-chart'))?.focus({
+      (previous.focus?.isConnected ? previous.focus : panel.querySelector<HTMLElement>('.cf-chart'))?.focus({
         preventScroll: true,
       });
   }

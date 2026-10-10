@@ -59,7 +59,7 @@ export function createDrawingWorkbench(
       chart.setTool(tool.type);
       closeTools();
       report(`${tool.label}: ${tool.hint}`);
-      panel.querySelector<HTMLElement>('.oc-chart')?.focus({ preventScroll: true });
+      panel.querySelector<HTMLElement>('.cf-chart')?.focus({ preventScroll: true });
     });
   }
   function positionTools(button: HTMLElement) {

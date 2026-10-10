@@ -213,7 +213,7 @@ export const chartCommandTypes = Object.keys(commands) as ChartCommand['type'][]
 /** Schema for one command. */
 export const chartCommandSchema: Readonly<Schema> = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'https://openchart.dev/schemas/chart-command.json',
+  $id: 'https://candleframe.dev/schemas/chart-command.json',
   title: 'ChartCommand',
   oneOf: Object.values(commands),
 };
@@ -221,7 +221,7 @@ export const chartCommandSchema: Readonly<Schema> = {
 /** Schema for `execute` and `preview` batches. */
 export const chartCommandBatchSchema: Readonly<Schema> = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'https://openchart.dev/schemas/chart-command-batch.json',
+  $id: 'https://candleframe.dev/schemas/chart-command-batch.json',
   title: 'ChartCommand batch',
   type: 'array',
   maxItems: 500,

@@ -26,8 +26,8 @@ const dash = (...value: number[]): ThemeToken<readonly number[]> => ({
 /** One registry drives validation, defaults, CSS variables and the Appearance editor. */
 export const themeTokenSchema = {
   typography: {
-    uiFamily: font('"OpenChart UI", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'),
-    headingFamily: font('"OpenChart Editorial", Georgia, serif'),
+    uiFamily: font('"CandleFrame UI", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'),
+    headingFamily: font('"CandleFrame Editorial", Georgia, serif'),
     numberFamily: font('"SFMono-Regular", Consolas, "Liberation Mono", monospace'),
     annotationFamily: font('ui-monospace, SFMono-Regular, Menlo, monospace'),
     uiSize: n(12, 10, 20),
@@ -113,7 +113,7 @@ export const themeTokenSchema = {
     crosshairDash: dash(3, 4),
     crosshairLabelBackground: color('@raised'),
     crosshairLabelText: color('@textStrong'),
-    watermarkText: text('openchart'),
+    watermarkText: text('candleframe'),
     watermarkOpacity: ratio(1),
     annotationBackground: color('@surface'),
     annotationOpacity: ratio(0.92),

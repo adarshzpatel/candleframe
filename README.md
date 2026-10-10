@@ -1,6 +1,6 @@
-# OpenChart proof of concept
+# CandleFrame proof of concept
 
-A framework-independent financial chart engine written in TypeScript and compiled to JavaScript. OpenChart is the working name. Version 0.3 includes a WebGL2 chart, a self-contained embeddable workbench, pluggable feeds, and the research and roadmap for a broader open-source library.
+A framework-independent financial chart engine written in TypeScript and compiled to JavaScript. Version 0.3 includes a WebGL2 chart, a self-contained embeddable workbench, pluggable feeds, and the research and roadmap for a broader open-source library.
 
 ## Run locally
 
@@ -39,7 +39,7 @@ The heatmap has been removed from the demo. The engine retains an experimental o
 Use `createChartWidget` for the complete UI, including market controls, drawings, layouts, export and the optional order book. Only a sized container and feed are required; styles and panels are instance-owned.
 
 ```ts
-import { createChartWidget, createSimulatedFeed, sma } from 'openchart';
+import { createChartWidget, createSimulatedFeed, sma } from 'candleframe';
 
 const chart = createChartWidget(document.querySelector('#chart'), {
   feed: createSimulatedFeed(),
@@ -54,7 +54,7 @@ chart.dispose(); // When the host view unmounts.
 To chart your own data, pass candles to `createStaticFeed`. It infers price precision, pages older bars as the user pans back, and takes live updates from your own socket:
 
 ```ts
-import { createChartWidget, createStaticFeed } from 'openchart';
+import { createChartWidget, createStaticFeed } from 'candleframe';
 
 const feed = createStaticFeed({
   instrument: 'AAPL',
@@ -66,12 +66,12 @@ const chart = createChartWidget(document.querySelector('#chart'), { feed, timeZo
 socket.onmessage = event => feed.update(JSON.parse(event.data)); // Appends or replaces the last bar.
 ```
 
-Narrower entry points keep bundles and server code small: `openchart/core` has the runtime, feeds, indicators and schemas with no DOM; `openchart/chart` adds the WebGL chart and themes; `openchart/widget` is the workbench; `openchart/binance` is the live feed. The package is not on npm yet; until it is, build it with `npm run build` and install the folder or a `npm pack` tarball.
+Narrower entry points keep bundles and server code small: `candleframe/core` has the runtime, feeds, indicators and schemas with no DOM; `candleframe/chart` adds the WebGL chart and themes; `candleframe/widget` is the workbench; `candleframe/binance` is the live feed. The package is not on npm yet; until it is, build it with `npm run build` and install the folder or a `npm pack` tarball.
 
 See the [embedding guide](docs/embedding.md) and [two-widget example](examples/embed.html). `createChart` remains the chart-only entry point for applications that supply their own UI:
 
 ```ts
-import { createChart, createSimulatedFeed, createBinanceFeed, sma } from 'openchart';
+import { createChart, createSimulatedFeed, createBinanceFeed, sma } from 'candleframe';
 
 const container = document.querySelector('#chart');
 container.style.height = '500px';
@@ -103,7 +103,7 @@ The PoC implements candles, volume, five indicators with separate panes, log and
 
 Interfaces remain experimental. Scripting and broker execution are not implemented. Rendering and calculations run on the main thread. No comparative performance claim has been established.
 
-OpenChart is released under the [MIT license](LICENSE). Bundled fonts use the SIL Open Font License; see `src/fonts/`.
+CandleFrame is released under the [MIT license](LICENSE). Bundled fonts use the SIL Open Font License; see `src/fonts/`.
 
 ## Project documents
 

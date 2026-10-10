@@ -168,7 +168,7 @@ test('the MCP example server answers initialize, tools/list and tools/call', asy
   call(4, 'tools/call', { name: 'chart_execute', arguments: { commands: [], expectedRevision: 99 } });
   for (let i = 0; i < 100 && replies.size < 4; i++) await new Promise(resolve => setTimeout(resolve, 50));
   server.stdin.end();
-  assert.equal((replies.get(1)?.result?.serverInfo as { name: string }).name, 'openchart');
+  assert.equal((replies.get(1)?.result?.serverInfo as { name: string }).name, 'candleframe');
   const names = (replies.get(2)?.result?.tools as { name: string }[]).map(t => t.name);
   assert.ok(names.includes('chart_execute') && names.includes('chart_query'));
   assert.deepEqual(replies.get(3)?.result?.structuredContent, { documentRevision: 1, created: ['rsi'] });

@@ -1,4 +1,4 @@
-/** The chart engine with its WebGL renderer and themes, without the widget UI. `openchart/chart`. */
+/** The chart engine with its WebGL renderer and themes, without the widget UI. `candleframe/chart`. */
 export { createChart } from './chart.ts';
 export type { ChartApi, ChartOptions } from './chart.ts';
 export { WebGL2Renderer } from './webgl-renderer.ts';

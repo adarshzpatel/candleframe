@@ -1,4 +1,4 @@
-# Contributing to OpenChart
+# Contributing to CandleFrame
 
 Use Node.js 24 and npm.
 

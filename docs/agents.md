@@ -56,7 +56,7 @@ Codes worth handling: `REVISION_CONFLICT` (re-read), `UNKNOWN_INDICATOR` (`detai
 ```sh
 npm run mcp                                                    # simulated BTC/USD
 node --experimental-strip-types examples/mcp-server.ts --csv prices.csv --symbol AAPL --interval 1d --gaps
-claude mcp add openchart -- node --experimental-strip-types "$PWD/examples/mcp-server.ts"
+claude mcp add candleframe -- node --experimental-strip-types "$PWD/examples/mcp-server.ts"
 ```
 
 Tools: `chart_inspect`, `chart_query`, `chart_preview`, `chart_execute`, `chart_undo`, `chart_export_layout` and `chart_restore_layout`. The execute and preview tools embed the batch schema, so the model sees every command shape. Failures come back as the `ChartError` JSON with `isError: true`.

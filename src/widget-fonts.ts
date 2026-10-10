@@ -24,6 +24,9 @@ export function loadWidgetFonts(doc: Document, source: WidgetFontSource = 'bundl
         : new URL('./fonts/newsreader-latin.woff2', import.meta.url).href
       : new URL(file, source.endsWith('/') ? source : `${source}/`).href;
   for (const [family, href, weight] of [
+    ['CandleFrame UI', url(FILES.ui), '400 600'],
+    ['CandleFrame Editorial', url(FILES.editorial), '400'],
+    // Former names, so custom themes saved before the rename keep their fonts.
     ['OpenChart UI', url(FILES.ui), '400 600'],
     ['OpenChart Editorial', url(FILES.editorial), '400'],
   ]) {
