@@ -29,7 +29,24 @@
     ".": {
       "types": "./dist/lib/index.d.ts",
       "import": "./dist/lib/index.js"
-    }
+    },
+    "./core": {
+      "types": "./dist/lib/core.d.ts",
+      "import": "./dist/lib/core.js"
+    },
+    "./chart": {
+      "types": "./dist/lib/chart-entry.d.ts",
+      "import": "./dist/lib/chart-entry.js"
+    },
+    "./widget": {
+      "types": "./dist/lib/widget-entry.d.ts",
+      "import": "./dist/lib/widget-entry.js"
+    },
+    "./binance": {
+      "types": "./dist/lib/binance.d.ts",
+      "import": "./dist/lib/binance.js"
+    },
+    "./package.json": "./package.json"
   },
   "types": "./dist/lib/index.d.ts",
   "module": "./dist/lib/index.js",
@@ -45,7 +62,8 @@
     "prepublishOnly": "npm test && npm run build",
     "smoke": "node scripts/smoke.mjs",
     "mcp": "node --experimental-strip-types examples/mcp-server.ts",
-    "bench": "node --experimental-strip-types scripts/bench.ts"
+    "bench": "node --experimental-strip-types scripts/bench.ts",
+    "check:package": "node scripts/check-package.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

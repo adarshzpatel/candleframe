@@ -39,7 +39,7 @@ The heatmap has been removed from the demo. The engine retains an experimental o
 Use `createChartWidget` for the complete UI, including market controls, drawings, layouts, export and the optional order book. Only a sized container and feed are required; styles and panels are instance-owned.
 
 ```ts
-import { createChartWidget, createSimulatedFeed, sma } from './dist/lib/index.js';
+import { createChartWidget, createSimulatedFeed, sma } from 'openchart';
 
 const chart = createChartWidget(document.querySelector('#chart'), {
   feed: createSimulatedFeed(),
@@ -66,10 +66,12 @@ const chart = createChartWidget(document.querySelector('#chart'), { feed, timeZo
 socket.onmessage = event => feed.update(JSON.parse(event.data)); // Appends or replaces the last bar.
 ```
 
+Narrower entry points keep bundles and server code small: `openchart/core` has the runtime, feeds, indicators and schemas with no DOM; `openchart/chart` adds the WebGL chart and themes; `openchart/widget` is the workbench; `openchart/binance` is the live feed. The package is not on npm yet; until it is, build it with `npm run build` and install the folder or a `npm pack` tarball.
+
 See the [embedding guide](docs/embedding.md) and [two-widget example](examples/embed.html). `createChart` remains the chart-only entry point for applications that supply their own UI:
 
 ```ts
-import { createChart, createSimulatedFeed, createBinanceFeed, sma } from './dist/lib/index.js';
+import { createChart, createSimulatedFeed, createBinanceFeed, sma } from 'openchart';
 
 const container = document.querySelector('#chart');
 container.style.height = '500px';

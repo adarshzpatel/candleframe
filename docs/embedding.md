@@ -3,7 +3,7 @@
 `createChartWidget` mounts the chart and its controls in one sized container. It returns the same `ChartApi` as `createChart`. The demo uses this public entry point; no demo markup, global CSS, framework or runtime dependency is required.
 
 ```ts
-import { createChartWidget, createSimulatedFeed, sma } from './dist/lib/index.js';
+import { createChartWidget, createSimulatedFeed, sma } from 'openchart';
 
 const container = document.querySelector<HTMLElement>('#chart')!;
 container.style.height = '600px';
@@ -77,7 +77,7 @@ Open Appearance with the palette button in the top toolbar. Evergreen is the def
 Both the bare chart and the complete widget accept the same theme API:
 
 ```ts
-import { createChartWidget, createTheme } from './dist/lib/index.js';
+import { createChartWidget, createTheme } from 'openchart';
 
 const chart = createChartWidget(container, { feed, theme: 'midnight' });
 chart.setTheme('paper');
@@ -108,6 +108,10 @@ The Appearance panel's **Customize theme** section edits the same tokens with se
 Set `--oc-font`, `--oc-serif`, `--oc-text`, `--oc-background`, `--oc-border` or `--oc-accent` on the host to customize widget chrome. These CSS overrides affect controls; use the theme API to coordinate controls with the canvas palette. Styles ship inside the JavaScript module, so there is no CSS loader or stylesheet import requirement.
 
 The widget bundles Latin WOFF2 fonts for Hanken Grotesk controls and Newsreader headings under the SIL Open Font License. They load once per document under private family names, with system-font fallbacks. Prices retain tabular monospace text. Keep `dist/lib/fonts/` alongside the built modules when serving the plain JavaScript library; bundlers resolve the font URLs as assets. No external font service is required. License notices ship with both build outputs.
+
+The `fonts` option controls loading. `'bundled'` (the default) resolves the files next to the module with `new URL(..., import.meta.url)`, which Vite, webpack 5, Rollup, esbuild and native ES modules handle. If your bundler or CDN does not copy them, serve `dist/lib/fonts/` yourself and pass its URL, for example `fonts: '/static/openchart-fonts/'`. `fonts: false` skips the files and uses system fonts.
+
+The dialog for indicators, help and inspection keeps keyboard focus inside until Escape or Close, then returns focus to the button that opened it.
 
 Unmount with `dispose()` before removing the host. Repeated disposal is harmless. The widget removes only its own mount element. Headless users can keep importing `ChartRuntime`; importing the public module does not access the DOM until a chart or widget is mounted.
 
