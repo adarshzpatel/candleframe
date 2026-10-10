@@ -1,0 +1,190 @@
+import { DEFAULT_DRAWING_STYLE, DrawingRegistry, translateDrawing } from './drawing-tools.ts';
+import { drawingHandles, hitDrawings } from './drawing-scene.ts';
+import type { Drawing, DrawingContext, DrawingInteractionState, DrawingOptions, DrawingPoint, DrawingStyle } from './drawing-types.ts';
+import type { Anchor, ChartCommand, RuntimeState } from './types.ts';
+
+interface ControllerHost {
+  registry: DrawingRegistry;
+  state(): RuntimeState;
+  execute(command: ChartCommand, revision?: number): void;
+  changed(state: DrawingInteractionState): void;
+  error(error: Error): void;
+}
+interface Gesture {
+  mode: 'body' | 'handle' | 'freehand';
+  original: Drawing;
+  start: Anchor;
+  pointer: DrawingPoint;
+  handle: number | string | null;
+  cursor?: string;
+  revision: number;
+  moved?: boolean;
+}
+
+/** Owns unfinished drawing gestures. Only completed edits reach the runtime. */
+export class DrawingController {
+  private host: ControllerHost;
+  private tool = 'cursor';
+  private selectedId: string | null = null;
+  private draft: Drawing | null = null;
+  private fixed: Anchor[] = [];
+  private gesture: Gesture | null = null;
+  private creationRevision = 0;
+  private committing = false;
+  private copied: Drawing | null = null;
+  private generation = -1;
+  private selectedValue: Drawing | undefined;
+  private options: DrawingOptions = { magnet: 'off', stayInDrawingMode: false, hidden: false, style: { ...DEFAULT_DRAWING_STYLE }, text: 'Note' };
+
+  constructor(host: ControllerHost) { this.host = host; }
+  get currentTool(): string { return this.tool; }
+  get interacting(): boolean { return !!this.gesture || !!this.draft; }
+  get selected(): Drawing | undefined { return this.host.state().document.drawings.find(d => d.id === this.selectedId); }
+  inspect(): DrawingInteractionState { return structuredClone({ tool: this.tool, selected: this.selected ?? null, creating: !!this.draft && !this.gesture, options: this.options }); }
+  private emit(): void { this.selectedValue = this.selected; this.host.changed(this.inspect()); }
+  setTool(tool: string): void {
+    if (tool !== 'cursor' && !this.host.registry.get(tool)) throw new Error(`UNKNOWN_DRAWING_TOOL: ${tool}`);
+    this.cancel(false); this.tool = tool; this.selectedId = null; this.emit();
+  }
+  select(id: string | null): void {
+    if (id !== null && !this.host.state().document.drawings.some(d => d.id === id)) throw new Error('DRAWING_NOT_FOUND');
+    this.cancel(false); this.tool = 'cursor'; this.selectedId = id; this.emit();
+  }
+  configure(value: Partial<Omit<DrawingOptions, 'style'>> & { style?: Partial<DrawingStyle> }): void {
+    const next = { ...this.options, ...value, style: { ...this.options.style, ...value.style } };
+    if (!['off', 'weak', 'strong'].includes(next.magnet) || typeof next.hidden !== 'boolean' || typeof next.stayInDrawingMode !== 'boolean') throw new Error('INVALID_DRAWING_OPTIONS');
+    this.host.registry.normalize({ id: 'options', type: 'text', points: [{ timeMs: 0, price: 1 }], style: next.style, text: next.text });
+    this.options = next;
+    if (next.hidden) this.cancel(false);
+    this.emit();
+  }
+  sync(state: RuntimeState): void {
+    if (this.generation !== state.generation) { this.cancel(false); this.selectedId = null; this.copied = null; this.tool = 'cursor'; this.generation = state.generation; this.emit(); }
+    const expected = this.gesture?.revision ?? (this.draft ? this.creationRevision : null);
+    if (!this.committing && expected !== null && expected !== state.documentRevision) this.cancel();
+    const selected = this.selected;
+    if (this.selectedId && !selected) this.selectedId = null;
+    if (selected !== this.selectedValue) { this.selectedValue = selected; this.emit(); }
+  }
+  cancel(notify = true): void {
+    const wasInteracting = this.interacting;
+    this.draft = null; this.fixed = []; this.gesture = null;
+    // Wheel/host commands also cancel when idle. Do not rebuild host controls then.
+    if (notify && wasInteracting) this.emit();
+  }
+  visible(): Drawing[] {
+    if (this.options.hidden) return [];
+    const all = this.host.state().document.drawings;
+    if (!this.draft) return all;
+    return all.some(d => d.id === this.draft!.id) ? all.map(d => d.id === this.draft!.id ? this.draft! : d) : [...all, this.draft];
+  }
+  selectionId(): string | null { return this.draft?.id ?? this.selectedId; }
+  cursor(p: DrawingPoint, context: DrawingContext): string {
+    if (this.tool !== 'cursor') return 'crosshair';
+    if (this.gesture) return this.gesture.cursor ?? 'move';
+    if (this.options.hidden) return 'crosshair';
+    return hitDrawings(this.host.state().document.drawings, this.host.registry, context, p, this.selectedId)?.cursor ?? 'crosshair';
+  }
+  private anchor(p: DrawingPoint, context: DrawingContext, snap = true): Anchor {
+    const state = this.host.state(), g = context.geometry;
+    const anchor = g.anchor(p.x, p.y); anchor.price = Math.max(state.feed.instrument.tickSize, anchor.price);
+    if (!snap || this.options.magnet === 'off') return anchor;
+    let best = Infinity, snapped = anchor;
+    for (const bar of state.candles) {
+      const x = g.x(bar.timeMs + state.feed.intervalMs / 2);
+      if (x < g.left || x > g.left + g.plotWidth) continue;
+      for (const price of [bar.open, bar.high, bar.low, bar.close]) {
+        const distance = Math.hypot(x - p.x, g.y(price) - p.y);
+        if (distance < best) { best = distance; snapped = { timeMs: bar.timeMs + state.feed.intervalMs / 2, price }; }
+      }
+    }
+    return this.options.magnet === 'strong' || best <= 12 ? snapped : anchor;
+  }
+  private create(points: Anchor[]): Drawing {
+    return { id: crypto.randomUUID(), type: this.tool, points, style: { ...this.options.style }, visible: true, locked: false, text: this.options.text, levels: [] };
+  }
+  down(p: DrawingPoint, context: DrawingContext): boolean {
+    if (this.options.hidden) return false;
+    const anchor = this.anchor(p, context), state = this.host.state();
+    if (this.tool === 'cursor') {
+      const hit = hitDrawings(state.document.drawings, this.host.registry, context, p, this.selectedId);
+      this.selectedId = hit?.drawing.id ?? null; this.emit();
+      if (!hit) return false;
+      if (!hit.drawing.locked && this.host.registry.get(hit.drawing.type)) {
+        this.draft = structuredClone(hit.drawing);
+        this.gesture = { mode: hit.handle === null ? 'body' : 'handle', original: hit.drawing, start: this.anchor(p, context, false), pointer: p, handle: hit.handle, cursor: hit.cursor, revision: state.documentRevision };
+      }
+      return true;
+    }
+    const definition = this.host.registry.get(this.tool)!;
+    if (!this.draft) {
+      this.creationRevision = state.documentRevision;
+      if (definition.create) { this.draft = this.create(definition.create(anchor, { ...context, tickSize: state.feed.instrument.tickSize })); this.commit(); return true; }
+      this.draft = this.create([anchor]); this.fixed = [anchor]; this.emit();
+      if (definition.points === 'freehand') this.gesture = { mode: 'freehand', original: this.draft, start: anchor, pointer: p, handle: null, revision: state.documentRevision };
+      else if (definition.points === 1) this.commit();
+    } else if (!this.gesture) {
+      const last = this.fixed.at(-1)!;
+      if (definition.points !== 'path' || last.timeMs !== anchor.timeMs || last.price !== anchor.price) this.fixed.push(anchor);
+      this.draft.points = [...this.fixed];
+      if (typeof definition.points === 'number' && this.fixed.length === definition.points) this.commit();
+      else if (this.fixed.length >= 1024) this.commit();
+    }
+    return true;
+  }
+  move(p: DrawingPoint, context: DrawingContext): boolean {
+    if (!this.draft) return false;
+    const anchor = this.anchor(p, context);
+    if (this.gesture && this.gesture.mode !== 'freehand') {
+      this.gesture.moved ||= Math.hypot(p.x - this.gesture.pointer.x, p.y - this.gesture.pointer.y) >= 3;
+      if (!this.gesture.moved) return true;
+    }
+    if (this.gesture?.mode === 'body') {
+      const raw = this.anchor(p, context, false);
+      this.draft = translateDrawing(this.gesture.original, raw.timeMs - this.gesture.start.timeMs, raw.price - this.gesture.start.price, this.host.state().feed.instrument.tickSize);
+    } else if (this.gesture?.mode === 'handle') {
+      const definition = this.host.registry.get(this.gesture.original.type)!;
+      const custom = typeof this.gesture.handle === 'string' ? drawingHandles(this.gesture.original, this.host.registry, context).find(handle => handle.id === this.gesture!.handle) : undefined;
+      const raw = this.anchor(p, context, false), original = custom ? context.geometry.anchor(custom.at.x, custom.at.y) : this.gesture.original.points[this.gesture.handle as number];
+      const moved = { timeMs: original.timeMs + raw.timeMs - this.gesture.start.timeMs, price: Math.max(this.host.state().feed.instrument.tickSize, original.price + raw.price - this.gesture.start.price) };
+      const snapped = this.options.magnet === 'off' || custom?.cursor === 'ew-resize' ? moved : this.anchor({ x: context.geometry.x(moved.timeMs), y: context.geometry.y(moved.price) }, context);
+      if (typeof this.gesture.handle === 'string' && definition.moveHandle) this.draft.points = definition.moveHandle(this.gesture.original, this.gesture.handle, snapped, { ...context, tickSize: this.host.state().feed.instrument.tickSize });
+      else this.draft.points[this.gesture.handle as number] = snapped;
+    } else if (this.gesture?.mode === 'freehand') {
+      if (Math.hypot(p.x - this.gesture.pointer.x, p.y - this.gesture.pointer.y) >= 3 && this.draft.points.length < 1024) {
+        this.draft.points.push(anchor); this.gesture.pointer = p;
+      }
+    } else this.draft.points = [...this.fixed, anchor];
+    return true;
+  }
+  up(p: DrawingPoint, context: DrawingContext): void {
+    if (!this.gesture || !this.draft) return;
+    this.move(p, context);
+    if (this.gesture.mode === 'freehand' && this.draft.points.length < 2) { this.cancel(); return; }
+    if (this.gesture.mode !== 'freehand' && JSON.stringify(this.draft.points) === JSON.stringify(this.gesture.original.points)) { this.cancel(); return; }
+    this.commit();
+  }
+  finish(): void {
+    if (this.draft && !this.gesture && this.host.registry.get(this.tool)?.points === 'path' && this.fixed.length >= 2) { this.draft.points = [...this.fixed]; this.commit(); }
+  }
+  private commit(): void {
+    if (!this.draft) return;
+    const draft = this.draft, editing = this.gesture && this.gesture.mode !== 'freehand';
+    const revision = this.gesture?.revision ?? this.creationRevision;
+    this.committing = true;
+    try {
+      this.host.execute(editing ? { type: 'drawing.update', id: draft.id, patch: { points: draft.points } } : { type: 'drawing.add', drawing: draft }, revision);
+      this.selectedId = draft.id;
+      if (!editing && !this.options.stayInDrawingMode) this.tool = 'cursor';
+    } catch (error) { this.host.error(error instanceof Error ? error : new Error(String(error))); }
+    finally { this.committing = false; this.cancel(false); this.emit(); }
+  }
+  copy(): void { this.copied = this.selected ? structuredClone(this.selected) : null; }
+  paste(): void {
+    if (!this.copied) return;
+    const offset = this.host.state().feed.intervalMs * 3;
+    const drawing = translateDrawing(this.copied, offset, 0, this.host.state().feed.instrument.tickSize);
+    drawing.id = crypto.randomUUID(); drawing.locked = false; drawing.visible = true;
+    this.host.execute({ type: 'drawing.add', drawing }); this.select(drawing.id); this.copied = structuredClone(drawing);
+  }
+}
