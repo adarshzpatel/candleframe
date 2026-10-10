@@ -1,8 +1,9 @@
+import { ChartError } from './errors.ts';
 import type { IndicatorPlugin } from './types.ts';
 
 /** Recomputes the affected suffix; last-bar updates never accumulate twice. */
 export function sma(period = 20): IndicatorPlugin {
-  if (!Number.isInteger(period) || period < 1) throw new Error('INVALID_PERIOD');
+  if (!Number.isInteger(period) || period < 1) throw new ChartError('INVALID_PERIOD');
   return {
     id: `sma-${period}`,
     name: `SMA ${period}`,

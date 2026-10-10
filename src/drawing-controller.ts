@@ -1,3 +1,4 @@
+import { ChartError, toChartError } from './errors.ts';
 import { DEFAULT_DRAWING_STYLE, DrawingRegistry, translateDrawing } from './drawing-tools.ts';
 import { drawingHandles, hitDrawings } from './drawing-scene.ts';
 import type {
@@ -74,7 +75,8 @@ export class DrawingController {
     this.host.changed(this.inspect());
   }
   setTool(tool: string): void {
-    if (tool !== 'cursor' && !this.host.registry.get(tool)) throw new Error(`UNKNOWN_DRAWING_TOOL: ${tool}`);
+    if (tool !== 'cursor' && !this.host.registry.get(tool))
+      throw new ChartError('UNKNOWN_DRAWING_TOOL', `${tool}`);
     this.cancel(false);
     this.tool = tool;
     this.selectedId = null;
@@ -82,7 +84,7 @@ export class DrawingController {
   }
   select(id: string | null): void {
     if (id !== null && !this.host.state().document.drawings.some(d => d.id === id))
-      throw new Error('DRAWING_NOT_FOUND');
+      throw new ChartError('DRAWING_NOT_FOUND');
     this.cancel(false);
     this.tool = 'cursor';
     this.selectedId = id;
@@ -95,7 +97,7 @@ export class DrawingController {
       typeof next.hidden !== 'boolean' ||
       typeof next.stayInDrawingMode !== 'boolean'
     )
-      throw new Error('INVALID_DRAWING_OPTIONS');
+      throw new ChartError('INVALID_DRAWING_OPTIONS');
     this.host.registry.normalize({
       id: 'options',
       type: 'text',
@@ -340,7 +342,7 @@ export class DrawingController {
       this.selectedId = draft.id;
       if (!editing && !this.options.stayInDrawingMode) this.tool = 'cursor';
     } catch (error) {
-      this.host.error(error instanceof Error ? error : new Error(String(error)));
+      this.host.error(toChartError(error));
     } finally {
       this.committing = false;
       this.cancel(false);

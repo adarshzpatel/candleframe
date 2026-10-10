@@ -1,3 +1,4 @@
+export { ChartError, isChartError, toChartError } from './errors.ts';
 export { createChart } from './chart.ts';
 export type { ChartApi, ChartOptions } from './chart.ts';
 export { createChartWidget } from './widget.ts';

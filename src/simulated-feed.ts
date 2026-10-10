@@ -1,3 +1,4 @@
+import { ChartError } from './errors.ts';
 import { binBook } from './heatmap.ts';
 import { INTERVAL_MS } from './types.ts';
 import type {
@@ -91,9 +92,9 @@ export function createSimulatedFeed(input: number | SimulatedFeedOptions = 42): 
   const seed = options.seed ?? 42;
   const symbol = options.symbol ?? 'BTC/USD';
   const interval = options.interval ?? '1m';
-  if (!Number.isFinite(seed)) throw new Error('INVALID_SEED');
-  if (!Object.hasOwn(instruments, symbol)) throw new Error('UNSUPPORTED_SYMBOL');
-  if (!Object.hasOwn(INTERVAL_MS, interval)) throw new Error('UNSUPPORTED_INTERVAL');
+  if (!Number.isFinite(seed)) throw new ChartError('INVALID_SEED');
+  if (!Object.hasOwn(instruments, symbol)) throw new ChartError('UNSUPPORTED_SYMBOL');
+  if (!Object.hasOwn(INTERVAL_MS, interval)) throw new ChartError('UNSUPPORTED_INTERVAL');
   const preset = instruments[symbol];
   const intervalMs = INTERVAL_MS[interval];
   const priceScale = preset.price / 68_000;

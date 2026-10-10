@@ -1,3 +1,4 @@
+import { ChartError } from './errors.ts';
 import { createPosition, movePositionHandle, positionHandles, positionMetrics } from './position-drawing.ts';
 import { themeTokenDefaults } from './theme-tokens.ts';
 import type { Anchor } from './types.ts';
@@ -364,7 +365,7 @@ const validatePosition =
   (d: Drawing): void => {
     const [entry, target, stop] = d.points.map(p => p.price);
     if (long ? !(target > entry && entry > stop) : !(target < entry && entry < stop))
-      throw new Error('INVALID_POSITION_PRICES');
+      throw new ChartError('INVALID_POSITION_PRICES');
   };
 const tool = (
   type: string,
@@ -510,7 +511,7 @@ function normalizedPoint(value: unknown): Anchor {
     !Number.isFinite(value.price) ||
     value.price <= 0
   )
-    throw new Error('INVALID_DRAWING_POINTS');
+    throw new ChartError('INVALID_DRAWING_POINTS');
   return { timeMs: value.timeMs, price: value.price };
 }
 
@@ -541,8 +542,8 @@ export class DrawingRegistry {
             typeof definition[key as keyof DrawingToolDefinition] !== 'function',
         )
       )
-        throw new Error('INVALID_DRAWING_TOOL');
-      if (this.definitions.has(definition.type)) throw new Error('DUPLICATE_DRAWING_TOOL');
+        throw new ChartError('INVALID_DRAWING_TOOL');
+      if (this.definitions.has(definition.type)) throw new ChartError('DUPLICATE_DRAWING_TOOL');
       this.definitions.set(definition.type, Object.freeze({ ...definition }));
     }
   }
@@ -553,7 +554,7 @@ export class DrawingRegistry {
     return [...this.definitions.values()];
   }
   normalize(value: unknown): Drawing {
-    if (!object(value)) throw new Error('INVALID_DRAWING');
+    if (!object(value)) throw new ChartError('INVALID_DRAWING');
     const legacy = value.type === undefined && value.start !== undefined && value.end !== undefined;
     const type = legacy ? 'trendline' : value.type;
     if (
@@ -563,18 +564,18 @@ export class DrawingRegistry {
       typeof type !== 'string' ||
       !/^[a-zA-Z][a-zA-Z0-9._:-]{0,79}$/.test(type)
     )
-      throw new Error('INVALID_DRAWING');
+      throw new ChartError('INVALID_DRAWING');
     const inputPoints = legacy ? [value.start, value.end] : value.points;
     if (!Array.isArray(inputPoints) || inputPoints.length < 1 || inputPoints.length > 1024)
-      throw new Error('INVALID_DRAWING_POINTS');
+      throw new ChartError('INVALID_DRAWING_POINTS');
     const points = inputPoints.map(normalizedPoint),
       definition = this.get(type);
     if (
       definition &&
       (typeof definition.points === 'number' ? points.length !== definition.points : points.length < 2)
     )
-      throw new Error('INVALID_DRAWING_POINT_COUNT');
-    if (value.style !== undefined && !object(value.style)) throw new Error('INVALID_DRAWING_STYLE');
+      throw new ChartError('INVALID_DRAWING_POINT_COUNT');
+    if (value.style !== undefined && !object(value.style)) throw new ChartError('INVALID_DRAWING_STYLE');
     const style = { ...DEFAULT_DRAWING_STYLE, ...(value.style as Partial<DrawingStyle> | undefined) };
     if (
       typeof style.color !== 'string' ||
@@ -584,21 +585,21 @@ export class DrawingRegistry {
       !boundedNumber(style.fillOpacity, 0, 1) ||
       !boundedNumber(style.fontSize, 10, 32)
     )
-      throw new Error('INVALID_DRAWING_STYLE');
+      throw new ChartError('INVALID_DRAWING_STYLE');
     if (
       (value.locked !== undefined && typeof value.locked !== 'boolean') ||
       (value.visible !== undefined && typeof value.visible !== 'boolean')
     )
-      throw new Error('INVALID_DRAWING_FLAGS');
+      throw new ChartError('INVALID_DRAWING_FLAGS');
     if (value.text !== undefined && (typeof value.text !== 'string' || value.text.length > 2000))
-      throw new Error('INVALID_DRAWING_TEXT');
+      throw new ChartError('INVALID_DRAWING_TEXT');
     const levels = value.levels === undefined ? defaultsFor(type) : value.levels;
     if (
       !Array.isArray(levels) ||
       levels.length > 24 ||
       !levels.every(level => boundedNumber(level, -1000, 1000))
     )
-      throw new Error('INVALID_DRAWING_LEVELS');
+      throw new ChartError('INVALID_DRAWING_LEVELS');
     const drawing: Drawing = {
       id: value.id,
       type,
@@ -632,7 +633,7 @@ export function translateDrawing(
   tickSize: number,
 ): Drawing {
   if (![deltaTime, deltaPrice, tickSize].every(Number.isFinite) || tickSize <= 0 || !drawing.points.length)
-    throw new Error('INVALID_DRAWING_TRANSLATION');
+    throw new ChartError('INVALID_DRAWING_TRANSLATION');
   const minPrice = Math.min(...drawing.points.map(p => p.price)),
     atFloor = minPrice + deltaPrice < tickSize;
   const points = drawing.points.map(point => ({

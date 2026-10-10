@@ -1,3 +1,4 @@
+import { ChartError } from './errors.ts';
 import { themeTokenSchema } from './theme-tokens.ts';
 import type { ThemeToken, ThemeTokenOverrides, ThemeTokens } from './theme-tokens.ts';
 export { themeTokenSchema, themeTokenDefaults } from './theme-tokens.ts';
@@ -196,7 +197,7 @@ const plain = (value: unknown): value is Record<string, unknown> =>
 const hex = (value: unknown): value is string => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
 function unknownKeys(value: Record<string, unknown>, keys: readonly string[], path: string): void {
   for (const key of Object.keys(value))
-    if (!keys.includes(key)) throw new Error(`UNKNOWN_THEME_TOKEN: ${path}${key}`);
+    if (!keys.includes(key)) throw new ChartError('UNKNOWN_THEME_TOKEN', `${path}${key}`);
 }
 function validateToken(value: unknown, spec: ThemeToken, path: string): string | number | readonly number[] {
   let valid = false;
@@ -233,7 +234,7 @@ function validateToken(value: unknown, spec: ThemeToken, path: string): string |
         value.every(n => typeof n === 'number' && Number.isFinite(n) && n > 0 && n <= 40);
       break;
   }
-  if (!valid) throw new Error(`INVALID_THEME_TOKEN: ${path}`);
+  if (!valid) throw new ChartError('INVALID_THEME_TOKEN', `${path}`);
   return Array.isArray(value) ? Object.freeze([...value]) : (value as string | number);
 }
 function normalizeTheme(input: unknown): ResolvedChartTheme {
@@ -247,21 +248,21 @@ function normalizeTheme(input: unknown): ResolvedChartTheme {
     !['light', 'dark'].includes(input.mode as string) ||
     !plain(input.palette)
   )
-    throw new Error('INVALID_CHART_THEME');
-  if (input.version !== undefined && input.version !== 1) throw new Error('UNSUPPORTED_THEME_VERSION');
+    throw new ChartError('INVALID_CHART_THEME');
+  if (input.version !== undefined && input.version !== 1) throw new ChartError('UNSUPPORTED_THEME_VERSION');
   if (input.version === 1) unknownKeys(input, themeKeys, '');
   unknownKeys(input.palette, paletteKeys, 'palette.');
   const palette = {} as ThemePalette;
   for (const key of paletteKeys) {
     const value = input.palette[key];
-    if (!hex(value)) throw new Error(`INVALID_THEME_COLOR: palette.${key}`);
+    if (!hex(value)) throw new ChartError('INVALID_THEME_COLOR', `palette.${key}`);
     palette[key] = value;
   }
   const tokens: Record<string, unknown> = {};
   for (const group of groups) {
     const schema = themeTokenSchema[group],
       values = input[group];
-    if (values !== undefined && !plain(values)) throw new Error(`INVALID_THEME_TOKEN: ${group}`);
+    if (values !== undefined && !plain(values)) throw new ChartError('INVALID_THEME_TOKEN', `${group}`);
     if (values) unknownKeys(values, Object.keys(schema), `${group}.`);
     const resolved: Record<string, unknown> = {};
     for (const [key, spec] of Object.entries(schema))
@@ -288,7 +289,7 @@ export const chartThemes = Object.freeze(
 /** Validate before mutation. Old palette-only themes inherit compact visual defaults. */
 export function resolveTheme(input: ThemeInput = 'evergreen'): ResolvedChartTheme {
   if (typeof input === 'string') {
-    if (!Object.hasOwn(chartThemes, input)) throw new Error('UNKNOWN_CHART_THEME');
+    if (!Object.hasOwn(chartThemes, input)) throw new ChartError('UNKNOWN_CHART_THEME');
     return chartThemes[input];
   }
   return normalizeTheme(input);
@@ -298,7 +299,7 @@ export function createTheme(
   base: ThemeInput = 'evergreen',
   overrides: ThemeOverrides = {},
 ): ResolvedChartTheme {
-  if (!plain(overrides)) throw new Error('INVALID_THEME_OVERRIDES');
+  if (!plain(overrides)) throw new ChartError('INVALID_THEME_OVERRIDES');
   unknownKeys(
     overrides,
     themeKeys.filter(key => key !== 'version'),
@@ -308,7 +309,7 @@ export function createTheme(
     merged: Record<string, unknown> = { ...original, ...overrides };
   for (const group of ['palette', ...groups] as const) {
     const patch = overrides[group];
-    if (patch !== undefined && !plain(patch)) throw new Error(`INVALID_THEME_TOKEN: ${group}`);
+    if (patch !== undefined && !plain(patch)) throw new ChartError('INVALID_THEME_TOKEN', `${group}`);
     merged[group] = { ...original[group], ...patch };
   }
   return normalizeTheme(merged);

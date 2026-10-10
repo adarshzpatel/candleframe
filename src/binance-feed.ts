@@ -1,3 +1,4 @@
+import { ChartError } from './errors.ts';
 import { INTERVAL_MS } from './types.ts';
 import type {
   Candle,
@@ -156,7 +157,7 @@ export function createBinanceFeed(
   const symbol = options.symbol ?? 'BTC/USDT';
   const interval = options.interval ?? '1m';
   if (!['BTC/USDT', 'ETH/USDT', 'SOL/USDT'].includes(symbol) || !Object.hasOwn(INTERVAL_MS, interval))
-    throw new Error('UNSUPPORTED_MARKET');
+    throw new ChartError('UNSUPPORTED_MARKET');
   const wireSymbol = symbol.replace('/', '');
   const intervalMs = INTERVAL_MS[interval];
   const [base, quote] = symbol.split('/');

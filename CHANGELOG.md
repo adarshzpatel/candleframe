@@ -5,6 +5,7 @@ All notable changes are listed here. The project follows [Semantic Versioning](h
 ## Unreleased
 
 - Released under the MIT license.
+- Errors are now `ChartError` instances with `code`, `path` and `details`. Messages keep the `CODE: hint` format, so existing message checks still match.
 - Added CI, Prettier formatting and package metadata for npm.
 
 ## 0.3.0

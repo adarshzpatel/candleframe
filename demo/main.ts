@@ -1,5 +1,12 @@
-import { createChartWidget, createSimulatedFeed, createBinanceFeed, sma } from '../src/index.ts';
-import type { WidgetMarketSource } from '../src/index.ts';
+import {
+  createChartWidget,
+  createSimulatedFeed,
+  createBinanceFeed,
+  createTheme,
+  resolveTheme,
+  sma,
+} from '../src/index.ts';
+import type { ResolvedChartTheme, WidgetMarketSource } from '../src/index.ts';
 import './style.css';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
@@ -25,8 +32,25 @@ const markets: WidgetMarketSource[] = [
       createBinanceFeed({ symbol: symbol as 'BTC/USDT' | 'ETH/USDT' | 'SOL/USDT', interval }),
   },
 ];
+// The demo sets numbers and annotations in Paper Mono. A saved appearance still wins.
+const paperMono = '"Paper Mono", "SFMono-Regular", Consolas, monospace';
+let savedTheme: ResolvedChartTheme | null = null;
+try {
+  const saved = localStorage.getItem(JSON.stringify(['demo', 'appearance']));
+  if (saved) savedTheme = resolveTheme(JSON.parse(saved));
+} catch {
+  /* Fall back to the Paper Mono theme. */
+}
+// Canvas text does not re-render when a web font arrives, so wait briefly for it.
+await Promise.race([
+  document.fonts.load('12px "Paper Mono"'),
+  new Promise(resolve => setTimeout(resolve, 1500)),
+]).catch(() => {});
 const chart = createChartWidget(document.querySelector<HTMLElement>('#widget-host')!, {
   feed: createSimulatedFeed({ seed: 42 }),
+  theme:
+    savedTheme ??
+    createTheme('evergreen', { typography: { numberFamily: paperMono, annotationFamily: paperMono } }),
   indicators: [sma(20)],
   markets,
   orderBook: true,
