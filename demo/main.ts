@@ -54,6 +54,7 @@ const chart = createChartWidget(document.querySelector<HTMLElement>('#widget-hos
   indicators: [sma(20)],
   markets,
   orderBook: true,
+  autoscaleOnPan: true,
   storageKey: 'demo',
   layoutStore: {
     load(key) {

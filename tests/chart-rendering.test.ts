@@ -673,3 +673,30 @@ test('renderer applies series tokens and heatmap uniforms while preserving expli
   assert.deepEqual(uniforms.get('unknownColor'), [0xab / 255, 0xcd / 255, 0xef / 255, 0.2]);
   assert.deepEqual(uniforms.get('heatOpacity'), [0.7]);
 });
+
+test('autoscaleOnPan keeps an auto price scale fitted while dragging the plot', t => {
+  for (const autoscaleOnPan of [false, true]) {
+    const f = mount(t, { autoscaleOnPan });
+    f.input('pointerdown', { clientX: 400, clientY: 200 });
+    f.input('pointermove', { clientX: 300, clientY: 260 });
+    f.input('pointerup', { clientX: 300, clientY: 260 });
+    f.settle();
+    const doc = f.chart.exportDocument();
+    assert.equal(doc.viewport.following, false, 'the drag pans time either way');
+    assert.equal(doc.priceScale.mode, autoscaleOnPan ? 'auto' : 'manual');
+    f.chart.dispose();
+  }
+});
+
+test('autoscaleOnPan leaves a manual price scale free to pan vertically', t => {
+  const f = mount(t, { autoscaleOnPan: true });
+  f.chart.execute({ type: 'priceScale.set', minPrice: 60, maxPrice: 130 });
+  f.settle();
+  f.input('pointerdown', { clientX: 400, clientY: 200 });
+  f.input('pointermove', { clientX: 300, clientY: 260 });
+  f.input('pointerup', { clientX: 300, clientY: 260 });
+  f.settle();
+  const scale = f.chart.exportDocument().priceScale;
+  assert.equal(scale.mode, 'manual');
+  assert.ok(scale.mode === 'manual' && scale.minPrice > 60, 'dragging down moves the range up');
+});
