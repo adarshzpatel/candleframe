@@ -37,6 +37,8 @@ export interface ChartOptions {
   heatmap?: boolean;
   indicators?: readonly IndicatorPlugin[];
   renderer?: ChartRenderer;
+  /** Candles kept in memory, including paged history. Default 10,000. */
+  maxCandles?: number;
   /** IANA zone for axis and crosshair labels, such as `America/New_York`. Default `UTC`. */
   timeZone?: string;
   /** Eased plot dragging and release momentum. Default true; honors reduced motion. */
@@ -73,6 +75,8 @@ export interface ChartApi {
     options: Partial<Omit<DrawingOptions, 'style'>> & { style?: Partial<DrawingStyle> },
   ): void;
   capture(): string;
+  /** Requests candles before the first loaded bar. The chart also does this when panning near it. */
+  loadOlderHistory(): boolean;
   dispose(): void;
 }
 
@@ -82,6 +86,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
   const runtime = new ChartRuntime(options.feed, options.indicators, {
     heatmap: options.heatmap,
     drawingTools: options.drawingTools,
+    maxCandles: options.maxCandles,
   });
   const renderer = options.renderer ?? new WebGL2Renderer();
   const root = document.createElement('div');
@@ -516,6 +521,15 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       ctx.lineTo(g.left + g.plotWidth, g.volumeTop - theme.chart.volumeGap / 2);
       ctx.stroke();
     }
+    if (state.olderHistory.status === 'loading' && g.x(state.candles[0].timeMs) > g.left) {
+      ctx.textAlign = 'left';
+      ctx.fillStyle = theme.palette.textFaint;
+      ctx.fillText(
+        'Loading history…',
+        g.left + theme.chart.axisLabelPadding,
+        g.top + theme.typography.axisSize * 1.4,
+      );
+    }
     const latest = state.candles.at(-1);
     if (latest) {
       const y = g.y(latest.close);
@@ -599,6 +613,18 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     }
   }
 
+  let olderRequest = false;
+  /** Pages history once the view comes within 50 bars of the first loaded bar. */
+  function requestOlderIfNear(next: RuntimeState): void {
+    if (olderRequest || next.olderHistory.status !== 'idle' || !next.candles.length) return;
+    if (stateTimeScale(next).logical(next.document.viewport.fromMs) > 50) return;
+    olderRequest = true;
+    // Defer: this runs inside a runtime publication.
+    queueMicrotask(() => {
+      olderRequest = false;
+      if (!disposed) runtime.loadOlderHistory();
+    });
+  }
   function point(event: MouseEvent): { x: number; y: number } {
     const r = root.getBoundingClientRect();
     return { x: event.clientX - r.left, y: event.clientY - r.top };
@@ -1105,6 +1131,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
         });
       state = next;
       drawings.sync(next);
+      requestOlderIfNear(next);
       if (!renderError) {
         const message = next.candles.length
           ? null
@@ -1193,6 +1220,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       drawings.configure(value);
       invalidate();
     },
+    loadOlderHistory: () => runtime.loadOlderHistory(),
     capture() {
       if (renderError) throw new ChartError('RENDERER_UNAVAILABLE');
       // Copy synchronously after drawing, before the browser clears the default framebuffer.

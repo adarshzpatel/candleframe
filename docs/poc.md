@@ -31,6 +31,7 @@ A `FeedAdapter` describes one source, instrument and interval. `connect(emit)` r
 | --- | --- |
 | `instrument` | Validated metadata update for the selected instrument |
 | `candles.history` | Ascending history, replacing the retained candle series |
+| `candles.prepend` | Older candles in reply to `loadOlder`, with `exhausted` or `error` |
 | `candle` | Full candle replacement, correction or next contiguous interval |
 | `depth.snapshot` | Complete book snapshot with an update ID |
 | `depth.delta` | Absolute quantities with previous/current sequence IDs |
@@ -39,7 +40,11 @@ A `FeedAdapter` describes one source, instrument and interval. `connect(emit)` r
 
 Intervals are a count and a unit: `30s`, `1m`, `4h`, `1d`, `1w`. `intervalToMs()` parses them; calendar months are not supported because their length varies. Candle timestamps are UTC milliseconds aligned to the interval. Weekly candles align to Monday 00:00 UTC, as exchanges publish them. Prices must be positive.
 
-Set `gaps: true` on the descriptor for markets with sessions, weekends or holidays. Candle times then only need to ascend, live bars may follow a gap, and the time axis gives each loaded bar one slot so closed hours take no space. Viewport limits (20 to 2,200) count bars, not milliseconds. Continuous feeds keep the strict checks. Feeds without an order book declare `depth: { kind: 'none', levels: 0 }`. The runtime retains 2,000 candles and accepts history batches up to 10,000, retaining the newest 2,000. The runtime recalculates indicator outputs after history replacement or correction. Unknown older candles and skipped live intervals are errors.
+Set `gaps: true` on the descriptor for markets with sessions, weekends or holidays. Candle times then only need to ascend, live bars may follow a gap, and the time axis gives each loaded bar one slot so closed hours take no space. Viewport limits (20 to 2,200) count bars, not milliseconds. Continuous feeds keep the strict checks. Feeds without an order book declare `depth: { kind: 'none', levels: 0 }`. The runtime keeps up to `maxCandles` candles (default 10,000; 100 to 100,000) and accepts history batches up to 100,000, retaining the newest.
+
+A connection may implement `loadOlder(beforeMs)` to page history. The chart calls `loadOlderHistory()` when the view comes within 50 bars of the first loaded candle; hosts and agents can call it too. The feed replies with `candles.prepend`. Those candles must end before the first loaded candle; overlapping or invalid pages set `olderHistory.status` to `error` without touching the live stream, and the next request retries. Paging stops at `maxCandles` or when a page says `exhausted`. `inspect()` reports `olderHistory`, `maxCandles` and `firstCandleTimeMs`.
+
+`createStaticFeed({ candles, interval, instrument })` charts an array. It infers precision from the data, sends the newest `initialBars` (1,000), pages the rest in `pageSize` steps, and exposes `update(candle)` and `setCandles(candles)` for host-driven updates. The runtime recalculates indicator outputs after history replacement or correction. Unknown older candles and skipped live intervals are errors.
 
 Depth quantities are absolute; zero deletes a level in a delta. Normalized deltas require `previousSequence === currentSequence` and `sequence === currentSequence + 1`. Duplicate messages do not add quantity twice. A gap blocks deltas until a current snapshot arrives. Providers with sequence ranges must normalize them or use full snapshots. Complete snapshot IDs may skip values.
 

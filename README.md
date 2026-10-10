@@ -51,6 +51,21 @@ const chart = createChartWidget(document.querySelector('#chart'), {
 chart.dispose(); // When the host view unmounts.
 ```
 
+To chart your own data, pass candles to `createStaticFeed`. It infers price precision, pages older bars as the user pans back, and takes live updates from your own socket:
+
+```ts
+import { createChartWidget, createStaticFeed } from 'openchart';
+
+const feed = createStaticFeed({
+  instrument: 'AAPL',
+  interval: '1d',
+  gaps: true, // Weekends and holidays take no space on the time axis.
+  candles: rows.map(r => ({ timeMs: r.t, open: r.o, high: r.h, low: r.l, close: r.c, volume: r.v })),
+});
+const chart = createChartWidget(document.querySelector('#chart'), { feed, timeZone: 'America/New_York' });
+socket.onmessage = event => feed.update(JSON.parse(event.data)); // Appends or replaces the last bar.
+```
+
 See the [embedding guide](docs/embedding.md) and [two-widget example](examples/embed.html). `createChart` remains the chart-only entry point for applications that supply their own UI:
 
 ```ts

@@ -16,6 +16,7 @@ import type {
   FeedEvent,
   IndicatorPlugin,
   Instrument,
+  OlderHistory,
   RuntimeState,
   Stream,
   StreamHealth,
@@ -24,6 +25,8 @@ import type {
 export interface RuntimeOptions {
   heatmap?: boolean;
   drawingTools?: readonly DrawingToolDefinition[];
+  /** Candles kept in memory, including paged history. 100 to 100,000; default 10,000. */
+  maxCandles?: number;
 }
 function validCandle(bar: Candle, intervalMs: number, gaps = false): boolean {
   return (
@@ -205,6 +208,8 @@ export class ChartRuntime {
   private snapshotNeeded = false;
   private initializedViewport = false;
   private streams: Record<Stream, StreamHealth> = { candles: loading(), depth: loading() };
+  private olderHistory: OlderHistory = { status: 'unavailable', message: null };
+  readonly maxCandles: number;
   private scaleCache?: { candles: readonly Candle[]; descriptor: FeedDescriptor; scale: TimeScale };
   readonly heatmapEnabled: boolean;
   readonly drawingRegistry: DrawingRegistry;
@@ -214,10 +219,17 @@ export class ChartRuntime {
     this.adapter = feed;
     this.descriptor = validateDescriptor(feed.descriptor);
     this.heatmapEnabled = options.heatmap ?? false;
+    this.maxCandles = options.maxCandles ?? 10_000;
+    if (!Number.isInteger(this.maxCandles) || this.maxCandles < 100 || this.maxCandles > 100_000)
+      throw new ChartError('INVALID_OPTION', 'maxCandles must be an integer from 100 to 100000', {
+        path: 'maxCandles',
+        details: { maxCandles: options.maxCandles },
+      });
     this.drawingRegistry = new DrawingRegistry(options.drawingTools);
     if (new Set(plugins.map(p => p.id)).size !== plugins.length) throw new ChartError('DUPLICATE_PLUGIN');
     this.indicators = plugins.map(plugin => ({ plugin, values: [] }));
     this.document = this.newDocument();
+    this.setStatus('depth', 'loading');
   }
   private newDocument(): ChartDocument {
     const d = this.descriptor;
@@ -268,6 +280,8 @@ export class ChartRuntime {
         return;
       }
       this.connection = connection;
+      if (this.olderHistory.status === 'unavailable' && connection.loadOlder)
+        this.olderHistory = { status: 'idle', message: null };
       if (this.snapshotNeeded) {
         this.snapshotNeeded = false;
         connection.requestSnapshot();
@@ -300,9 +314,11 @@ export class ChartRuntime {
       i.values = [];
     });
     this.streams = { candles: loading(), depth: loading() };
+    this.setStatus('depth', 'loading');
     if (this.paused) for (const stream of ['candles', 'depth'] as const) this.setStatus(stream, 'paused');
     this.snapshotNeeded = false;
     this.initializedViewport = false;
+    this.olderHistory = { status: 'unavailable', message: null };
     this.document = {
       ...this.newDocument(),
       layers: { ...previous.layers },
@@ -315,6 +331,10 @@ export class ChartRuntime {
     if (this.started && !this.paused) this.connect();
   }
   private setStatus(stream: Stream, status: StreamHealth['status'], message: string | null = null): void {
+    if (stream === 'depth' && this.descriptor.depth.kind === 'none') {
+      status = 'unavailable';
+      message = null;
+    }
     this.streams = {
       ...this.streams,
       [stream]: {
@@ -351,6 +371,7 @@ export class ChartRuntime {
   private receive(event: FeedEvent): void {
     let stream: Stream =
       event.type.startsWith('depth.') || event.type === 'heatmap.history' ? 'depth' : 'candles';
+    if (stream === 'depth' && this.descriptor.depth.kind === 'none') return;
     try {
       switch (event.type) {
         case 'stream.status':
@@ -371,14 +392,10 @@ export class ChartRuntime {
           this.publish();
           return;
         case 'candles.history': {
-          if (
-            !event.candles.length ||
-            event.candles.length > 10000 ||
-            !event.candles.every(b => validCandle(b, this.descriptor.intervalMs, this.descriptor.gaps)) ||
-            event.candles.some((bar, i) => i > 0 && bar.timeMs <= event.candles[i - 1].timeMs)
-          )
+          if (!event.candles.length || event.candles.length > 100_000 || !this.validSeries(event.candles))
             throw new ChartError('INVALID_HISTORY');
-          const candles = event.candles.slice(-2000).map(b => ({ ...b }));
+          const candles = event.candles.slice(-this.maxCandles).map(b => ({ ...b }));
+          if (this.connection?.loadOlder) this.olderHistory = { status: 'idle', message: null };
           this.calculate(candles, 0);
           this.candles = candles;
           if (!this.initializedViewport || this.document.viewport.following)
@@ -401,7 +418,7 @@ export class ChartRuntime {
               throw new ChartError('CANDLE_GAP', 'reconnect to refresh history');
             changed = candles.length;
             candles.push({ ...event.candle });
-            if (candles.length > 2000) {
+            if (candles.length > this.maxCandles) {
               candles.shift();
               changed = 0;
             }
@@ -425,6 +442,9 @@ export class ChartRuntime {
           this.setStatus('candles', 'live');
           break;
         }
+        case 'candles.prepend':
+          this.prepend(event);
+          break;
         case 'depth.snapshot':
           if (this.book.snapshot(event.book)) this.setStatus('depth', 'live');
           this.recordDepth();
@@ -453,6 +473,68 @@ export class ChartRuntime {
     }
     this.publish();
   }
+  private validSeries(candles: readonly Candle[]): boolean {
+    const { intervalMs, gaps } = this.descriptor;
+    return candles.every(
+      (bar, i) => validCandle(bar, intervalMs, gaps) && (i === 0 || bar.timeMs > candles[i - 1].timeMs),
+    );
+  }
+  private prepend(event: Extract<FeedEvent, { type: 'candles.prepend' }>): void {
+    if (this.olderHistory.status !== 'loading') return;
+    if (event.error) {
+      this.olderHistory = { status: 'error', message: event.error };
+      return;
+    }
+    const first = this.candles[0];
+    if (
+      !Array.isArray(event.candles) ||
+      event.candles.length > 100_000 ||
+      !this.validSeries(event.candles) ||
+      (first && event.candles.length && event.candles.at(-1)!.timeMs >= first.timeMs)
+    ) {
+      this.olderHistory = {
+        status: 'error',
+        message: 'INVALID_HISTORY: older candles overlap or are invalid',
+      };
+      return;
+    }
+    const room = this.maxCandles - this.candles.length;
+    const older = event.candles.slice(Math.max(0, event.candles.length - room)).map(b => ({ ...b }));
+    const limited = older.length < event.candles.length;
+    if (older.length) {
+      const candles = [...older, ...this.candles];
+      // Paged bars shift every index, so indicators recalculate from the start.
+      this.calculate(candles, 0);
+      this.candles = candles;
+    }
+    this.olderHistory =
+      event.exhausted || limited || this.candles.length >= this.maxCandles
+        ? {
+            status: 'exhausted',
+            message: limited || this.candles.length >= this.maxCandles ? 'Reached maxCandles' : null,
+          }
+        : { status: 'idle', message: null };
+  }
+  /**
+   * Asks the feed for candles before the first loaded one. Returns false when the
+   * feed cannot page, a request is pending, history is exhausted or the limit is reached.
+   */
+  loadOlderHistory(): boolean {
+    if (this.disposed) throw new ChartError('DISPOSED');
+    const first = this.candles[0];
+    if (
+      !first ||
+      this.paused ||
+      !this.connection?.loadOlder ||
+      !['idle', 'error'].includes(this.olderHistory.status) ||
+      this.candles.length >= this.maxCandles
+    )
+      return false;
+    this.olderHistory = { status: 'loading', message: null };
+    this.publish();
+    this.connection.loadOlder(first.timeMs);
+    return true;
+  }
   private resetViewport(resetSpan = true): void {
     const { fromMs, toMs } = this.document.viewport;
     this.document.viewport = this.liveViewport(resetSpan ? 180 : this.timeScale().bars(fromMs, toMs));
@@ -470,6 +552,9 @@ export class ChartRuntime {
       if (typeof command.paused !== 'boolean') throw new ChartError('INVALID_COMMAND');
       if (this.paused === command.paused) return;
       this.paused = command.paused;
+      // Paused connections drop replies, so a pending page request would never finish.
+      if (this.paused && this.olderHistory.status === 'loading')
+        this.olderHistory = { status: 'idle', message: null };
       for (const stream of ['candles', 'depth'] as const)
         this.setStatus(stream, this.paused ? 'paused' : 'loading');
       this.publish();
@@ -669,6 +754,7 @@ export class ChartRuntime {
       dataRevision: this.dataRevision,
       documentRevision: this.documentRevision,
       history: { canUndo: this.history.length > 0, canRedo: this.future.length > 0 },
+      olderHistory: this.olderHistory,
       unsupportedDrawingTypes: [
         ...new Set(
           this.document.drawings
@@ -713,6 +799,9 @@ export class ChartRuntime {
       latestCandle: this.candles.at(-1) ?? null,
       book: this.book.inspect(10),
       history: { canUndo: this.history.length > 0, canRedo: this.future.length > 0 },
+      olderHistory: this.olderHistory,
+      maxCandles: this.maxCandles,
+      firstCandleTimeMs: this.candles[0]?.timeMs ?? null,
       unsupportedDrawingTypes: this.state().unsupportedDrawingTypes,
       heatmap: this.heatmap
         ? { columns: this.heatmap.count, capacity: this.heatmap.capacity, rows: this.heatmap.grid.rows }

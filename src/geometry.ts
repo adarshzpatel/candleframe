@@ -2,7 +2,7 @@ import type { Anchor, RuntimeState } from './types.ts';
 import type { ViewRanges } from './scale-motion.ts';
 import { themeTokenDefaults } from './theme-tokens.ts';
 import type { ThemeChart } from './theme-tokens.ts';
-import { createTimeScale } from './time-scale.ts';
+import { createTimeScale, visibleRange } from './time-scale.ts';
 import type { TimeScale } from './time-scale.ts';
 
 export interface ChartGeometry {
@@ -43,9 +43,8 @@ export function createGeometry(
       stateTimeScale(state),
     );
   const timeScale = stateTimeScale(state);
-  const visible = state.candles.filter(
-    bar => bar.timeMs + state.feed.intervalMs >= fromMs && bar.timeMs <= toMs,
-  );
+  const indexes = visibleRange(state.candles, fromMs, toMs, state.feed.intervalMs);
+  const visible = state.candles.slice(indexes.start, indexes.end);
   const range = visible.length ? visible : state.candles.slice(-1);
   let low = Infinity,
     high = -Infinity;
