@@ -146,6 +146,9 @@ function retryTime(response: Response): number {
   );
 }
 
+/** Older-history page size; Binance allows up to 1,000 klines per request. */
+const PAGE = 1000;
+
 /** Kline intervals with a fixed length. Binance also offers 1M, which is a calendar month. */
 export const BINANCE_INTERVALS: readonly Interval[] = [
   '1s',
@@ -444,6 +447,27 @@ export function createBinanceFeed(
           snapshotRequested = true;
           // Every depth20 message is complete; the next one is the recovery snapshot.
           status('depth', 'stale', 'Waiting for the next top-20 snapshot');
+        },
+        loadOlder(beforeMs) {
+          if (disposed || paused || !controller) return;
+          const current = generation,
+            signal = controller.signal;
+          const path = `klines?symbol=${wireSymbol}&interval=${interval}&endTime=${beforeMs - 1}&limit=${PAGE}`;
+          void request(path, signal).then(
+            value => {
+              if (current !== generation) return;
+              const bars = Array.isArray(value) && !value.length ? [] : history(value, intervalMs);
+              publish({ type: 'candles.prepend', candles: bars, exhausted: bars.length < PAGE });
+            },
+            error => {
+              if (current === generation)
+                publish({
+                  type: 'candles.prepend',
+                  candles: [],
+                  error: error instanceof Error ? error.message : String(error),
+                });
+            },
+          );
         },
         dispose() {
           if (!disposed) {

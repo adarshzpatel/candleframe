@@ -248,6 +248,8 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     }
     const book = $('.book-panel');
     book.hidden = !options.orderBook || mount.clientWidth <= 850;
+    // Remembers the user's choice while a feed without a book hides the panel.
+    let bookWanted = !book.hidden;
     $('#book-toggle').setAttribute('aria-pressed', String(!book.hidden));
     const makeRows = (id: string) =>
       Array.from({ length: 11 }, () => {
@@ -352,6 +354,12 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     }
     unsubscribe = chart.subscribe(state => {
       const previous = lastState;
+      const noBook = state.feed.depth.kind === 'none';
+      if (noBook !== (previous?.feed.depth.kind === 'none') || !previous) {
+        $('#book-toggle').hidden = noBook;
+        book.hidden = noBook || !bookWanted;
+        $('#book-toggle').setAttribute('aria-pressed', String(!book.hidden));
+      }
       if (state.feed.intervalMs !== previous?.feed.intervalMs)
         timeFormats = createTimeFormats(state.feed.intervalMs, options.timeZone);
       lastState = state;
@@ -456,6 +464,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     on('#pause', () => chart.execute({ type: 'feed.pause', paused: !lastState?.paused }));
     function toggleBook() {
       book.hidden = !book.hidden;
+      bookWanted = !book.hidden;
       $('#book-toggle').setAttribute('aria-pressed', String(!book.hidden));
       if (lastState) updateBook(lastState);
     }

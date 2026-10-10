@@ -8,6 +8,7 @@ import {
 } from '../src/index.ts';
 import type { ResolvedChartTheme, WidgetMarketSource } from '../src/index.ts';
 import './style.css';
+import { sampleEquityFeed } from './sample-equity.ts';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <header class="demo-heading"><a class="demo-brand" href="#" aria-label="OpenChart home"><svg viewBox="0 0 28 28" width="26" height="26" fill="none" aria-hidden="true"><path d="M3 3h8v8H3zM17 3h8v8h-8zM3 17h8v8H3z" stroke="currentColor" stroke-width="1.3"/><path d="M17 17h8v8h-8z" fill="currentColor"/></svg>OpenChart<span class="demo-version">LAB / 03</span></a><nav><span class="demo-caption">An open canvas for the markets.</span><a href="/examples/embed.html">Integration example <span aria-hidden="true">↗</span></a></nav></header>
@@ -30,6 +31,14 @@ const markets: WidgetMarketSource[] = [
     intervals: ['1m', '5m', '15m', '1h', '4h', '1d', '1w'],
     createFeed: ({ symbol, interval }) =>
       createBinanceFeed({ symbol: symbol as 'BTC/USDT' | 'ETH/USDT' | 'SOL/USDT', interval }),
+  },
+  {
+    // Static data with weekend and overnight gaps: the time axis skips closed hours.
+    id: 'sample-equity',
+    label: 'Sample equity',
+    symbols: ['ACME'],
+    intervals: ['1h', '1d'],
+    createFeed: ({ interval }) => sampleEquityFeed(interval),
   },
 ];
 // The demo sets numbers and annotations in Paper Mono. A saved appearance still wins.

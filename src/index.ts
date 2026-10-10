@@ -8,6 +8,8 @@ export type { RuntimeOptions } from './runtime.ts';
 export { WebGL2Renderer } from './webgl-renderer.ts';
 export type { ChartRenderer, RenderFrame, RendererStats } from './webgl-renderer.ts';
 export { createSimulatedFeed } from './simulated-feed.ts';
+export { createStaticFeed } from './static-feed.ts';
+export type { StaticFeed, StaticFeedOptions } from './static-feed.ts';
 export { createBinanceFeed, BINANCE_INTERVALS } from './binance-feed.ts';
 export { INTERVAL_MS } from './types.ts';
 export { intervalToMs, isInterval, alignTime } from './intervals.ts';

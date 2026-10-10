@@ -4,6 +4,10 @@ All notable changes are listed here. The project follows [Semantic Versioning](h
 
 ## Unreleased
 
+- `createStaticFeed` charts an array of candles, infers precision, pages older bars and accepts `update()` calls from the host.
+- History paging: feeds may implement `loadOlder(beforeMs)` and emit `candles.prepend`. The chart requests more when you pan near the first bar. Binance and the simulation support it.
+- Retention is configurable with `maxCandles` (default 10,000, up from a fixed 2,000).
+- The demo adds a sample equity market with weekend and overnight gaps.
 - Intervals are no longer limited to 1m, 5m, 15m and 1h. Any `<count><s|m|h|d|w>` works, weekly bars align to Monday, and the Binance feed accepts every fixed-length kline interval.
 - Feeds can set `gaps: true` for markets with sessions and weekends. The time axis collapses closed periods, and viewport limits count bars.
 - Feeds without an order book can declare `depth: { kind: 'none', levels: 0 }`.

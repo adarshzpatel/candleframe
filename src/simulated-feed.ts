@@ -153,6 +153,10 @@ export function createSimulatedFeed(input: number | SimulatedFeedOptions = 42): 
       }
       minutes.push({ timeMs: START_TIME, open: close, high: close, low: close, close, volume: 0 });
       const candles = aggregate(minutes, intervalMs);
+      // Older pages walk backward from the first bar with their own random sequence,
+      // so paging never changes the bars already shown.
+      const olderRng = random(seed ^ 0x5f3759df);
+      let earliest = candles[0];
       let current = { ...candles.at(-1)! };
       let sequence = 1000;
       let steps = 0;
@@ -250,6 +254,31 @@ export function createSimulatedFeed(input: number | SimulatedFeedOptions = 42): 
             emit({ type: 'candle', candle: { ...current } });
             if (!disposed && !paused) emit({ type: 'depth.snapshot', book });
           }
+        },
+        loadOlder(beforeMs) {
+          queueMicrotask(() => {
+            if (disposed || paused || beforeMs !== earliest.timeMs) return;
+            const page: Candle[] = [];
+            let close = earliest.open;
+            for (let i = 1; i <= 360; i++) {
+              const open = rounded(
+                Math.max(preset.price * 0.5, close + (olderRng() - 0.5) * 60 * priceScale),
+              );
+              page.unshift({
+                timeMs: earliest.timeMs - i * intervalMs,
+                open,
+                close,
+                high: rounded(Math.max(open, close) + olderRng() * 40 * priceScale),
+                low: rounded(
+                  Math.max(preset.price * 0.4, Math.min(open, close) - olderRng() * 40 * priceScale),
+                ),
+                volume: (20 + olderRng() * 90) * quantityScale,
+              });
+              close = open;
+            }
+            earliest = page[0];
+            emit({ type: 'candles.prepend', candles: page });
+          });
         },
         requestSnapshot() {
           if (disposed || paused || recovering) return;

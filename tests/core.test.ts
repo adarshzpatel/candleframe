@@ -222,7 +222,7 @@ function descriptor(symbol = 'TEST/USD', interval: FeedDescriptor['interval'] = 
   };
 }
 
-function harness(historyLength = 3, heatmap = true) {
+function harness(historyLength = 3, heatmap = true, maxCandles?: number) {
   let emit: (event: FeedEvent) => void = () => {};
   const counts = { snapshots: 0, disposed: 0, paused: false, connects: 0 };
   const feed: FeedAdapter = {
@@ -246,7 +246,7 @@ function harness(historyLength = 3, heatmap = true) {
       };
     },
   };
-  const runtime = new ChartRuntime(feed, [sma(2)], { heatmap });
+  const runtime = new ChartRuntime(feed, [sma(2)], { heatmap, maxCandles });
   runtime.start();
   return { runtime, counts, emit: (event: FeedEvent) => emit(event) };
 }
@@ -315,7 +315,7 @@ test('pause delegates to the feed and disposal is idempotent, stopping future pu
 });
 
 test('initial and streaming candle retention share the same bound', () => {
-  const { runtime, emit } = harness(2005);
+  const { runtime, emit } = harness(2005, true, 2000);
   assert.equal(runtime.inspect().candleCount, 2000);
   assert.equal(runtime.state().candles[0].timeMs, 5 * minute);
   emit({ type: 'candle', candle: bar(2005, 106) });

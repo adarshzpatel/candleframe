@@ -4,6 +4,7 @@ import type { ResolvedChartTheme } from './themes.ts';
 import type { ChartGeometry } from './geometry.ts';
 import type { HeatmapStore } from './heatmap.ts';
 import type { RuntimeState } from './types.ts';
+import { visibleRange } from './time-scale.ts';
 
 export interface RenderFrame {
   state: RuntimeState;
@@ -411,7 +412,8 @@ export class WebGL2Renderer implements ChartRenderer {
     const bars = state.candles;
     const priceClip: readonly [number, number] = [g.top, g.top + g.plotHeight];
     const interval = state.feed.intervalMs;
-    const visible = bars.filter(b => b.timeMs >= g.fromMs - interval && b.timeMs <= g.toMs + interval);
+    const range = visibleRange(bars, g.fromMs, g.toMs, interval, 1);
+    const visible = bars.slice(range.start, range.end);
     const maxVolume = Math.max(1, ...visible.map(b => b.volume));
     const candleWidth = Math.max(
       1,
@@ -457,7 +459,7 @@ export class WebGL2Renderer implements ChartRenderer {
     }
     if (state.document.layers.indicator) {
       for (const { plugin, values } of state.indicators) {
-        for (let i = 1; i < bars.length; i++) {
+        for (let i = Math.max(1, range.start); i < range.end; i++) {
           if (
             bars[i].timeMs < g.fromMs ||
             bars[i - 1].timeMs > g.toMs ||

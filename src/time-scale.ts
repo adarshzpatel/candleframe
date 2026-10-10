@@ -48,3 +48,27 @@ export function createTimeScale(candles: readonly Candle[], intervalMs: number, 
   };
   return { logical, time, bars: (fromMs, toMs) => logical(toMs) - logical(fromMs), linear: false };
 }
+
+/** Index range `[start, end)` of candles that overlap `[fromMs, toMs]`, padded by `pad` bars. */
+export function visibleRange(
+  candles: readonly Candle[],
+  fromMs: number,
+  toMs: number,
+  intervalMs: number,
+  pad = 0,
+): { start: number; end: number } {
+  // First index whose time is >= `timeMs` (or > it, when `after`).
+  const search = (timeMs: number, after: boolean) => {
+    let lo = 0,
+      hi = candles.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (after ? candles[mid].timeMs <= timeMs : candles[mid].timeMs < timeMs) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
+  const start = Math.max(0, search(fromMs - intervalMs, false) - pad);
+  const end = Math.min(candles.length, search(toMs, true) + pad);
+  return { start, end: Math.max(start, end) };
+}

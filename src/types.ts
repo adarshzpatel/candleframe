@@ -73,13 +73,20 @@ export interface FeedDescriptor {
 }
 export type Stream = 'candles' | 'depth';
 export interface StreamHealth {
-  status: 'loading' | 'live' | 'stale' | 'error' | 'paused';
+  /** `unavailable` marks the depth stream of a feed declared with `depth.kind: 'none'`. */
+  status: 'loading' | 'live' | 'stale' | 'error' | 'paused' | 'unavailable';
   message: string | null;
   receivedAtMs: number | null;
 }
 export type FeedEvent =
   | { type: 'instrument'; instrument: Instrument }
   | { type: 'candles.history'; candles: readonly Candle[] }
+  /**
+   * Older candles, in reply to `FeedConnection.loadOlder`. They must end before the
+   * first loaded candle. `exhausted` means no older data exists; `error` reports a
+   * failed request without affecting the live stream.
+   */
+  | { type: 'candles.prepend'; candles: readonly Candle[]; exhausted?: boolean; error?: string }
   | { type: 'candle'; candle: Candle }
   | { type: 'depth.snapshot'; book: DepthSnapshot }
   | { type: 'depth.delta'; book: DepthDelta }
@@ -89,6 +96,13 @@ export interface FeedConnection {
   setPaused(paused: boolean): void;
   requestSnapshot(): void;
   dispose(): void;
+  /** Optional. Load candles that end before `beforeMs`, then emit `candles.prepend`. */
+  loadOlder?(beforeMs: number): void;
+}
+/** Paging state for history older than the loaded candles. */
+export interface OlderHistory {
+  status: 'unavailable' | 'idle' | 'loading' | 'exhausted' | 'error';
+  message: string | null;
 }
 /** One immutable market selection; each connection owns its transport and recovery state. */
 export interface FeedAdapter {
@@ -160,6 +174,7 @@ export interface RuntimeState {
   dataRevision: number;
   documentRevision: number;
   history: { canUndo: boolean; canRedo: boolean };
+  olderHistory: OlderHistory;
   unsupportedDrawingTypes: readonly string[];
   error: string | null;
 }
