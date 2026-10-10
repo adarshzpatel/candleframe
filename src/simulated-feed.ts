@@ -1,6 +1,6 @@
 import { ChartError } from './errors.ts';
 import { binBook } from './heatmap.ts';
-import { INTERVAL_MS } from './types.ts';
+import { alignTime, intervalToMs } from './intervals.ts';
 import type {
   Candle,
   DepthSnapshot,
@@ -62,7 +62,7 @@ function diff(previous: readonly Level[], next: readonly Level[]): Level[] {
 function aggregate(candles: readonly Candle[], intervalMs: number): Candle[] {
   const result: Candle[] = [];
   for (const bar of candles) {
-    const timeMs = Math.floor(bar.timeMs / intervalMs) * intervalMs;
+    const timeMs = alignTime(bar.timeMs, intervalMs);
     const previous = result.at(-1);
     if (!previous || previous.timeMs !== timeMs) result.push({ ...bar, timeMs });
     else {
@@ -94,9 +94,12 @@ export function createSimulatedFeed(input: number | SimulatedFeedOptions = 42): 
   const interval = options.interval ?? '1m';
   if (!Number.isFinite(seed)) throw new ChartError('INVALID_SEED');
   if (!Object.hasOwn(instruments, symbol)) throw new ChartError('UNSUPPORTED_SYMBOL');
-  if (!Object.hasOwn(INTERVAL_MS, interval)) throw new ChartError('UNSUPPORTED_INTERVAL');
+  const intervalMs = intervalToMs(interval);
   const preset = instruments[symbol];
-  const intervalMs = INTERVAL_MS[interval];
+  // Up to one hour, every interval aggregates the same minute series, so switching
+  // intervals keeps the price. Longer intervals use 1/60-interval steps instead.
+  const stepMs = Math.max(MINUTE, Math.floor(intervalMs / 60 / MINUTE) * MINUTE);
+  if (intervalMs < MINUTE) throw new ChartError('UNSUPPORTED_INTERVAL', 'the simulation starts at 1m');
   const priceScale = preset.price / 68_000;
   const quantityScale = 1 / priceScale;
   const rounded = (price: number) => Number(price.toFixed(preset.precision));
@@ -140,7 +143,7 @@ export function createSimulatedFeed(input: number | SimulatedFeedOptions = 42): 
           (rng() - 0.5) * 32;
         close = rounded(reference * priceScale);
         minutes.push({
-          timeMs: START_TIME - (HISTORY_MINUTES - i) * MINUTE,
+          timeMs: START_TIME - (HISTORY_MINUTES - i) * stepMs,
           open,
           close,
           high: rounded(Math.max(open, close) + rng() * 27 * priceScale),
@@ -193,14 +196,14 @@ export function createSimulatedFeed(input: number | SimulatedFeedOptions = 42): 
       const timer = setInterval(() => {
         if (paused || disposed) return;
         steps++;
-        clockMs += 10_000;
+        clockMs += stepMs / 6;
         const next = rounded(
           Math.max(
             preset.price * 0.94,
             Math.min(preset.price * 1.06, current.close + (rng() - 0.48) * 11 * priceScale),
           ),
         );
-        const timeMs = Math.floor(clockMs / intervalMs) * intervalMs;
+        const timeMs = alignTime(clockMs, intervalMs);
         if (timeMs !== current.timeMs)
           current = {
             timeMs,

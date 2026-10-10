@@ -1,5 +1,5 @@
 import { ChartError } from './errors.ts';
-import { INTERVAL_MS } from './types.ts';
+import { intervalToMs, isInterval } from './intervals.ts';
 import type { FeedAdapter, Interval } from './types.ts';
 
 /** A widget catalog entry. The adapter owns asynchronous loading and connection. */
@@ -12,8 +12,6 @@ export interface WidgetMarketSource {
 }
 
 const nonempty = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
-const isInterval = (value: unknown): value is Interval =>
-  typeof value === 'string' && Object.hasOwn(INTERVAL_MS, value);
 
 /** Empty catalogs are valid for fixed-market widgets. Factories are never invoked here. */
 export function validateMarketSources(sources: readonly WidgetMarketSource[]): void {
@@ -64,7 +62,7 @@ export function resolveMarketFeed(
     descriptor.id !== sourceId ||
     descriptor.instrument?.symbol !== symbol ||
     descriptor.interval !== interval ||
-    descriptor.intervalMs !== INTERVAL_MS[interval]
+    descriptor.intervalMs !== intervalToMs(interval)
   )
     throw new ChartError('MARKET_FEED_MISMATCH');
   return feed;

@@ -28,12 +28,24 @@ export interface HeatmapGrid {
   rows: number;
   intervalMs: number;
 }
-export type Interval = '1m' | '5m' | '15m' | '1h';
-export const INTERVAL_MS: Readonly<Record<Interval, number>> = {
+import type { Interval } from './intervals.ts';
+export type { Interval, IntervalUnit } from './intervals.ts';
+/** Common intervals, for pickers. Any `intervalToMs`-parseable interval is accepted. */
+export const INTERVAL_MS: Readonly<Record<string, number>> = {
+  '1s': 1000,
   '1m': 60000,
+  '3m': 180000,
   '5m': 300000,
   '15m': 900000,
+  '30m': 1800000,
   '1h': 3600000,
+  '2h': 7200000,
+  '4h': 14400000,
+  '6h': 21600000,
+  '12h': 43200000,
+  '1d': 86400000,
+  '3d': 259200000,
+  '1w': 604800000,
 };
 export interface Instrument {
   symbol: string;
@@ -51,7 +63,13 @@ export interface FeedDescriptor {
   interval: Interval;
   intervalMs: number;
   simulated: boolean;
-  depth: { kind: 'snapshots' | 'sequenced'; levels: number };
+  /** `none` (with `levels: 0`) for feeds without an order book. */
+  depth: { kind: 'snapshots' | 'sequenced' | 'none'; levels: number };
+  /**
+   * True when history may skip intervals: exchange sessions, weekends, holidays.
+   * The time axis then collapses the gaps, and candle times need only ascend.
+   */
+  gaps?: boolean;
 }
 export type Stream = 'candles' | 'depth';
 export interface StreamHealth {

@@ -256,7 +256,10 @@ function annotation(d: Drawing, c: DrawingContext): DrawingPrimitive[] {
 }
 function durationLabel(d: Drawing, c: DrawingContext): string {
   const ms = Math.abs(d.points[1].timeMs - d.points[0].timeMs),
-    bars = ms / c.intervalMs;
+    bars =
+      c.geometry.timeScale && !c.geometry.timeScale.linear
+        ? Math.abs(c.geometry.timeScale.bars(d.points[0].timeMs, d.points[1].timeMs))
+        : ms / c.intervalMs;
   const duration =
     ms >= 86400000
       ? `${(ms / 86400000).toFixed(2)} d`

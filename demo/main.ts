@@ -19,7 +19,7 @@ const markets: WidgetMarketSource[] = [
     id: 'simulated',
     label: 'Simulation',
     symbols: ['BTC/USD', 'ETH/USD', 'SOL/USD'],
-    intervals: ['1m', '5m', '15m', '1h'],
+    intervals: ['1m', '5m', '15m', '1h', '4h', '1d', '1w'],
     createFeed: ({ symbol, interval }) =>
       createSimulatedFeed({ symbol: symbol as 'BTC/USD' | 'ETH/USD' | 'SOL/USD', interval }),
   },
@@ -27,7 +27,7 @@ const markets: WidgetMarketSource[] = [
     id: 'binance',
     label: 'Binance live',
     symbols: ['BTC/USDT', 'ETH/USDT', 'SOL/USDT'],
-    intervals: ['1m', '5m', '15m', '1h'],
+    intervals: ['1m', '5m', '15m', '1h', '4h', '1d', '1w'],
     createFeed: ({ symbol, interval }) =>
       createBinanceFeed({ symbol: symbol as 'BTC/USDT' | 'ETH/USDT' | 'SOL/USDT', interval }),
   },
