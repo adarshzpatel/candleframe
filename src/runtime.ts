@@ -3,7 +3,9 @@ import { binBook, HeatmapStore } from './heatmap.ts';
 import { OrderBook } from './order-book.ts';
 import { DrawingRegistry, translateDrawing } from './drawing-tools.ts';
 import type { DrawingToolDefinition } from './drawing-types.ts';
-import { INTERVAL_MS } from './types.ts';
+import { intervalToMs, isAligned } from './intervals.ts';
+import { createTimeScale } from './time-scale.ts';
+import type { TimeScale } from './time-scale.ts';
 import type {
   Candle,
   ChartCommand,
@@ -23,11 +25,11 @@ export interface RuntimeOptions {
   heatmap?: boolean;
   drawingTools?: readonly DrawingToolDefinition[];
 }
-function validCandle(bar: Candle, intervalMs: number): boolean {
+function validCandle(bar: Candle, intervalMs: number, gaps = false): boolean {
   return (
     [bar.timeMs, bar.open, bar.high, bar.low, bar.close, bar.volume].every(Number.isFinite) &&
     bar.timeMs >= 0 &&
-    bar.timeMs % intervalMs === 0 &&
+    (gaps || isAligned(bar.timeMs, intervalMs)) &&
     bar.low > 0 &&
     bar.volume >= 0 &&
     bar.high >= Math.max(bar.open, bar.close) &&
@@ -47,37 +49,44 @@ function validateInstrument(i: Instrument): void {
     throw new ChartError('INVALID_INSTRUMENT');
 }
 function validateDescriptor(d: FeedDescriptor): FeedDescriptor {
+  if (d && d.intervalMs !== intervalToMs(d.interval))
+    throw new ChartError('INVALID_FEED', 'intervalMs does not match interval', {
+      path: 'intervalMs',
+      details: { interval: d.interval, intervalMs: d.intervalMs },
+    });
   if (
     !d ||
     typeof d.id !== 'string' ||
     !d.id ||
     typeof d.label !== 'string' ||
     typeof d.simulated !== 'boolean' ||
-    !Object.hasOwn(INTERVAL_MS, d.interval) ||
-    d.intervalMs !== INTERVAL_MS[d.interval] ||
+    (d.gaps !== undefined && typeof d.gaps !== 'boolean') ||
     !d.depth ||
-    !['sequenced', 'snapshots'].includes(d.depth.kind) ||
-    !Number.isInteger(d.depth.levels) ||
-    d.depth.levels < 1 ||
-    d.depth.levels > 2048
+    !(
+      (d.depth.kind === 'none' && d.depth.levels === 0) ||
+      (['sequenced', 'snapshots'].includes(d.depth.kind) &&
+        Number.isInteger(d.depth.levels) &&
+        d.depth.levels >= 1 &&
+        d.depth.levels <= 2048)
+    )
   )
     throw new ChartError('INVALID_FEED');
   validateInstrument(d.instrument);
   return structuredClone(d);
 }
-function validateViewport(value: unknown, intervalMs: number): ChartDocument['viewport'] {
+export const MIN_VIEWPORT_BARS = 20;
+export const MAX_VIEWPORT_BARS = 2200;
+function validateViewport(value: unknown, scale: Pick<TimeScale, 'bars'>): ChartDocument['viewport'] {
   const v = value as ChartDocument['viewport'] | undefined;
+  const bars = v && Number.isFinite(v.fromMs) && Number.isFinite(v.toMs) ? scale.bars(v.fromMs, v.toMs) : NaN;
   if (
     !v ||
-    !Number.isFinite(v.fromMs) ||
-    !Number.isFinite(v.toMs) ||
-    v.toMs - v.fromMs < 20 * intervalMs ||
-    v.toMs - v.fromMs > 2200 * intervalMs ||
+    !(bars >= MIN_VIEWPORT_BARS - 1e-6 && bars <= MAX_VIEWPORT_BARS + 1e-6) ||
     typeof v.following !== 'boolean'
   )
-    throw new ChartError('INVALID_VIEWPORT', 'span must be 20 to 2200 intervals', {
+    throw new ChartError('INVALID_VIEWPORT', 'span must be 20 to 2200 bars', {
       path: 'viewport',
-      details: { minSpanMs: 20 * intervalMs, maxSpanMs: 2200 * intervalMs },
+      details: { bars, minBars: MIN_VIEWPORT_BARS, maxBars: MAX_VIEWPORT_BARS },
     });
   return { fromMs: v.fromMs, toMs: v.toMs, following: v.following };
 }
@@ -104,6 +113,8 @@ export function parseDocument(
   feed: FeedDescriptor,
   heatmapEnabled = false,
   registry = new DrawingRegistry(),
+  /** Measures the viewport in bars. Defaults to a continuous scale. */
+  timeScale: Pick<TimeScale, 'bars'> = createTimeScale([], feed.intervalMs),
 ): ChartDocument {
   if (!value || typeof value !== 'object') throw new ChartError('INVALID_DOCUMENT');
   // v1 had no provider or interval. Only the original simulated one-minute market is unambiguous.
@@ -149,7 +160,7 @@ export function parseDocument(
     doc.intensity > 2
   )
     throw new ChartError('INVALID_INTENSITY');
-  const v = validateViewport(doc.viewport, feed.intervalMs);
+  const v = validateViewport(doc.viewport, timeScale);
   const priceScale = validatePriceScale(doc.priceScale, feed.instrument.tickSize);
   if (!Array.isArray(doc.drawings) || doc.drawings.length > 100) throw new ChartError('INVALID_DRAWINGS');
   const drawings = doc.drawings.map(drawing => registry.normalize(drawing));
@@ -194,6 +205,7 @@ export class ChartRuntime {
   private snapshotNeeded = false;
   private initializedViewport = false;
   private streams: Record<Stream, StreamHealth> = { candles: loading(), depth: loading() };
+  private scaleCache?: { candles: readonly Candle[]; descriptor: FeedDescriptor; scale: TimeScale };
   readonly heatmapEnabled: boolean;
   readonly drawingRegistry: DrawingRegistry;
   heatmap?: HeatmapStore;
@@ -220,6 +232,24 @@ export class ChartRuntime {
       priceScale: { mode: 'auto' },
       drawings: [],
     };
+  }
+  /** Time-to-bar mapping for the loaded candles. Shared by validation and the view. */
+  timeScale(): TimeScale {
+    const cache = this.scaleCache;
+    if (cache && cache.candles === this.candles && cache.descriptor === this.descriptor) return cache.scale;
+    const { intervalMs, gaps } = this.descriptor;
+    let scale = createTimeScale(this.candles, intervalMs, gaps);
+    // Before gapped history loads, a saved span cannot be measured in bars. Accept it.
+    if (gaps && this.candles.length < 2)
+      scale = { ...scale, bars: (from, to) => Math.min(MAX_VIEWPORT_BARS, (to - from) / intervalMs) };
+    this.scaleCache = { candles: this.candles, descriptor: this.descriptor, scale };
+    return scale;
+  }
+  /** The default live view: 180 bars ending 12 bars after the latest candle. */
+  private liveViewport(span = 180): ChartDocument['viewport'] {
+    const scale = this.timeScale();
+    const end = scale.logical(this.candles.at(-1)?.timeMs ?? 0) + 12;
+    return { fromMs: scale.time(end - span), toMs: scale.time(end), following: true };
   }
   start(): void {
     if (this.disposed) throw new ChartError('DISPOSED');
@@ -344,7 +374,7 @@ export class ChartRuntime {
           if (
             !event.candles.length ||
             event.candles.length > 10000 ||
-            !event.candles.every(b => validCandle(b, this.descriptor.intervalMs)) ||
+            !event.candles.every(b => validCandle(b, this.descriptor.intervalMs, this.descriptor.gaps)) ||
             event.candles.some((bar, i) => i > 0 && bar.timeMs <= event.candles[i - 1].timeMs)
           )
             throw new ChartError('INVALID_HISTORY');
@@ -358,7 +388,8 @@ export class ChartRuntime {
           break;
         }
         case 'candle': {
-          if (!validCandle(event.candle, this.descriptor.intervalMs)) throw new ChartError('INVALID_CANDLE');
+          if (!validCandle(event.candle, this.descriptor.intervalMs, this.descriptor.gaps))
+            throw new ChartError('INVALID_CANDLE');
           const last = this.candles.at(-1);
           if (!last) throw new ChartError('MISSING_HISTORY');
           const candles = this.candles.slice();
@@ -366,7 +397,7 @@ export class ChartRuntime {
           if (changed >= 0) candles[changed] = { ...event.candle };
           else {
             if (event.candle.timeMs < last.timeMs) throw new ChartError('UNKNOWN_CORRECTION');
-            if (event.candle.timeMs !== last.timeMs + this.descriptor.intervalMs)
+            if (!this.descriptor.gaps && event.candle.timeMs !== last.timeMs + this.descriptor.intervalMs)
               throw new ChartError('CANDLE_GAP', 'reconnect to refresh history');
             changed = candles.length;
             candles.push({ ...event.candle });
@@ -376,13 +407,19 @@ export class ChartRuntime {
             }
           }
           this.calculate(candles, changed);
+          const before = this.timeScale(),
+            viewport = this.document.viewport;
           this.candles = candles;
-          if (event.candle.timeMs > last.timeMs && this.document.viewport.following) {
-            const advance = event.candle.timeMs - last.timeMs;
+          if (event.candle.timeMs > last.timeMs && viewport.following) {
+            // Keep the span and the right margin in bars; with gaps, a new bar can be days later.
+            const span = before.bars(viewport.fromMs, viewport.toMs);
+            const margin = before.logical(viewport.toMs) - before.logical(last.timeMs);
+            const after = this.timeScale();
+            const end = after.logical(event.candle.timeMs) + margin;
             this.document.viewport = {
-              ...this.document.viewport,
-              fromMs: this.document.viewport.fromMs + advance,
-              toMs: this.document.viewport.toMs + advance,
+              fromMs: after.time(end - span),
+              toMs: after.time(end),
+              following: true,
             };
           }
           this.setStatus('candles', 'live');
@@ -417,10 +454,8 @@ export class ChartRuntime {
     this.publish();
   }
   private resetViewport(resetSpan = true): void {
-    const duration = this.descriptor.intervalMs;
-    const end = (this.candles.at(-1)?.timeMs ?? 0) + 12 * duration;
-    const span = resetSpan ? 180 * duration : this.document.viewport.toMs - this.document.viewport.fromMs;
-    this.document.viewport = { fromMs: end - span, toMs: end, following: true };
+    const { fromMs, toMs } = this.document.viewport;
+    this.document.viewport = this.liveViewport(resetSpan ? 180 : this.timeScale().bars(fromMs, toMs));
   }
   private assertRevision(expected?: number): void {
     if (this.disposed) throw new ChartError('DISPOSED');
@@ -471,16 +506,14 @@ export class ChartRuntime {
         case 'viewport.set':
           next.viewport = validateViewport(
             { fromMs: command.fromMs, toMs: command.toMs, following: false },
-            this.descriptor.intervalMs,
+            this.timeScale(),
           );
           if (command.priceScale !== undefined)
             next.priceScale = validatePriceScale(command.priceScale, this.descriptor.instrument.tickSize);
           break;
-        case 'viewport.reset': {
-          const end = (this.candles.at(-1)?.timeMs ?? 0) + 12 * this.descriptor.intervalMs;
-          next.viewport = { fromMs: end - 180 * this.descriptor.intervalMs, toMs: end, following: true };
+        case 'viewport.reset':
+          next.viewport = this.liveViewport();
           break;
-        }
         case 'priceScale.set':
           next.priceScale = validatePriceScale(
             { mode: 'manual', minPrice: command.minPrice, maxPrice: command.maxPrice },
@@ -580,7 +613,13 @@ export class ChartRuntime {
           details: { type: (command as { type?: unknown }).type },
         });
     }
-    const validated = parseDocument(next, this.descriptor, this.heatmapEnabled, this.drawingRegistry);
+    const validated = parseDocument(
+      next,
+      this.descriptor,
+      this.heatmapEnabled,
+      this.drawingRegistry,
+      this.timeScale(),
+    );
     this.remember();
     this.document = validated;
     this.documentRevision++;
@@ -604,7 +643,13 @@ export class ChartRuntime {
   }
   restoreDocument(value: unknown, expectedRevision?: number): void {
     this.assertRevision(expectedRevision);
-    const document = parseDocument(value, this.descriptor, this.heatmapEnabled, this.drawingRegistry);
+    const document = parseDocument(
+      value,
+      this.descriptor,
+      this.heatmapEnabled,
+      this.drawingRegistry,
+      this.timeScale(),
+    );
     this.remember();
     this.document = document;
     this.documentRevision++;

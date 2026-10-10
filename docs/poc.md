@@ -8,7 +8,7 @@ Built October 2, 2026, with embedding and latency updates on October 3. This ext
 | --- | --- |
 | Rendering | WebGL2 instanced geometry with price-pane clipping; Canvas2D drawings, text and overlays |
 | Chart | Candles, volume, crosshair, OHLC inspection, pan/zoom, automatic or manual price range, independent axis dragging |
-| Markets | BTC, ETH and SOL; 1m, 5m, 15m and 1h; USD simulation or Binance USDT spot |
+| Markets | BTC, ETH and SOL; 1m to 1w; USD simulation or Binance USDT spot. Any feed may use other fixed intervals and session gaps |
 | Feeds | Independent candle/depth events and health, metadata, cancellation, reconnect and stale-result rejection |
 | Depth | Full snapshots or normalized sequenced deltas, atomic validation, gaps and snapshot recovery |
 | Indicator | SMA 20, last-bar updates and corrected-history recalculation |
@@ -37,7 +37,9 @@ A `FeedAdapter` describes one source, instrument and interval. `connect(emit)` r
 | `stream.status` | Loading, stale or error for candles or depth separately |
 | `heatmap.history` | Optional experimental depth history, ignored when disabled |
 
-Candle timestamps are UTC milliseconds aligned to the selected fixed interval. Prices must be positive. The runtime retains 2,000 candles and accepts history batches up to 10,000, retaining the newest 2,000. The runtime recalculates indicator outputs after history replacement or correction. Unknown older candles and skipped live intervals are errors.
+Intervals are a count and a unit: `30s`, `1m`, `4h`, `1d`, `1w`. `intervalToMs()` parses them; calendar months are not supported because their length varies. Candle timestamps are UTC milliseconds aligned to the interval. Weekly candles align to Monday 00:00 UTC, as exchanges publish them. Prices must be positive.
+
+Set `gaps: true` on the descriptor for markets with sessions, weekends or holidays. Candle times then only need to ascend, live bars may follow a gap, and the time axis gives each loaded bar one slot so closed hours take no space. Viewport limits (20 to 2,200) count bars, not milliseconds. Continuous feeds keep the strict checks. Feeds without an order book declare `depth: { kind: 'none', levels: 0 }`. The runtime retains 2,000 candles and accepts history batches up to 10,000, retaining the newest 2,000. The runtime recalculates indicator outputs after history replacement or correction. Unknown older candles and skipped live intervals are errors.
 
 Depth quantities are absolute; zero deletes a level in a delta. Normalized deltas require `previousSequence === currentSequence` and `sequence === currentSequence + 1`. Duplicate messages do not add quantity twice. A gap blocks deltas until a current snapshot arrives. Providers with sequence ranges must normalize them or use full snapshots. Complete snapshot IDs may skip values.
 

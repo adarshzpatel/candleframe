@@ -23,7 +23,7 @@ The build creates the static demo in `dist/` and ES modules with TypeScript decl
 
 ## Try version 0.3
 
-- Switch between BTC, ETH and SOL, and 1m, 5m, 15m and 1h candles. Simulation uses USD; Binance uses USDT.
+- Switch between BTC, ETH and SOL, and candles from 1m to 1w. Simulation uses USD; Binance uses USDT.
 - Drag the plot to pan time and price together without changing their spacing. Fit or double-click the plot to restore the full view. Drag the bottom axis right to widen candle spacing or left to compress it. Drag the right axis up to widen price spacing or down to compress it.
 - Double-click an axis to reset that scale. Focus an axis and use arrow keys to resize or Home to reset. Scroll over the plot to zoom time without scrolling the page. Touch drags stay inside the chart. Use `+` / `-` when the plot is focused.
 - Plot drags ease toward the pointer and glide briefly on release. Zoom, axis resizing, automatic price changes and Fit animate their ranges. A new grab takes control at the displayed position. Reduced-motion preferences disable these effects.

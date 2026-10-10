@@ -64,7 +64,7 @@ test('market catalogs reject duplicate identities, duplicate entries and malform
     { ...source, symbols: 'BTC/USD' },
     { ...source, intervals: [] },
     { ...source, intervals: ['1m', '1m'] },
-    { ...source, intervals: ['10m'] },
+    { ...source, intervals: ['10x'] },
     { ...source, intervals: ['toString'] },
   ];
   for (const candidate of malformed)

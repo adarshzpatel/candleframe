@@ -1,4 +1,5 @@
 import { ChartError } from './errors.ts';
+import { createTimeFormats } from './time-format.ts';
 import { loadWidgetFonts } from './widget-fonts.ts';
 import { chartThemes, resolveTheme } from './themes.ts';
 import type { ThemeInput } from './themes.ts';
@@ -83,13 +84,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     hovering = false;
   let price = new Intl.NumberFormat('en-US'),
     quantity = new Intl.NumberFormat('en-US');
-  const time = new Intl.DateTimeFormat('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'UTC',
-  });
+  let timeFormats = createTimeFormats(options.feed.descriptor.intervalMs, options.timeZone);
   const popup = $('.widget-dialog'),
     popupContent = $('.dialog-content');
   let popupFocus: HTMLElement | null = null;
@@ -211,7 +206,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
       onHover(bar) {
         hovering = !!bar;
         showCandle(bar ?? lastState?.candles.at(-1));
-        set('hover-time', bar ? `${time.format(bar.timeMs)} UTC` : 'Latest candle');
+        set('hover-time', bar ? `${timeFormats.full(bar.timeMs)} ${timeFormats.zone}` : 'Latest candle');
         options.onHover?.(bar);
       },
       onStats(stats) {
@@ -357,6 +352,8 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     }
     unsubscribe = chart.subscribe(state => {
       const previous = lastState;
+      if (state.feed.intervalMs !== previous?.feed.intervalMs)
+        timeFormats = createTimeFormats(state.feed.intervalMs, options.timeZone);
       lastState = state;
       for (const button of root.querySelectorAll<HTMLButtonElement>('[data-layer]')) {
         const pressed = String(state.document.layers[button.dataset.layer as Layer]);
@@ -644,7 +641,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
           for (const bar of lastState?.candles.slice(-8).reverse() ?? []) {
             const row = doc.createElement('tr');
             for (const value of [
-              time.format(bar.timeMs),
+              timeFormats.full(bar.timeMs),
               ...[bar.open, bar.high, bar.low, bar.close].map(p => price.format(p)),
             ]) {
               const cell = doc.createElement('td');

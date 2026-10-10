@@ -415,10 +415,7 @@ export class WebGL2Renderer implements ChartRenderer {
     const maxVolume = Math.max(1, ...visible.map(b => b.volume));
     const candleWidth = Math.max(
       1,
-      Math.min(
-        appearance.candleMaxWidth,
-        (g.plotWidth / ((g.toMs - g.fromMs) / interval)) * appearance.candleBodyRatio,
-      ),
+      Math.min(appearance.candleMaxWidth, g.barSpacing * appearance.candleBodyRatio),
     );
     for (const bar of visible) {
       const up = bar.close >= bar.open;

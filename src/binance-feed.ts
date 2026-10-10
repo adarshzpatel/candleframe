@@ -1,5 +1,5 @@
 import { ChartError } from './errors.ts';
-import { INTERVAL_MS } from './types.ts';
+import { intervalToMs, isAligned } from './intervals.ts';
 import type {
   Candle,
   DepthSnapshot,
@@ -63,7 +63,7 @@ function candle(values: readonly unknown[], intervalMs: number): Candle {
   if (
     !Number.isSafeInteger(timeMs) ||
     timeMs < 0 ||
-    timeMs % intervalMs !== 0 ||
+    !isAligned(timeMs, intervalMs) ||
     low <= 0 ||
     volume < 0 ||
     high < Math.max(open, close) ||
@@ -146,6 +146,25 @@ function retryTime(response: Response): number {
   );
 }
 
+/** Kline intervals with a fixed length. Binance also offers 1M, which is a calendar month. */
+export const BINANCE_INTERVALS: readonly Interval[] = [
+  '1s',
+  '1m',
+  '3m',
+  '5m',
+  '15m',
+  '30m',
+  '1h',
+  '2h',
+  '4h',
+  '6h',
+  '8h',
+  '12h',
+  '1d',
+  '3d',
+  '1w',
+];
+
 /**
  * Public, read-only Binance Spot market data. Partial depth is a fresh top-20 snapshot,
  * never a reconstructed full book. Wire formats: https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams
@@ -156,10 +175,12 @@ export function createBinanceFeed(
 ): FeedAdapter {
   const symbol = options.symbol ?? 'BTC/USDT';
   const interval = options.interval ?? '1m';
-  if (!['BTC/USDT', 'ETH/USDT', 'SOL/USDT'].includes(symbol) || !Object.hasOwn(INTERVAL_MS, interval))
-    throw new ChartError('UNSUPPORTED_MARKET');
+  if (!['BTC/USDT', 'ETH/USDT', 'SOL/USDT'].includes(symbol) || !BINANCE_INTERVALS.includes(interval))
+    throw new ChartError('UNSUPPORTED_MARKET', undefined, {
+      details: { symbol, interval, intervals: BINANCE_INTERVALS },
+    });
   const wireSymbol = symbol.replace('/', '');
-  const intervalMs = INTERVAL_MS[interval];
+  const intervalMs = intervalToMs(interval);
   const [base, quote] = symbol.split('/');
   const klineStream = `${wireSymbol.toLowerCase()}@kline_${interval}`;
   const depthStream = `${wireSymbol.toLowerCase()}@depth20`;

@@ -1,7 +1,9 @@
 import { ChartError, toChartError } from './errors.ts';
 import { resolveTheme, themeColor, themeColorCSS } from './themes.ts';
 import type { ResolvedChartTheme, ThemeInput } from './themes.ts';
-import { createGeometry, geometryForRanges } from './geometry.ts';
+import { createGeometry, geometryForRanges, stateTimeScale } from './geometry.ts';
+import type { TimeScale } from './time-scale.ts';
+import { createTimeFormats } from './time-format.ts';
 import type { ChartGeometry } from './geometry.ts';
 import { ChartRuntime } from './runtime.ts';
 import { PanMotion } from './pan-motion.ts';
@@ -35,6 +37,8 @@ export interface ChartOptions {
   heatmap?: boolean;
   indicators?: readonly IndicatorPlugin[];
   renderer?: ChartRenderer;
+  /** IANA zone for axis and crosshair labels, such as `America/New_York`. Default `UTC`. */
+  timeZone?: string;
   /** Eased plot dragging and release momentum. Default true; honors reduced motion. */
   panMotion?: boolean;
   /** Ease zoom, axis resizing and autoscale changes. Default true; honors reduced motion. */
@@ -52,6 +56,8 @@ export interface ChartOptions {
 }
 export interface ChartApi {
   setTheme(theme: ThemeInput): void;
+  /** Changes the label time zone. Throws `INVALID_TIME_ZONE` for unknown zones. */
+  setTimeZone(timeZone: string): void;
   getTheme(): ResolvedChartTheme;
   replaceFeed(feed: FeedAdapter, expectedRevision?: number): void;
   execute(command: ChartCommand, expectedRevision?: number): void;
@@ -69,8 +75,6 @@ export interface ChartApi {
   capture(): string;
   dispose(): void;
 }
-
-const formatTime = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
 
 /** Mounts a chart-only view. All controls can be supplied by the host application. */
 export function createChart(container: HTMLElement, options: ChartOptions): ChartApi {
@@ -163,13 +167,8 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     minimumFractionDigits: state.feed.instrument.pricePrecision,
     maximumFractionDigits: state.feed.instrument.pricePrecision,
   });
-  const formatDateTime = new Intl.DateTimeFormat('en-GB', {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'UTC',
-  });
+  let timeZone = options.timeZone ?? 'UTC';
+  let timeFormats = createTimeFormats(state.feed.intervalMs, timeZone);
   let geometry: ChartGeometry;
   let frame = 0;
   let drawing = false;
@@ -198,6 +197,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
   } | null = null;
   let pan: {
     motion: PanMotion;
+    scale: TimeScale;
     from: number;
     to: number;
     min: number;
@@ -266,7 +266,13 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
         )
           scaleMotion = new ScaleMotion(target);
         else scaleMotion.retarget(target, now, drag ? 40 : 90);
-        geometry = geometryForRanges(scaleMotion.sample(now), width, height, theme.chart);
+        geometry = geometryForRanges(
+          scaleMotion.sample(now),
+          width,
+          height,
+          theme.chart,
+          stateTimeScale(state),
+        );
         timeAxis.hidden = priceAxis.hidden = !state.candles.length;
         Object.assign(timeAxis.style, {
           left: `${geometry.left}px`,
@@ -343,11 +349,13 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     if (offset.x !== current.appliedX || offset.y !== current.appliedY) {
       current.appliedX = offset.x;
       current.appliedY = offset.y;
-      const shift = (offset.x / current.width) * (current.to - current.from);
+      const from = current.scale.logical(current.from),
+        to = current.scale.logical(current.to);
+      const shift = (offset.x / current.width) * (to - from);
       runtime.execute({
         type: 'viewport.set',
-        fromMs: current.from - shift,
-        toMs: current.to - shift,
+        fromMs: current.scale.time(from - shift),
+        toMs: current.scale.time(to - shift),
         ...(current.autoscale
           ? {}
           : {
@@ -480,20 +488,16 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       );
     }
     ctx.textAlign = 'center';
-    const dateLabels = g.toMs - g.fromMs >= 86400000;
+    const spanMs = g.toMs - g.fromMs;
     const tickWidth =
-      ctx.measureText((dateLabels ? formatDateTime : formatTime).format(g.fromMs)).width +
-      theme.chart.axisLabelPadding * 2;
+      ctx.measureText(timeFormats.axis(g.fromMs, spanMs)).width + theme.chart.axisLabelPadding * 2;
     const timeTicks = Math.max(1, Math.min(theme.chart.gridColumns, Math.floor(g.plotWidth / tickWidth)));
     const timeBaseline = height - theme.chart.timeAxisHeight / 2 + theme.typography.axisSize * 0.2;
     for (let i = 0; i <= timeTicks; i++) {
-      const time = g.fromMs + ((g.toMs - g.fromMs) / timeTicks) * i;
+      // Sample the scale at evenly spaced pixels; with session gaps, time is not linear in x.
+      const x = g.left + (g.plotWidth / timeTicks) * i;
       ctx.textAlign = i === 0 ? 'left' : i === timeTicks ? 'right' : 'center';
-      ctx.fillText(
-        (dateLabels ? formatDateTime : formatTime).format(time),
-        g.left + (g.plotWidth / timeTicks) * i,
-        timeBaseline,
-      );
+      ctx.fillText(timeFormats.axis(g.anchor(x, g.top).timeMs, spanMs), x, timeBaseline);
     }
     ctx.textAlign = 'left';
     ctx.fillStyle = theme.palette.textFaint;
@@ -503,7 +507,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
         g.left + theme.chart.axisLabelPadding * 0.4,
         g.volumeTop + theme.typography.axisSize * 0.9,
       );
-    ctx.fillText('UTC', g.left + g.plotWidth + theme.chart.axisLabelPadding, timeBaseline);
+    ctx.fillText(timeFormats.zone, g.left + g.plotWidth + theme.chart.axisLabelPadding, timeBaseline);
     ctx.strokeStyle = theme.palette.border;
     ctx.lineWidth = theme.effects.borderWidth;
     if (theme.effects.borderWidth > 0) {
@@ -582,7 +586,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
         text,
         background,
       );
-      const time = formatTime.format(anchor.timeMs),
+      const time = timeFormats.full(anchor.timeMs),
         w = labelWidth(ctx, time);
       label(
         ctx,
@@ -599,18 +603,28 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     const r = root.getBoundingClientRect();
     return { x: event.clientX - r.left, y: event.clientY - r.top };
   }
+  /** Runs a time-range calculation in bar units and converts the result back to time. */
+  function inBars(
+    fromMs: number,
+    toMs: number,
+    change: (from: number, to: number) => { fromMs: number; toMs: number },
+  ): { fromMs: number; toMs: number } {
+    const scale = stateTimeScale(state);
+    const next = change(scale.logical(fromMs), scale.logical(toMs));
+    return { fromMs: scale.time(next.fromMs), toMs: scale.time(next.toMs) };
+  }
+  function dragTime(fromMs: number, toMs: number, dx: number, plotWidth: number) {
+    return inBars(fromMs, toMs, (from, to) => dragTimeScale(from, to, dx, plotWidth, 1));
+  }
   function zoom(factor: number, anchorFraction = 0.5): void {
     const v = state.document.viewport;
-    const oldSpan = v.toMs - v.fromMs;
-    const span = Math.min(
-      2200 * state.feed.intervalMs,
-      Math.max(25 * state.feed.intervalMs, oldSpan * factor),
-    );
-    const anchor = v.fromMs + oldSpan * anchorFraction;
     runtime.execute({
       type: 'viewport.set',
-      fromMs: anchor - span * anchorFraction,
-      toMs: anchor + span * (1 - anchorFraction),
+      ...inBars(v.fromMs, v.toMs, (from, to) => {
+        const span = Math.min(2200, Math.max(25, (to - from) * factor));
+        const anchor = from + (to - from) * anchorFraction;
+        return { fromMs: anchor - span * anchorFraction, toMs: anchor + span * (1 - anchorFraction) };
+      }),
     });
   }
 
@@ -735,7 +749,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       if (drag?.kind === 'time') {
         runtime.execute({
           type: 'viewport.set',
-          ...dragTimeScale(drag.from, drag.to, pointer.x - drag.x, drag.width, state.feed.intervalMs),
+          ...dragTime(drag.from, drag.to, pointer.x - drag.x, drag.width),
         });
       } else if (drag?.kind === 'price') {
         runtime.execute({
@@ -757,24 +771,28 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
         if (drag.moved) {
           if (!pan) {
             const origin = drag;
+            // Pan in bar units so session gaps scroll past at the same speed as bars.
+            const scale = stateTimeScale(state);
+            const from = scale.logical(origin.from),
+              to = scale.logical(origin.to);
             const history = {
-              firstMs: state.candles[0].timeMs,
-              lastMs: state.candles.at(-1)!.timeMs,
-              intervalMs: state.feed.intervalMs,
+              firstMs: scale.logical(state.candles[0].timeMs),
+              lastMs: scale.logical(state.candles.at(-1)!.timeMs),
+              intervalMs: 1,
             };
             const tickSize = state.feed.instrument.tickSize;
             const autoscale = autoscalesOnPan();
             const motion = new PanMotion(origin.started, {
               smooth: options.panMotion !== false && !reducedMotion.matches,
               constrain(offset) {
-                const time = panTimeScale(origin.from, origin.to, offset.x, origin.width, history);
-                const x = ((origin.from - time.fromMs) / (origin.to - origin.from)) * origin.width;
+                const time = panTimeScale(from, to, offset.x, origin.width, history);
+                const x = ((from - time.fromMs) / (to - from)) * origin.width;
                 if (autoscale) return { x, y: 0 };
                 const price = panPriceScale(origin.min, origin.max, offset.y, origin.height, tickSize);
                 return { x, y: ((price.minPrice - origin.min) / (origin.max - origin.min)) * origin.height };
               },
             });
-            pan = { ...origin, motion, appliedX: 0, appliedY: 0, autoscale };
+            pan = { ...origin, motion, scale, appliedX: 0, appliedY: 0, autoscale };
           }
           const now = performance.now();
           pan.motion.move(pointer.x - pan.x, pointer.y - pan.y, now);
@@ -981,7 +999,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
             const dx = ['ArrowRight', 'ArrowUp'].includes(event.key) ? 25 : -25;
             runtime.execute({
               type: 'viewport.set',
-              ...dragTimeScale(v.fromMs, v.toMs, dx, geometry.plotWidth, state.feed.intervalMs),
+              ...dragTime(v.fromMs, v.toMs, dx, geometry.plotWidth),
             });
           } else {
             const dy = ['ArrowRight', 'ArrowUp'].includes(event.key) ? -25 : 25;
@@ -1000,16 +1018,21 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
           return;
         }
       }
-      const v = state.document.viewport,
-        step = (v.toMs - v.fromMs) * 0.1;
+      const v = state.document.viewport;
       if (
         ['ArrowLeft', 'ArrowRight', '+', '=', '-', 'Home', 'Escape'].includes(event.key) ||
         ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z')
       )
         event.preventDefault();
       if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-        const d = event.key === 'ArrowLeft' ? -step : step;
-        runtime.execute({ type: 'viewport.set', fromMs: v.fromMs + d, toMs: v.toMs + d });
+        const direction = event.key === 'ArrowLeft' ? -1 : 1;
+        runtime.execute({
+          type: 'viewport.set',
+          ...inBars(v.fromMs, v.toMs, (from, to) => {
+            const step = (to - from) * 0.1 * direction;
+            return { fromMs: from + step, toMs: to + step };
+          }),
+        });
       } else if (event.key === '+' || event.key === '=') zoom(0.8);
       else if (event.key === '-') zoom(1.25);
       else if (event.key === 'Home') runtime.execute({ type: 'viewport.reset' });
@@ -1073,6 +1096,8 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
         pointer = null;
         publishHover(null);
       }
+      if (next.feed.intervalMs !== state.feed.intervalMs)
+        timeFormats = createTimeFormats(next.feed.intervalMs, timeZone);
       if (next.feed.instrument.pricePrecision !== state.feed.instrument.pricePrecision)
         formatPrice = new Intl.NumberFormat('en-US', {
           minimumFractionDigits: next.feed.instrument.pricePrecision,
@@ -1126,6 +1151,11 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       }
     },
     getTheme: () => structuredClone(theme),
+    setTimeZone(value) {
+      timeFormats = createTimeFormats(state.feed.intervalMs, value);
+      timeZone = value;
+      invalidate('overlay');
+    },
     replaceFeed: (feed, revision) => {
       cancelPan();
       cancelDrawing();
