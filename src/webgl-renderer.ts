@@ -11,6 +11,8 @@ export interface RenderFrame {
   geometry: ChartGeometry;
   heatmap?: HeatmapStore;
   theme?: ResolvedChartTheme;
+  /** Grid line positions in CSS pixels, usually the axis ticks. Without it, the theme's even grid is used. */
+  grid?: { x: readonly number[]; y: readonly number[] };
 }
 export interface RendererStats {
   cpuMs: number;
@@ -360,7 +362,7 @@ export class WebGL2Renderer implements ChartRenderer {
     this.used += INSTANCE_FLOATS;
   }
 
-  render({ state, geometry: g, heatmap, theme = chartThemes.evergreen }: RenderFrame): RendererStats {
+  render({ state, geometry: g, heatmap, theme = chartThemes.evergreen, grid }: RenderFrame): RendererStats {
     const start = performance.now();
     if (this.status !== 'ready')
       return { cpuMs: 0, drawCalls: 0, instances: 0, textureBytes: 0, status: this.status };
@@ -416,12 +418,17 @@ export class WebGL2Renderer implements ChartRenderer {
       drawCalls++;
     }
     this.used = 0;
-    for (let i = 0; i <= appearance.gridRows; i++) {
+    if (grid && appearance.gridWidth) {
+      for (const y of grid.y)
+        this.line(g.left, y, g.left + g.plotWidth, y, appearance.gridWidth, colors.grid);
+      for (const x of grid.x) this.line(x, g.top, x, g.bottom, appearance.gridWidth, colors.grid);
+    }
+    for (let i = 0; !grid && i <= appearance.gridRows; i++) {
       const y = g.top + (g.plotHeight / appearance.gridRows) * i;
       if (appearance.gridWidth)
         this.line(g.left, y, g.left + g.plotWidth, y, appearance.gridWidth, colors.grid);
     }
-    for (let i = 0; i <= appearance.gridColumns; i++) {
+    for (let i = 0; !grid && i <= appearance.gridColumns; i++) {
       const x = g.left + (g.plotWidth / appearance.gridColumns) * i;
       if (appearance.gridWidth) this.line(x, g.top, x, g.bottom, appearance.gridWidth, colors.grid);
     }

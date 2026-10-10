@@ -647,7 +647,8 @@ test('renderer applies series tokens and heatmap uniforms while preserving expli
     };
   const heatmap = new HeatmapStore({ minPrice: 90, binSize: 1, rows: 30, intervalMs: 60000 }, 2);
   heatmap.append({ timeMs: 0, valid: false, values: new Float32Array(30) });
-  renderer.render({ ...frame, state, heatmap, theme });
+  // Without tick positions the renderer falls back to the theme's even grid.
+  renderer.render({ ...frame, state, heatmap, theme, grid: undefined });
   const data = buffers.at(-1)!,
     instances = Array.from({ length: data.length / 11 }, (_, i) => [...data.slice(i * 11, (i + 1) * 11)]);
   assert.equal(

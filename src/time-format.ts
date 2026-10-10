@@ -7,6 +7,8 @@ export interface TimeFormats {
   axis(timeMs: number, spanMs: number): string;
   /** Full label for the crosshair and tooltips. */
   full(timeMs: number): string;
+  /** Time-axis tick label. `rank` is the unit the tick starts: 5 year, 4 month, 3 day, else clock. */
+  tick(timeMs: number, rank: number): string;
   /** Short name of the zone, such as `UTC` or `EST`. */
   zone: string;
 }
@@ -33,7 +35,17 @@ export function createTimeFormats(intervalMs: number, timeZone = 'UTC'): TimeFor
   const zonePart = make({ timeZoneName: 'short' })
     .formatToParts(Date.UTC(2026, 0, 15))
     .find(part => part.type === 'timeZoneName');
+  const year = make({ year: 'numeric' });
+  const monthName = make({ month: 'short' });
+  const dayNumber = make({ day: 'numeric' });
   return {
+    tick(timeMs, rank) {
+      // TradingView style: a new year shows the year, a new month its name, a new day its number.
+      if (rank >= 5) return year.format(timeMs);
+      if (rank >= 4) return monthName.format(timeMs);
+      if (rank >= 3) return dayNumber.format(timeMs);
+      return clock.format(timeMs);
+    },
     axis(timeMs, spanMs) {
       if (intervalMs >= DAY) return (spanMs >= 300 * DAY ? month : day).format(timeMs);
       return (spanMs >= DAY ? dayClock : clock).format(timeMs);

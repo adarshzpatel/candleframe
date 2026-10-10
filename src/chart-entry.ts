@@ -4,6 +4,8 @@ export type { ChartApi, ChartOptions } from './chart.ts';
 export { WebGL2Renderer } from './webgl-renderer.ts';
 export type { ChartRenderer, RenderFrame, RendererStats } from './webgl-renderer.ts';
 export type { ChartGeometry, PaneGeometry, PaneRange } from './geometry.ts';
+export { niceStep, priceTicks, timeTicks, valueTicks, zoneOffsets, TICK_RANK } from './axis-ticks.ts';
+export type { AxisTick, TimeTickOptions } from './axis-ticks.ts';
 export {
   chartThemes,
   resolveTheme,
