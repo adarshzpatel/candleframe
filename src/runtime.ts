@@ -5,6 +5,16 @@ import { DrawingRegistry, translateDrawing } from './drawing-tools.ts';
 import type { DrawingToolDefinition } from './drawing-types.ts';
 import { intervalToMs, isAligned } from './intervals.ts';
 import { createTimeScale } from './time-scale.ts';
+import { IndicatorRegistry } from './indicators.ts';
+import type { IndicatorDefinition } from './indicators.ts';
+
+interface IndicatorSlot {
+  entry: DocumentIndicator;
+  plugin?: IndicatorPlugin;
+  series: number[][];
+}
+const sameInputs = (a: Readonly<Record<string, number>> = {}, b: Readonly<Record<string, number>> = {}) =>
+  Object.keys(a).length === Object.keys(b).length && Object.entries(a).every(([k, v]) => b[k] === v);
 import type { TimeScale } from './time-scale.ts';
 import type {
   Candle,
@@ -16,6 +26,8 @@ import type {
   FeedEvent,
   IndicatorPlugin,
   Instrument,
+  ActiveIndicator,
+  DocumentIndicator,
   OlderHistory,
   RuntimeState,
   Stream,
@@ -27,6 +39,8 @@ export interface RuntimeOptions {
   drawingTools?: readonly DrawingToolDefinition[];
   /** Candles kept in memory, including paged history. 100 to 100,000; default 10,000. */
   maxCandles?: number;
+  /** Extra indicator kinds that documents, commands and the widget can add. */
+  indicatorDefinitions?: readonly IndicatorDefinition[];
 }
 function validCandle(bar: Candle, intervalMs: number, gaps = false): boolean {
   return (
@@ -96,7 +110,10 @@ function validateViewport(value: unknown, scale: Pick<TimeScale, 'bars'>): Chart
 function validatePriceScale(value: unknown, tickSize: number): ChartDocument['priceScale'] {
   if (value === undefined) return { mode: 'auto' };
   const scale = value as ChartDocument['priceScale'];
-  if (scale?.mode === 'auto') return { mode: 'auto' };
+  if (scale && scale.log !== undefined && typeof scale.log !== 'boolean')
+    throw new ChartError('INVALID_PRICE_SCALE', 'log must be a boolean', { path: 'priceScale.log' });
+  const log = scale?.log ? { log: true } : {};
+  if (scale?.mode === 'auto') return { mode: 'auto', ...log };
   if (
     !scale ||
     scale.mode !== 'manual' ||
@@ -109,7 +126,56 @@ function validatePriceScale(value: unknown, tickSize: number): ChartDocument['pr
       path: 'priceScale',
       details: { tickSize },
     });
-  return { mode: 'manual', minPrice: scale.minPrice, maxPrice: scale.maxPrice };
+  return { mode: 'manual', minPrice: scale.minPrice, maxPrice: scale.maxPrice, ...log };
+}
+export const MAX_INDICATORS = 16;
+function validateIndicators(value: unknown, registry: IndicatorRegistry): DocumentIndicator[] {
+  if (!Array.isArray(value) || value.length > MAX_INDICATORS)
+    throw new ChartError('INVALID_INDICATORS', `at most ${MAX_INDICATORS} indicators`, {
+      path: 'indicators',
+    });
+  const ids = new Set<string>();
+  return value.map((entry: Partial<DocumentIndicator> | null, index) => {
+    const path = `indicators.${index}`;
+    if (
+      !entry ||
+      typeof entry.id !== 'string' ||
+      !/^[\w.:-]{1,64}$/.test(entry.id) ||
+      typeof entry.kind !== 'string' ||
+      !entry.kind ||
+      entry.kind.length > 64 ||
+      typeof entry.visible !== 'boolean'
+    )
+      throw new ChartError('INVALID_INDICATORS', 'each indicator needs an id, kind and visible flag', {
+        path,
+      });
+    if (ids.has(entry.id))
+      throw new ChartError('DUPLICATE_INDICATOR_ID', undefined, {
+        path: `${path}.id`,
+        details: { id: entry.id },
+      });
+    ids.add(entry.id);
+    // Unknown kinds are kept, like unknown drawing types, and reported as unsupported.
+    let inputs: Record<string, number>;
+    if (registry.get(entry.kind)) inputs = registry.inputs(entry.kind, entry.inputs ?? {});
+    else {
+      const raw = entry.inputs ?? {};
+      if (
+        typeof raw !== 'object' ||
+        Array.isArray(raw) ||
+        Object.keys(raw).length > 16 ||
+        !Object.values(raw).every(v => typeof v === 'number' && Number.isFinite(v))
+      )
+        throw new ChartError('INVALID_INDICATOR_INPUT', undefined, { path: `${path}.inputs` });
+      inputs = { ...raw };
+    }
+    return { id: entry.id, kind: entry.kind, inputs, visible: entry.visible };
+  });
+}
+export interface ParseIndicatorOptions {
+  registry?: IndicatorRegistry;
+  /** Used for version 2 and 3 layouts, which predate saved indicators. */
+  defaults?: readonly DocumentIndicator[];
 }
 export function parseDocument(
   value: unknown,
@@ -118,6 +184,7 @@ export function parseDocument(
   registry = new DrawingRegistry(),
   /** Measures the viewport in bars. Defaults to a continuous scale. */
   timeScale: Pick<TimeScale, 'bars'> = createTimeScale([], feed.intervalMs),
+  indicatorOptions: ParseIndicatorOptions = {},
 ): ChartDocument {
   if (!value || typeof value !== 'object') throw new ChartError('INVALID_DOCUMENT');
   // v1 had no provider or interval. Only the original simulated one-minute market is unambiguous.
@@ -132,10 +199,10 @@ export function parseDocument(
     version?: number;
     drawings?: unknown[];
   };
-  if (doc.version !== 2 && doc.version !== 3)
+  if (doc.version !== 2 && doc.version !== 3 && doc.version !== 4)
     throw new ChartError('UNSUPPORTED_DOCUMENT_VERSION', undefined, {
       path: 'version',
-      details: { version: doc.version, supported: [1, 2, 3] },
+      details: { version: doc.version, supported: [1, 2, 3, 4] },
     });
   if (doc.symbol !== feed.instrument.symbol)
     throw new ChartError('SYMBOL_MISMATCH', undefined, {
@@ -165,6 +232,11 @@ export function parseDocument(
     throw new ChartError('INVALID_INTENSITY');
   const v = validateViewport(doc.viewport, timeScale);
   const priceScale = validatePriceScale(doc.priceScale, feed.instrument.tickSize);
+  const indicatorRegistry = indicatorOptions.registry ?? new IndicatorRegistry();
+  const indicators = validateIndicators(
+    doc.version === 4 ? doc.indicators : structuredClone(indicatorOptions.defaults ?? []),
+    indicatorRegistry,
+  );
   if (!Array.isArray(doc.drawings) || doc.drawings.length > 100) throw new ChartError('INVALID_DRAWINGS');
   const drawings = doc.drawings.map(drawing => registry.normalize(drawing));
   if (new Set(drawings.map(d => d.id)).size !== drawings.length) throw new ChartError('DUPLICATE_DRAWING_ID');
@@ -174,7 +246,7 @@ export function parseDocument(
   )
     throw new ChartError('DRAWING_LIMIT_EXCEEDED');
   return structuredClone({
-    version: 3,
+    version: 4,
     feedId: feed.id,
     symbol: feed.instrument.symbol,
     interval: feed.interval,
@@ -182,6 +254,7 @@ export function parseDocument(
     intensity: doc.intensity,
     viewport: v,
     priceScale,
+    indicators,
     drawings,
   });
 }
@@ -195,7 +268,11 @@ export class ChartRuntime {
   private descriptor: FeedDescriptor;
   private connection?: FeedConnection;
   private listeners = new Set<(state: RuntimeState) => void>();
-  private indicators: { plugin: IndicatorPlugin; values: number[] }[];
+  private indicators: IndicatorSlot[] = [];
+  /** Host-supplied plugin objects, used as-is while their id, kind and inputs match the document. */
+  private seeds = new Map<string, IndicatorPlugin>();
+  private defaultIndicators: DocumentIndicator[];
+  readonly indicatorRegistry: IndicatorRegistry;
   private history: ChartDocument[] = [];
   private future: ChartDocument[] = [];
   private document: ChartDocument;
@@ -227,14 +304,39 @@ export class ChartRuntime {
       });
     this.drawingRegistry = new DrawingRegistry(options.drawingTools);
     if (new Set(plugins.map(p => p.id)).size !== plugins.length) throw new ChartError('DUPLICATE_PLUGIN');
-    this.indicators = plugins.map(plugin => ({ plugin, values: [] }));
+    for (const plugin of plugins) {
+      if (
+        !plugin ||
+        typeof plugin.id !== 'string' ||
+        !(
+          typeof plugin.calculate === 'function' ||
+          (plugin.outputs?.length && typeof plugin.calculateOutputs === 'function')
+        )
+      )
+        throw new ChartError(
+          'INVALID_INDICATOR',
+          'plugins need calculate, or outputs with calculateOutputs',
+          {
+            details: { id: plugin?.id },
+          },
+        );
+      this.seeds.set(plugin.id, plugin);
+    }
+    this.indicatorRegistry = new IndicatorRegistry(options.indicatorDefinitions);
+    this.defaultIndicators = plugins.map(plugin => ({
+      id: plugin.id,
+      kind: plugin.kind ?? 'custom',
+      inputs: { ...plugin.inputs },
+      visible: true,
+    }));
     this.document = this.newDocument();
+    this.syncIndicators();
     this.setStatus('depth', 'loading');
   }
   private newDocument(): ChartDocument {
     const d = this.descriptor;
     return {
-      version: 3,
+      version: 4,
       feedId: d.id,
       symbol: d.instrument.symbol,
       interval: d.interval,
@@ -242,8 +344,77 @@ export class ChartRuntime {
       intensity: 1,
       viewport: { fromMs: 0, toMs: 180 * d.intervalMs, following: true },
       priceScale: { mode: 'auto' },
+      indicators: structuredClone(this.defaultIndicators),
       drawings: [],
     };
+  }
+  private parse(value: unknown): ChartDocument {
+    return parseDocument(
+      value,
+      this.descriptor,
+      this.heatmapEnabled,
+      this.drawingRegistry,
+      this.timeScale(),
+      {
+        registry: this.indicatorRegistry,
+        defaults: this.defaultIndicators,
+      },
+    );
+  }
+  private resolveIndicator(entry: DocumentIndicator): IndicatorPlugin | undefined {
+    const seed = this.seeds.get(entry.id);
+    if (seed && (seed.kind ?? 'custom') === entry.kind && sameInputs(seed.inputs, entry.inputs)) return seed;
+    if (this.indicatorRegistry.get(entry.kind))
+      return this.indicatorRegistry.create(entry.kind, entry.inputs, entry.id);
+    return undefined;
+  }
+  /** Matches indicator instances to the document, reusing unchanged ones and computing new ones. */
+  private syncIndicators(): void {
+    this.indicators = this.slotsFor(this.document);
+  }
+  /** Computes before anything is assigned, so a failing plugin cannot leave a half-applied edit. */
+  private slotsFor(document: ChartDocument): IndicatorSlot[] {
+    const previous = new Map(this.indicators.map(slot => [slot.entry.id, slot]));
+    return document.indicators.map(entry => {
+      const old = previous.get(entry.id);
+      if (old && old.entry.kind === entry.kind && sameInputs(old.entry.inputs, entry.inputs))
+        return { ...old, entry };
+      const plugin = this.resolveIndicator(entry);
+      const slot: IndicatorSlot = { entry, plugin, series: [] };
+      if (plugin && this.candles.length) slot.series = this.compute(plugin, this.candles, [], 0);
+      return slot;
+    });
+  }
+  /** Replaces the document and its indicator instances together. */
+  private commit(document: ChartDocument, remember: boolean): void {
+    const slots = this.slotsFor(document);
+    if (remember) this.remember();
+    this.document = document;
+    this.indicators = slots;
+    this.documentRevision++;
+    this.publish();
+  }
+  private compute(
+    plugin: IndicatorPlugin,
+    candles: readonly Candle[],
+    previous: readonly (readonly number[])[],
+    changed: number,
+  ): number[][] {
+    const series = plugin.outputs?.length
+      ? plugin.calculateOutputs!(candles, previous, changed)
+      : [plugin.calculate!(candles, previous[0] ?? [], changed)];
+    if (
+      !Array.isArray(series) ||
+      series.length !== (plugin.outputs?.length || 1) ||
+      series.some(
+        values =>
+          !Array.isArray(values) ||
+          values.length !== candles.length ||
+          values.some(v => typeof v !== 'number' || v === Infinity || v === -Infinity),
+      )
+    )
+      throw new ChartError('INVALID_INDICATOR', `${plugin.id}`, { details: { id: plugin.id } });
+    return series;
   }
   /** Time-to-bar mapping for the loaded candles. Shared by validation and the view. */
   timeScale(): TimeScale {
@@ -310,8 +481,8 @@ export class ChartRuntime {
     this.heatmap = undefined;
     this.history = [];
     this.future = [];
-    this.indicators.forEach(i => {
-      i.values = [];
+    this.indicators.forEach(slot => {
+      slot.series = [];
     });
     this.streams = { candles: loading(), depth: loading() };
     this.setStatus('depth', 'loading');
@@ -323,8 +494,12 @@ export class ChartRuntime {
       ...this.newDocument(),
       layers: { ...previous.layers },
       intensity: previous.intensity,
+      // Log scale is a preference like the layers; the range itself refits.
+      priceScale: previous.priceScale.log ? { mode: 'auto', log: true } : { mode: 'auto' },
+      indicators: structuredClone(previous.indicators),
       drawings: sameInstrument ? structuredClone(previous.drawings) : [],
     };
+    this.syncIndicators();
     this.documentRevision++;
     this.dataRevision++;
     this.publish();
@@ -350,17 +525,12 @@ export class ChartRuntime {
     else this.snapshotNeeded = true;
   }
   private calculate(candles: Candle[], changed: number): void {
-    const results = this.indicators.map(({ plugin, values: previous }) => {
-      const values = plugin.calculate(candles, previous, changed);
-      if (
-        values.length !== candles.length ||
-        values.some(v => typeof v !== 'number' || v === Infinity || v === -Infinity)
-      )
-        throw new ChartError('INVALID_INDICATOR', `${plugin.id}`);
-      return values;
-    });
-    this.indicators.forEach((indicator, index) => {
-      indicator.values = results[index];
+    // Compute everything before assigning, so one failing plugin leaves all series unchanged.
+    const results = this.indicators.map(slot =>
+      slot.plugin ? this.compute(slot.plugin, candles, slot.series, changed) : [],
+    );
+    this.indicators.forEach((slot, index) => {
+      slot.series = results[index];
     });
   }
   private recordDepth(): void {
@@ -567,12 +737,15 @@ export class ChartRuntime {
       const destination = command.type === 'history.undo' ? this.future : this.history;
       const previous = source.pop();
       if (previous) {
-        this.pushHistory(destination);
-        this.document = {
+        const document = {
           ...previous,
           viewport: { ...this.document.viewport },
           priceScale: { ...this.document.priceScale },
         };
+        const slots = this.slotsFor(document);
+        this.pushHistory(destination);
+        this.document = document;
+        this.indicators = slots;
         this.documentRevision++;
         this.publish();
       }
@@ -582,11 +755,14 @@ export class ChartRuntime {
       command.type === 'viewport.set' ||
       command.type === 'viewport.reset' ||
       command.type === 'priceScale.set' ||
-      command.type === 'priceScale.reset'
+      command.type === 'priceScale.reset' ||
+      command.type === 'priceScale.log'
     ) {
       // Navigation runs during animation. Existing content is already validated;
       // retain its identity and do no drawing clones, plugin work or payload scans.
       const next = { ...this.document };
+      // Navigation keeps the log setting unless a command sets it.
+      const log = this.document.priceScale.log ? { log: true } : {};
       switch (command.type) {
         case 'viewport.set':
           next.viewport = validateViewport(
@@ -594,20 +770,30 @@ export class ChartRuntime {
             this.timeScale(),
           );
           if (command.priceScale !== undefined)
-            next.priceScale = validatePriceScale(command.priceScale, this.descriptor.instrument.tickSize);
+            next.priceScale = validatePriceScale(
+              { ...log, ...command.priceScale },
+              this.descriptor.instrument.tickSize,
+            );
           break;
         case 'viewport.reset':
           next.viewport = this.liveViewport();
           break;
         case 'priceScale.set':
           next.priceScale = validatePriceScale(
-            { mode: 'manual', minPrice: command.minPrice, maxPrice: command.maxPrice },
+            { mode: 'manual', minPrice: command.minPrice, maxPrice: command.maxPrice, ...log },
             this.descriptor.instrument.tickSize,
           );
           break;
         case 'priceScale.reset':
-          next.priceScale = { mode: 'auto' };
+          next.priceScale = { mode: 'auto', ...log };
           break;
+        case 'priceScale.log': {
+          if (typeof command.enabled !== 'boolean')
+            throw new ChartError('INVALID_COMMAND', 'enabled must be a boolean', { path: 'enabled' });
+          // Switching scale type refits the range; a manual linear range is rarely right on a log axis.
+          next.priceScale = command.enabled ? { mode: 'auto', log: true } : { mode: 'auto' };
+          break;
+        }
       }
       this.document = next;
       this.documentRevision++;
@@ -692,23 +878,61 @@ export class ChartRuntime {
       case 'drawing.clear':
         next.drawings = [];
         break;
+      case 'indicator.add': {
+        const given = command.indicator;
+        if (!given || typeof given !== 'object' || typeof given.kind !== 'string')
+          throw new ChartError('INVALID_COMMAND', 'indicator needs a kind', { path: 'indicator.kind' });
+        if (!this.indicatorRegistry.get(given.kind))
+          throw new ChartError('UNKNOWN_INDICATOR', undefined, {
+            path: 'indicator.kind',
+            details: { kind: given.kind, available: this.indicatorRegistry.list().map(d => d.kind) },
+          });
+        if (next.indicators.length >= MAX_INDICATORS)
+          throw new ChartError('INDICATOR_LIMIT_EXCEEDED', undefined, { details: { max: MAX_INDICATORS } });
+        let id = given.id;
+        for (let n = 1; id === undefined; n++) {
+          const candidate = n === 1 ? given.kind : `${given.kind}-${n}`;
+          if (!next.indicators.some(entry => entry.id === candidate)) id = candidate;
+        }
+        next.indicators.push({
+          id,
+          kind: given.kind,
+          inputs: this.indicatorRegistry.inputs(given.kind, given.inputs ?? {}),
+          visible: true,
+        });
+        break;
+      }
+      case 'indicator.update': {
+        const index = next.indicators.findIndex(entry => entry.id === command.id);
+        if (index < 0)
+          throw new ChartError('INDICATOR_NOT_FOUND', undefined, { path: 'id', details: { id: command.id } });
+        const entry = next.indicators[index];
+        if (command.visible !== undefined && typeof command.visible !== 'boolean')
+          throw new ChartError('INVALID_COMMAND', 'visible must be a boolean', { path: 'visible' });
+        if (command.inputs !== undefined) {
+          if (!this.indicatorRegistry.get(entry.kind))
+            throw new ChartError('UNKNOWN_INDICATOR', 'inputs of an unregistered kind cannot change', {
+              details: { kind: entry.kind },
+            });
+          entry.inputs = this.indicatorRegistry.inputs(entry.kind, { ...entry.inputs, ...command.inputs });
+        }
+        if (command.visible !== undefined) entry.visible = command.visible;
+        break;
+      }
+      case 'indicator.remove': {
+        const index = next.indicators.findIndex(entry => entry.id === command.id);
+        if (index < 0)
+          throw new ChartError('INDICATOR_NOT_FOUND', undefined, { path: 'id', details: { id: command.id } });
+        next.indicators.splice(index, 1);
+        break;
+      }
       default:
         throw new ChartError('UNKNOWN_COMMAND', undefined, {
           path: 'type',
           details: { type: (command as { type?: unknown }).type },
         });
     }
-    const validated = parseDocument(
-      next,
-      this.descriptor,
-      this.heatmapEnabled,
-      this.drawingRegistry,
-      this.timeScale(),
-    );
-    this.remember();
-    this.document = validated;
-    this.documentRevision++;
-    this.publish();
+    this.commit(this.parse(next), true);
   }
   private drawingIndex(document: ChartDocument, id: string): number {
     const index = document.drawings.findIndex(drawing => drawing.id === id);
@@ -728,17 +952,7 @@ export class ChartRuntime {
   }
   restoreDocument(value: unknown, expectedRevision?: number): void {
     this.assertRevision(expectedRevision);
-    const document = parseDocument(
-      value,
-      this.descriptor,
-      this.heatmapEnabled,
-      this.drawingRegistry,
-      this.timeScale(),
-    );
-    this.remember();
-    this.document = document;
-    this.documentRevision++;
-    this.publish();
+    this.commit(this.parse(value), true);
   }
   /** Borrowed subscription views must not be mutated. inspect/exportDocument return owned copies. */
   state(): RuntimeState {
@@ -749,7 +963,12 @@ export class ChartRuntime {
       candles: this.candles,
       document: this.document,
       book: this.book.inspect(80),
-      indicators: this.indicators,
+      indicators: this.indicators.flatMap(({ entry, plugin, series }): ActiveIndicator[] =>
+        plugin && series.length ? [{ plugin, values: series[0], series, visible: entry.visible }] : [],
+      ),
+      unsupportedIndicatorKinds: [
+        ...new Set(this.indicators.filter(slot => !slot.plugin).map(slot => slot.entry.kind)),
+      ],
       paused: this.paused,
       dataRevision: this.dataRevision,
       documentRevision: this.documentRevision,
@@ -807,9 +1026,22 @@ export class ChartRuntime {
         ? { columns: this.heatmap.count, capacity: this.heatmap.capacity, rows: this.heatmap.grid.rows }
         : null,
       document: this.document,
-      indicators: this.indicators.map(({ plugin, values }) => ({
-        id: plugin.id,
-        value: values.at(-1) ?? null,
+      indicators: this.indicators.map(({ entry, plugin, series }) => ({
+        ...entry,
+        name: plugin?.name ?? entry.kind,
+        pane: plugin?.pane ?? 'price',
+        supported: !!plugin,
+        value: series[0]?.at(-1) ?? null,
+        outputs: Object.fromEntries(
+          (plugin?.outputs ?? [{ id: 'value' }]).map((output, i) => [output.id, series[i]?.at(-1) ?? null]),
+        ),
+      })),
+      indicatorKinds: this.indicatorRegistry.list().map(({ kind, name, description, pane, inputs }) => ({
+        kind,
+        name,
+        description,
+        pane,
+        inputs,
       })),
       error: this.state().error,
     });

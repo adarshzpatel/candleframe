@@ -116,6 +116,8 @@ const colorsFor = (theme: ResolvedChartTheme) => {
     wickDown: token(chart.wickDown),
     volumeUp: token(chart.volumeUp, chart.volumeOpacity),
     volumeDown: token(chart.volumeDown, chart.volumeOpacity),
+    histogramUp: token(chart.candleUp, 0.55),
+    histogramDown: token(chart.candleDown, 0.55),
     grid: colorRGBA(theme.palette.grid, chart.gridOpacity),
     indicator: colorRGBA(theme.palette.indicator),
     heatLow: token(chart.heatmapLow),
@@ -406,8 +408,7 @@ export class WebGL2Renderer implements ChartRenderer {
     }
     for (let i = 0; i <= appearance.gridColumns; i++) {
       const x = g.left + (g.plotWidth / appearance.gridColumns) * i;
-      if (appearance.gridWidth)
-        this.line(x, g.top, x, g.volumeTop + g.volumeHeight, appearance.gridWidth, colors.grid);
+      if (appearance.gridWidth) this.line(x, g.top, x, g.bottom, appearance.gridWidth, colors.grid);
     }
     const bars = state.candles;
     const priceClip: readonly [number, number] = [g.top, g.top + g.plotHeight];
@@ -458,27 +459,71 @@ export class WebGL2Renderer implements ChartRenderer {
       }
     }
     if (state.document.layers.indicator) {
-      for (const { plugin, values } of state.indicators) {
-        for (let i = Math.max(1, range.start); i < range.end; i++) {
-          if (
-            bars[i].timeMs < g.fromMs ||
-            bars[i - 1].timeMs > g.toMs ||
-            !Number.isFinite(values[i - 1]) ||
-            !Number.isFinite(values[i])
-          )
-            continue;
-          this.line(
-            g.x(bars[i - 1].timeMs + interval / 2),
-            g.y(values[i - 1]),
-            g.x(bars[i].timeMs + interval / 2),
-            g.y(values[i]),
-            appearance.indicatorWidth,
-            plugin.themeColor === 'indicator' ? colors.indicator : plugin.color,
-            priceClip,
-          );
-        }
+      for (const { plugin, series, visible: shown } of state.indicators) {
+        if (!shown) continue;
+        const pane = plugin.pane === 'separate' ? g.panes.find(p => p.id === plugin.id) : undefined;
+        if (plugin.pane === 'separate' && !pane) continue;
+        const y = pane ? pane.y : g.y;
+        const clip: readonly [number, number] = pane ? [pane.top, pane.top + pane.height] : priceClip;
+        const outputs = plugin.outputs?.length
+          ? plugin.outputs
+          : [{ color: plugin.color, style: 'line' as const }];
+        outputs.forEach((output, k) => {
+          const values = series[k] ?? [];
+          const color =
+            k === 0 && plugin.themeColor === 'indicator' && !plugin.outputs?.length
+              ? colors.indicator
+              : output.color;
+          if (output.style === 'histogram') {
+            const zero = Math.max(clip[0], Math.min(clip[1], y(0)));
+            for (let i = range.start; i < range.end; i++) {
+              if (!Number.isFinite(values[i])) continue;
+              const x = g.x(bars[i].timeMs + interval / 2),
+                top = y(values[i]);
+              const tone = values[i] >= 0 ? colors.histogramUp : colors.histogramDown;
+              this.line(
+                x - candleWidth / 2,
+                (top + zero) / 2,
+                x + candleWidth / 2,
+                (top + zero) / 2,
+                Math.abs(zero - top),
+                tone,
+                clip,
+              );
+            }
+            return;
+          }
+          for (let i = Math.max(1, range.start); i < range.end; i++) {
+            if (
+              bars[i].timeMs < g.fromMs ||
+              bars[i - 1].timeMs > g.toMs ||
+              !Number.isFinite(values[i - 1]) ||
+              !Number.isFinite(values[i])
+            )
+              continue;
+            this.line(
+              g.x(bars[i - 1].timeMs + interval / 2),
+              y(values[i - 1]),
+              g.x(bars[i].timeMs + interval / 2),
+              y(values[i]),
+              appearance.indicatorWidth,
+              color,
+              clip,
+            );
+          }
+        });
       }
     }
+    for (const pane of g.panes)
+      if (appearance.gridWidth)
+        this.line(
+          g.left,
+          pane.top - appearance.volumeGap / 2,
+          g.left + g.plotWidth,
+          pane.top - appearance.volumeGap / 2,
+          appearance.gridWidth,
+          colors.grid,
+        );
     gl.useProgram(this.lineProgram);
     gl.bindVertexArray(this.lineVao);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.instances);
@@ -491,9 +536,9 @@ export class WebGL2Renderer implements ChartRenderer {
     gl.enable(gl.SCISSOR_TEST);
     gl.scissor(
       Math.round(g.left * dpr),
-      Math.round((g.height - g.volumeTop - g.volumeHeight) * dpr),
+      Math.round((g.height - g.bottom) * dpr),
       Math.round(g.plotWidth * dpr),
-      Math.round((g.volumeTop + g.volumeHeight - g.top) * dpr),
+      Math.round((g.bottom - g.top) * dpr),
     );
     gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, this.used / INSTANCE_FLOATS);
     gl.disable(gl.SCISSOR_TEST);

@@ -17,13 +17,14 @@ export { createTimeScale } from './time-scale.ts';
 export type { TimeScale } from './time-scale.ts';
 export { createTimeFormats } from './time-format.ts';
 export type { TimeFormats } from './time-format.ts';
-export { sma } from './indicators.ts';
+export { sma, ema, rsi, macd, bollinger, builtInIndicators, IndicatorRegistry } from './indicators.ts';
+export type { IndicatorDefinition, IndicatorInputSpec, SeriesIndicator } from './indicators.ts';
+export type { ChartGeometry, PaneGeometry, PaneRange } from './geometry.ts';
 export { OrderBook } from './order-book.ts';
 export type * from './types.ts';
 
 export { DrawingRegistry, builtInDrawingTools, DEFAULT_DRAWING_STYLE } from './drawing-tools.ts';
 export type * from './drawing-types.ts';
-export type { ChartGeometry } from './geometry.ts';
 
 export {
   chartThemes,

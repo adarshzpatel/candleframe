@@ -109,13 +109,45 @@ export interface FeedAdapter {
   readonly descriptor: FeedDescriptor;
   connect(emit: (event: FeedEvent) => void): FeedConnection;
 }
+export interface IndicatorOutput {
+  readonly id: string;
+  readonly name: string;
+  readonly color: readonly [number, number, number, number];
+  /** `histogram` draws bars from zero. Default `line`. */
+  readonly style?: 'line' | 'histogram';
+}
 export interface IndicatorPlugin {
   readonly id: string;
   readonly name: string;
   readonly color: readonly [number, number, number, number];
   /** Opt into a theme token; otherwise the explicit plugin color is preserved. */
   readonly themeColor?: 'indicator';
-  calculate(candles: readonly Candle[], previous: readonly number[], changedIndex: number): number[];
+  /** `price` overlays the candles (default). `separate` gets its own pane below. */
+  readonly pane?: 'price' | 'separate';
+  /** Fixed pane range, such as RSI's 0 to 100. Otherwise the pane fits the visible values. */
+  readonly range?: { readonly min: number; readonly max: number };
+  /** Guide values drawn across the pane, such as RSI 30 and 70. */
+  readonly levels?: readonly number[];
+  /** Registry kind and inputs, set by built-ins and `IndicatorDefinition.create`. */
+  readonly kind?: string;
+  readonly inputs?: Readonly<Record<string, number>>;
+  /** Several series. With `outputs`, the runtime calls `calculateOutputs` instead of `calculate`. */
+  readonly outputs?: readonly IndicatorOutput[];
+  /** One value per candle; NaN means warmup or missing. Recompute from `changedIndex`. */
+  calculate?(candles: readonly Candle[], previous: readonly number[], changedIndex: number): number[];
+  /** One array per output, each with one value per candle. */
+  calculateOutputs?(
+    candles: readonly Candle[],
+    previous: readonly (readonly number[])[],
+    changedIndex: number,
+  ): number[][];
+}
+/** An indicator saved in a layout. The runtime resolves `kind` through its indicator registry. */
+export interface DocumentIndicator {
+  id: string;
+  kind: string;
+  inputs: Record<string, number>;
+  visible: boolean;
 }
 export type Layer = 'heatmap' | 'candles' | 'volume' | 'indicator';
 export interface Anchor {
@@ -127,9 +159,11 @@ export interface TrendLine {
   start: Anchor;
   end: Anchor;
 }
-export type PriceScale = { mode: 'auto' } | { mode: 'manual'; minPrice: number; maxPrice: number };
+/** `log: true` spaces prices by ratio, so equal percentage moves have equal height. */
+export type PriceScale =
+  { mode: 'auto'; log?: boolean } | { mode: 'manual'; minPrice: number; maxPrice: number; log?: boolean };
 export interface ChartDocument {
-  version: 3;
+  version: 4;
   feedId: string;
   symbol: string;
   interval: Interval;
@@ -137,6 +171,8 @@ export interface ChartDocument {
   intensity: number;
   viewport: { fromMs: number; toMs: number; following: boolean };
   priceScale: PriceScale;
+  /** Active indicators, in pane order. Version 3 layouts migrate to the host's defaults. */
+  indicators: DocumentIndicator[];
   drawings: Drawing[];
 }
 export type ChartCommand =
@@ -146,6 +182,10 @@ export type ChartCommand =
   | { type: 'viewport.reset' }
   | { type: 'priceScale.set'; minPrice: number; maxPrice: number }
   | { type: 'priceScale.reset' }
+  | { type: 'priceScale.log'; enabled: boolean }
+  | { type: 'indicator.add'; indicator: { id?: string; kind: string; inputs?: Record<string, number> } }
+  | { type: 'indicator.update'; id: string; inputs?: Record<string, number>; visible?: boolean }
+  | { type: 'indicator.remove'; id: string }
   | { type: 'drawing.add'; drawing: DrawingInput | TrendLine }
   | { type: 'drawing.update'; id: string; patch: DrawingPatch }
   | { type: 'drawing.remove'; id: string }
@@ -162,6 +202,13 @@ export interface BookView {
   bids: readonly Level[];
   asks: readonly Level[];
 }
+export interface ActiveIndicator {
+  plugin: IndicatorPlugin;
+  /** The first output, one value per candle. */
+  values: readonly number[];
+  series: readonly (readonly number[])[];
+  visible: boolean;
+}
 export interface RuntimeState {
   feed: FeedDescriptor;
   generation: number;
@@ -169,12 +216,15 @@ export interface RuntimeState {
   candles: readonly Candle[];
   document: Readonly<ChartDocument>;
   book: BookView;
-  indicators: readonly { plugin: IndicatorPlugin; values: readonly number[] }[];
+  /** Active indicators with computed values. `series` holds one array per output. */
+  indicators: readonly ActiveIndicator[];
   paused: boolean;
   dataRevision: number;
   documentRevision: number;
   history: { canUndo: boolean; canRedo: boolean };
   olderHistory: OlderHistory;
+  /** Saved indicator kinds that this runtime cannot compute. They stay in the document. */
+  unsupportedIndicatorKinds: readonly string[];
   unsupportedDrawingTypes: readonly string[];
   error: string | null;
 }

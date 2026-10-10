@@ -640,6 +640,8 @@ test('renderer applies series tokens and heatmap uniforms while preserving expli
         {
           plugin: { id: 'custom', name: 'Custom', color: [1, 0, 1, 1] as const, calculate: () => [] },
           values: frame.state.candles.map(() => 102),
+          series: [frame.state.candles.map(() => 102)],
+          visible: true,
         },
       ],
     };

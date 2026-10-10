@@ -467,7 +467,7 @@ test('legacy layouts migrate only for the original market and retain the disable
   runtime.start();
   const { feedId: _id, interval: _interval, ...document } = runtime.exportDocument();
   runtime.restoreDocument({ ...document, version: 1, layers: { ...document.layers, heatmap: true } });
-  assert.equal(runtime.exportDocument().version, 3);
+  assert.equal(runtime.exportDocument().version, 4);
   assert.equal(runtime.exportDocument().layers.heatmap, false);
   runtime.dispose();
 });

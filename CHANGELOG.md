@@ -4,6 +4,11 @@ All notable changes are listed here. The project follows [Semantic Versioning](h
 
 ## Unreleased
 
+- Indicator panes: RSI and MACD draw in their own panes with guide levels. The crosshair spans every pane.
+- New indicators: EMA, Bollinger Bands, RSI and MACD, alongside SMA. Plugins can return several outputs and draw histograms.
+- Indicators are saved in layouts (document version 4) and change through `indicator.add`, `indicator.update` and `indicator.remove`, all undoable. Hosts register more kinds with `indicatorDefinitions`.
+- Log price scale with `priceScale.log`. The widget has Log and indicator controls.
+- `IndicatorPlugin.calculate` is now optional for plugins that declare `outputs` and implement `calculateOutputs`.
 - `createStaticFeed` charts an array of candles, infers precision, pages older bars and accepts `update()` calls from the host.
 - History paging: feeds may implement `loadOlder(beforeMs)` and emit `candles.prepend`. The chart requests more when you pan near the first bar. Binance and the simulation support it.
 - Retention is configurable with `maxCandles` (default 10,000, up from a fixed 2,000).
