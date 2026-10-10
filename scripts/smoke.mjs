@@ -75,6 +75,25 @@ async function run(name, launch, contextOptions = {}) {
     const panes = await page.evaluate(() => window.openchart.inspect().indicators.map(i => i.kind));
     if (!panes.includes('rsi') || !panes.includes('macd')) problems.push(`indicators missing: ${panes}`);
     await shot('2-panes-log');
+    // The indicator dialog keeps keyboard focus inside until Escape, then returns it.
+    if (!contextOptions.hasTouch) {
+      const host = page.locator('#widget-host > *').first();
+      await host.locator('#indicator-menu').click();
+      await sleep(150);
+      for (let i = 0; i < 25; i++) await page.keyboard.press('Tab');
+      const inside = await page.evaluate(() => {
+        const shadow = document.querySelector('#widget-host > *').shadowRoot;
+        return shadow.querySelector('.widget-dialog').contains(shadow.activeElement);
+      });
+      if (!inside) problems.push('focus left the indicator dialog');
+      await shot('2b-indicator-dialog');
+      await page.keyboard.press('Escape');
+      const closed = await page.evaluate(() => {
+        const shadow = document.querySelector('#widget-host > *').shadowRoot;
+        return shadow.querySelector('.widget-dialog').hidden && shadow.activeElement?.id === 'indicator-menu';
+      });
+      if (!closed) problems.push('Escape did not close the dialog and restore focus');
+    }
     // Drag the plot to pan, then let paging and motion settle.
     const box = await page.locator('#widget-host').boundingBox();
     if (contextOptions.hasTouch) {

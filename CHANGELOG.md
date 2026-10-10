@@ -4,6 +4,10 @@ All notable changes are listed here. The project follows [Semantic Versioning](h
 
 ## Unreleased
 
+- Subpath exports: `openchart/core` (no DOM), `openchart/chart`, `openchart/widget` and `openchart/binance`. `scripts/check-package.mjs` verifies each imports in plain Node and that the tarball carries the fonts.
+- Widget `fonts` option: bundled (default), a self-hosted URL, or `false` for system fonts.
+- The widget dialog keeps keyboard focus inside and returns it to the opener on close, including in Safari.
+- Style modules declare `string` types; their declarations no longer include the CSS (14 KB to 171 bytes).
 - Zoomed-out views merge bars that share a two-pixel column. Frame CPU time drops from 2.1 ms to 0.6 ms at 2,200 visible bars.
 - `npm run bench` measures tick and frame cost. `npm run smoke` runs the demo in Chromium, Firefox and WebKit with touch emulation; CI runs it.
 - `execute` accepts a batch: atomic, one undo step, one revision. It returns `{ documentRevision, created }`.

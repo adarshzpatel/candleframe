@@ -1,6 +1,7 @@
 import { ChartError } from './errors.ts';
 import { createTimeFormats } from './time-format.ts';
 import { loadWidgetFonts } from './widget-fonts.ts';
+import type { WidgetFontSource } from './widget-fonts.ts';
 import { chartThemes, resolveTheme } from './themes.ts';
 import type { ThemeInput } from './themes.ts';
 import { applyWidgetTheme } from './widget-theme.ts';
@@ -30,6 +31,11 @@ export interface ChartWidgetOptions extends ChartOptions {
   orderBook?: boolean;
   /** Enables browser persistence in this namespace. Omit for instance-local session saves. */
   storageKey?: string;
+  /**
+   * Widget fonts: `'bundled'` (default) loads them next to the module, a URL points at
+   * self-hosted copies of `dist/lib/fonts/`, and `false` uses system fonts.
+   */
+  fonts?: WidgetFontSource;
   /** Optional application storage. Requires a storageKey namespace. */
   layoutStore?: WidgetLayoutStore;
 }
@@ -52,7 +58,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     }
   }
   applyWidgetTheme(mount, initialTheme);
-  loadWidgetFonts(doc);
+  loadWidgetFonts(doc, options.fonts);
   mount.className = 'openchart-widget';
   Object.assign(mount.style, { width: '100%', height: '100%', minWidth: '0', minHeight: '0' });
   const shadow = mount.attachShadow({ mode: 'open' });
@@ -70,7 +76,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
   <section class="chart-panel" aria-label="Price chart"><div class="chart-toolbar"><div class="market-summary"><span class="market-name" id="market-name"></span><span class="market-kind" id="market-kind"></span><span class="price-heading">Last price</span><strong id="price" class="market-price">—</strong></div><div class="ohlc-values"><span>O <b id="open-value">—</b></span><span>H <b id="high-value">—</b></span><span>L <b id="low-value">—</b></span><span>C <b id="close-value">—</b></span><span class="hover-time" id="hover-time">Latest candle</span></div><div class="chart-legend"><span class="legend-indicator"><i></i><span id="indicator-name"></span></span><span class="legend-volume">Volume</span></div></div><div class="connection-notice" hidden><span id="connection-message"></span><button id="retry">Reconnect</button></div><div id="chart-host"></div></section>
   <aside class="book-panel" aria-label="Live order book" hidden><div class="panel-title"><h2>Order book</h2><div><span id="book-state" class="book-badge"></span><button id="book-close" class="icon-button" aria-label="Close order book">${icon('close', 16)}</button></div></div><div class="book-subtitle"><span id="book-coverage"></span><span id="book-tick"></span></div><div class="book-columns"><span>Price <small id="book-quote"></small></span><span>Size <small id="book-base"></small></span><span>Total</span></div><div id="asks" class="book-side asks"></div><div class="spread-row"><strong id="book-price">—</strong><span>Spread <b id="spread">—</b></span></div><div id="bids" class="book-side bids"></div><p class="book-note" id="book-note"></p></aside></div>
   <footer class="widget-footer"><div class="range-buttons" aria-label="Visible candle count"><button data-bars="60">60</button><button data-bars="180">180</button><button data-bars="360">360</button><button data-bars="all">All</button></div><span class="footer-divider"></span><select id="source" class="source-picker" aria-label="Data source"></select><span class="feed-state" id="feed-state"></span><button class="follow-button" id="follow">Following live</button><button class="autoscale-button" id="autoscale" aria-pressed="true" aria-label="Autoscale price" data-tooltip="Fit price to visible candles">Auto</button><button class="autoscale-button" id="log-scale" aria-pressed="false" aria-label="Logarithmic price scale" data-tooltip="Log scale: equal heights for equal percentage moves">Log</button><button id="inspect" class="icon-button" aria-label="Inspect state" data-tooltip="Inspect chart state">${icon('code', 16)}</button><span class="wordmark">OpenChart<span> / </span></span></footer>
-  <div class="widget-tooltip" role="tooltip" hidden></div><div class="widget-toast" role="status" hidden></div><section class="widget-dialog" role="dialog" aria-label="Chart panel" hidden><header class="dialog-heading"><h2></h2><button class="icon-button" aria-label="Close dialog">${icon('close')}</button></header><div class="dialog-content"></div></section>`;
+  <div class="widget-tooltip" role="tooltip" hidden></div><div class="widget-toast" role="status" hidden></div><section class="widget-dialog" role="dialog" aria-modal="true" aria-label="Chart panel" hidden><header class="dialog-heading"><h2></h2><button class="icon-button" aria-label="Close dialog">${icon('close')}</button></header><div class="dialog-content"></div></section>`;
   shadow.append(style, root);
   container.append(mount);
   const $ = <T extends HTMLElement = HTMLElement>(selector: string) => root.querySelector<T>(selector)!;
@@ -125,7 +131,8 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
       themeEditor.dispose();
       themeEditor = undefined;
     }
-    if (popup.hidden) popupFocus = shadow.activeElement as HTMLElement | null;
+    // Safari does not focus clicked buttons, so fall back to the button that opened the panel.
+    if (popup.hidden) popupFocus = (shadow.activeElement as HTMLElement | null) ?? lastInvoker;
     popup.classList.toggle('theme-dialog', title === 'Appearance');
     popup.querySelector('h2')!.textContent = title;
     popup.setAttribute('aria-label', title);
@@ -140,12 +147,35 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     if (popup.contains(shadow.activeElement)) popupFocus?.focus({ preventScroll: true });
   }
   popup.querySelector('button')!.addEventListener('click', closePanel, { signal: abort.signal });
+  let lastInvoker: HTMLElement | null = null;
+  root.addEventListener(
+    'click',
+    event => {
+      const button = (event.target as Element | null)?.closest?.('button');
+      if (button && !popup.contains(button)) lastInvoker = button;
+    },
+    { capture: true, signal: abort.signal },
+  );
   root.addEventListener(
     'keydown',
     event => {
       if (event.key === 'Escape' && !popup.hidden) {
         event.stopPropagation();
         closePanel();
+      }
+      // The panel covers the chart, so keyboard focus stays inside it until Escape or Close.
+      if (event.key === 'Tab' && !popup.hidden && popup.contains(shadow.activeElement)) {
+        const focusable = [
+          ...popup.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+          ),
+        ].filter(element => !element.closest('[hidden]'));
+        if (!focusable.length) return;
+        // Move focus here rather than relying on the browser: macOS WebKit skips buttons on Tab.
+        event.preventDefault();
+        const index = focusable.indexOf(shadow.activeElement as HTMLElement);
+        const step = event.shiftKey ? -1 : 1;
+        focusable[(index + step + focusable.length) % focusable.length].focus();
       }
     },
     { signal: abort.signal },

@@ -10,6 +10,7 @@ npm run build         # Type check, demo build and library build
 npm run format        # Prettier
 npm run smoke         # Demo in Chromium, Firefox and WebKit; screenshots in artifacts/smoke
 npm run bench         # Main-thread cost of ticks and frames
+npm run check:package # After build: exports, Node imports and tarball contents
 ```
 
 CI runs `format:check`, `test`, `build`, the headless example, `npm pack --dry-run` and the cross-browser smoke test. Run the same commands before opening a pull request.
