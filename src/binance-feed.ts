@@ -57,9 +57,11 @@ function integer(value: unknown): number {
   if (!Number.isSafeInteger(n) || n < 0) throw new Error('Invalid market-data sequence or time');
   return n;
 }
+/** OHLCV, then taker buy volume when present, in Binance order. */
 function candle(values: readonly unknown[], intervalMs: number): Candle {
   if (values.length < 6) throw new Error('Incomplete candle');
-  const [timeMs, open, high, low, close, volume] = values.map(numeric);
+  const [timeMs, open, high, low, close, volume] = values.slice(0, 6).map(numeric);
+  const buyVolume = values[6] === undefined ? undefined : numeric(values[6]);
   if (
     !Number.isSafeInteger(timeMs) ||
     timeMs < 0 ||
@@ -67,17 +69,21 @@ function candle(values: readonly unknown[], intervalMs: number): Candle {
     low <= 0 ||
     volume < 0 ||
     high < Math.max(open, close) ||
-    low > Math.min(open, close)
+    low > Math.min(open, close) ||
+    (buyVolume !== undefined && (buyVolume < 0 || buyVolume > volume))
   )
     throw new Error('Invalid candle');
-  return { timeMs, open, high, low, close, volume };
+  return buyVolume === undefined
+    ? { timeMs, open, high, low, close, volume }
+    : { timeMs, open, high, low, close, volume, buyVolume };
 }
 function history(value: unknown, intervalMs: number): Candle[] {
   if (!Array.isArray(value) || !value.length || value.length > 1000)
     throw new Error('Invalid candle history');
   const bars = value.map(row => {
     if (!Array.isArray(row)) throw new Error('Invalid candle history row');
-    return candle(row.slice(0, 6), intervalMs);
+    // Kline rows: open time, OHLC, volume, close time, quote volume, trades, taker buy volume.
+    return candle(row.length > 9 ? [...row.slice(0, 6), row[9]] : row.slice(0, 6), intervalMs);
   });
   if (bars.some((bar, i) => i > 0 && bar.timeMs <= bars[i - 1].timeMs))
     throw new Error('Unordered candle history');
@@ -359,7 +365,7 @@ export function createBinanceFeed(
             const k = object(data.k);
             if (data.e !== 'kline' || data.s !== wireSymbol || k.s !== wireSymbol || k.i !== interval)
               throw new Error('Unexpected kline market or interval');
-            const bar = candle([k.t, k.o, k.h, k.l, k.c, k.v], intervalMs);
+            const bar = candle([k.t, k.o, k.h, k.l, k.c, k.v, k.V], intervalMs);
             const eventTime = integer(data.E);
             if (integer(k.T) !== bar.timeMs + intervalMs - 1 || eventTime < bar.timeMs)
               throw new Error('Invalid kline time');

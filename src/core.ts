@@ -22,7 +22,20 @@ export { createTimeScale } from './time-scale.ts';
 export type { TimeScale } from './time-scale.ts';
 export { createTimeFormats } from './time-format.ts';
 export type { TimeFormats } from './time-format.ts';
-export { sma, ema, rsi, macd, bollinger, builtInIndicators, IndicatorRegistry } from './indicators.ts';
+export {
+  sma,
+  ema,
+  rsi,
+  macd,
+  bollinger,
+  cvd,
+  volumeProfile,
+  priceDelta,
+  builtInIndicators,
+  IndicatorRegistry,
+} from './indicators.ts';
+export { buildProfile, profileStep } from './profiles.ts';
+export type { PriceProfile, ProfileRow } from './profiles.ts';
 export type { IndicatorDefinition, IndicatorInputSpec, SeriesIndicator } from './indicators.ts';
 export { OrderBook } from './order-book.ts';
 export { DrawingRegistry, builtInDrawingTools, DEFAULT_DRAWING_STYLE } from './drawing-tools.ts';

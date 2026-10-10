@@ -80,6 +80,14 @@ function validCandle(bar: Candle, intervalMs: number, gaps = false): boolean {
     (gaps || isAligned(bar.timeMs, intervalMs)) &&
     bar.low > 0 &&
     bar.volume >= 0 &&
+    (bar.buyVolume === undefined ||
+      (Number.isFinite(bar.buyVolume) && bar.buyVolume >= 0 && bar.buyVolume <= bar.volume * (1 + 1e-9))) &&
+    (bar.footprint === undefined || Array.isArray(bar.footprint)) &&
+    (bar.deltaRange === undefined ||
+      (Array.isArray(bar.deltaRange) &&
+        bar.deltaRange.length === 2 &&
+        bar.deltaRange.every(Number.isFinite) &&
+        bar.deltaRange[0] <= bar.deltaRange[1])) &&
     bar.high >= Math.max(bar.open, bar.close) &&
     bar.low <= Math.min(bar.open, bar.close)
   );
@@ -345,12 +353,13 @@ export class ChartRuntime {
         typeof plugin.id !== 'string' ||
         !(
           typeof plugin.calculate === 'function' ||
-          (plugin.outputs?.length && typeof plugin.calculateOutputs === 'function')
+          (plugin.outputs?.length && typeof plugin.calculateOutputs === 'function') ||
+          (plugin.pane === 'profile' && plugin.profile)
         )
       )
         throw new ChartError(
           'INVALID_INDICATOR',
-          'plugins need calculate, or outputs with calculateOutputs',
+          'plugins need calculate, outputs with calculateOutputs, or a profile',
           {
             details: { id: plugin?.id },
           },
@@ -435,6 +444,8 @@ export class ChartRuntime {
     previous: readonly (readonly number[])[],
     changed: number,
   ): number[][] {
+    // Profiles aggregate the visible bars when drawn; they keep no per-bar series.
+    if (plugin.pane === 'profile') return [];
     const series = plugin.outputs?.length
       ? plugin.calculateOutputs!(candles, previous, changed)
       : [plugin.calculate!(candles, previous[0] ?? [], changed)];
@@ -1177,7 +1188,9 @@ export class ChartRuntime {
       document: this.document,
       book: this.book.inspect(80),
       indicators: this.indicators.flatMap(({ entry, plugin, series }): ActiveIndicator[] =>
-        plugin && series.length ? [{ plugin, values: series[0], series, visible: entry.visible }] : [],
+        plugin && (series.length || plugin.pane === 'profile')
+          ? [{ plugin, values: series[0] ?? [], series, visible: entry.visible }]
+          : [],
       ),
       unsupportedIndicatorKinds: [
         ...new Set(this.indicators.filter(slot => !slot.plugin).map(slot => slot.entry.kind)),

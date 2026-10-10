@@ -5,7 +5,7 @@ await cp(new URL('../src/fonts/', import.meta.url), new URL('../dist/lib/fonts/'
 });
 // The demo's hashed fonts carry the same license notices.
 await mkdir(new URL('../dist/licenses/', import.meta.url), { recursive: true });
-for (const name of ['Hanken-Grotesk-OFL.txt', 'Newsreader-OFL.txt']) {
+for (const name of ['Inter-OFL.txt']) {
   await cp(
     new URL(`../src/fonts/${name}`, import.meta.url),
     new URL(`../dist/licenses/${name}`, import.meta.url),

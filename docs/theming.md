@@ -27,13 +27,17 @@ const portable = JSON.stringify(chart.getTheme());
 chart.setTheme(JSON.parse(portable));
 ```
 
+## Built-in palettes
+
+The five presets are authored in OKLCH in `scripts/palette.mjs`, which writes `src/theme-palettes.ts`. Each theme is a neutral ramp on one hue plus semantic colors. Lightness sets every contrast relationship. Vivid colors use a share of the sRGB chroma limit for their lightness and hue, so different hues look equally saturated. Run `npm run palette:check` after editing. It measures every pair against APCA (Lc) and WCAG 2: body text Lc 75, labels Lc 60, chart graphics and indicator lines Lc 45 and 3:1, and an Lc gap of at least 8 between up and down candles. The six indicator slots skip the accent's hue, and drawings use the accent.
+
 Palette colors require six-digit hex. Visual color tokens also accept references such as `@accent`; references survive serialization. Changing the palette updates linked colors. A concrete hex override stays independent of palette changes. An empty dash array means a solid line.
 
 The version-1 format rejects unknown tokens, unsupported versions, malformed font strings and values outside declared bounds. Validation finishes before applying a theme. Older objects containing `id`, `name`, `mode` and `palette` acquire the new defaults. Partial groups merge by token, without retaining caller-owned arrays or objects.
 
 The widget sets variables on its own shadow host, so separate widgets can use different themes. Both canvas layers and WebGL use that same resolved theme. Geometry changes update rendering and pointer hit regions together. CSS-only host overrides remain available for compatibility, but do not affect canvas pixels or exported images.
 
-Saved drawings retain their authored style. Drawing defaults follow the theme only while unchanged by the user. Indicators with explicit colors retain them; indicators can instead opt into a semantic theme color. A theme cannot change a market, scale mode, data range or plugin behavior. Custom fonts must be available to the document; the bundled fonts have system fallbacks.
+Saved drawings retain their authored style. Drawing defaults follow the theme only while unchanged by the user. Indicators with explicit colors retain them; indicators can instead opt into a theme slot with `themeColor: 'indicator'` to `'indicator6'`, on the plugin or on each output. A theme cannot change a market, scale mode, data range or plugin behavior. Custom fonts must be available to the document; the bundled fonts have system fallbacks.
 
 The widget stores the active theme separately from market layouts when `storageKey` is supplied. Appearance → Customize theme includes token search, reset controls and JSON import/export. The JSON editor applies the same validation as the host API. There is no requirement to use this UI: hosts and agents can work entirely through the exported functions and schema.
 

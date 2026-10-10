@@ -2,7 +2,14 @@ import { ChartError } from './errors.ts';
 import { createTimeFormats } from './time-format.ts';
 import { loadWidgetFonts } from './widget-fonts.ts';
 import type { WidgetFontSource } from './widget-fonts.ts';
-import { chartThemes, resolveTheme } from './themes.ts';
+import {
+  chartThemes,
+  colorRGBA,
+  compactTheme,
+  indicatorColor,
+  resolveTheme,
+  restoreTheme,
+} from './themes.ts';
 import type { ThemeInput } from './themes.ts';
 import { applyWidgetTheme } from './widget-theme.ts';
 import { createThemeEditor } from './theme-editor.ts';
@@ -52,7 +59,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
   if (!options.theme && themeKey) {
     try {
       const saved = doc.defaultView?.localStorage.getItem(themeKey);
-      if (saved) initialTheme = resolveTheme(JSON.parse(saved));
+      if (saved) initialTheme = restoreTheme(JSON.parse(saved));
     } catch {
       /* Invalid or unavailable storage leaves the default theme intact. */
     }
@@ -73,7 +80,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     <div class="widget-actions"><button id="book-toggle" aria-label="Toggle order book" aria-pressed="false" data-tooltip="Order book">${icon('book')}<span>Order book</span></button><span class="toolbar-divider"></span><button id="pause" class="icon-button" aria-label="Pause feed" data-tooltip="Pause feed">${icon('pause')}</button><button id="save" class="save-button" aria-label="Save layout" data-tooltip="Save layout">${icon('save', 18)}<span>Save</span></button><button id="restore" class="icon-button" aria-label="Restore layout" data-tooltip="Restore layout">${icon('restore')}</button><button id="theme" class="icon-button" aria-label="Chart appearance" data-tooltip="Appearance">${icon('palette')}</button><button id="export" class="icon-button" aria-label="Export PNG" data-tooltip="Export image">${icon('camera')}</button></div>
   </header>
   <div class="widget-body"><aside class="tool-rail" aria-label="Drawing tools"><button id="cursor" class="rail-button active" aria-label="Cursor tool" data-tooltip="Cursor">${icon('cursor')}</button><span class="rail-separator"></span><button id="trend" class="rail-button">${icon('trendline')}</button><span class="rail-separator"></span><button id="undo" class="rail-button" aria-label="Undo last edit" data-tooltip="Undo · ⌘ / Ctrl Z">${icon('undo')}</button><button id="clear" class="rail-button" aria-label="Clear drawings" data-tooltip="Clear drawings">${icon('trash')}</button><button id="fit" class="rail-button" aria-label="Fit chart to live data" data-tooltip="Fit chart">${icon('fit')}</button><button id="help" class="rail-button rail-bottom" aria-label="Chart controls and shortcuts" data-tooltip="Help & shortcuts">${icon('help')}</button></aside>
-  <section class="chart-panel" aria-label="Price chart"><div class="chart-toolbar"><div class="market-summary"><span class="market-name" id="market-name"></span><span class="market-kind" id="market-kind"></span><span class="price-heading">Last price</span><strong id="price" class="market-price">—</strong></div><div class="ohlc-values"><span>O <b id="open-value">—</b></span><span>H <b id="high-value">—</b></span><span>L <b id="low-value">—</b></span><span>C <b id="close-value">—</b></span><span class="hover-time" id="hover-time">Latest candle</span></div><div class="chart-legend"><span class="legend-indicator"><i></i><span id="indicator-name"></span></span><span class="legend-volume">Volume</span></div></div><div class="connection-notice" hidden><span id="connection-message"></span><button id="retry">Reconnect</button></div><div id="chart-host"></div></section>
+  <section class="chart-panel" aria-label="Price chart"><div class="chart-toolbar"><div class="market-summary"><span class="market-name" id="market-name"></span><span class="market-kind" id="market-kind"></span><span class="price-heading">Last price</span><strong id="price" class="market-price">—</strong></div><div class="ohlc-values"><span>O <b id="open-value">—</b></span><span>H <b id="high-value">—</b></span><span>L <b id="low-value">—</b></span><span>C <b id="close-value">—</b></span><span class="hover-time" id="hover-time">Latest candle</span></div><div class="chart-legend"><span class="legend-indicator" id="legend-indicators"></span><span class="legend-volume">Volume</span></div></div><div class="connection-notice" hidden><span id="connection-message"></span><button id="retry">Reconnect</button></div><div id="chart-host"></div></section>
   <aside class="book-panel" aria-label="Live order book" hidden><div class="panel-title"><h2>Order book</h2><div><span id="book-state" class="book-badge"></span><button id="book-close" class="icon-button" aria-label="Close order book">${icon('close', 16)}</button></div></div><div class="book-subtitle"><span id="book-coverage"></span><span id="book-tick"></span></div><div class="book-columns"><span>Price <small id="book-quote"></small></span><span>Size <small id="book-base"></small></span><span>Total</span></div><div id="asks" class="book-side asks"></div><div class="spread-row"><strong id="book-price">—</strong><span>Spread <b id="spread">—</b></span></div><div id="bids" class="book-side bids"></div><p class="book-note" id="book-note"></p></aside></div>
   <footer class="widget-footer"><div class="range-buttons" aria-label="Visible candle count"><button data-bars="60">60</button><button data-bars="180">180</button><button data-bars="360">360</button><button data-bars="all">All</button></div><span class="footer-divider"></span><select id="source" class="source-picker" aria-label="Data source"></select><span class="feed-state" id="feed-state"></span><button class="follow-button" id="follow">Following live</button><button class="autoscale-button" id="autoscale" aria-pressed="true" aria-label="Autoscale price" data-tooltip="Fit price to visible candles">Auto</button><button class="autoscale-button" id="log-scale" aria-pressed="false" aria-label="Logarithmic price scale" data-tooltip="Log scale: equal heights for equal percentage moves">Log</button><button id="inspect" class="icon-button" aria-label="Inspect state" data-tooltip="Inspect chart state">${icon('code', 16)}</button><span class="wordmark">CandleFrame<span> / </span></span></footer>
   <div class="widget-tooltip" role="tooltip" hidden></div><div class="widget-toast" role="status" hidden></div><section class="widget-dialog" role="dialog" aria-modal="true" aria-label="Chart panel" hidden><header class="dialog-heading"><h2></h2><button class="icon-button" aria-label="Close dialog">${icon('close')}</button></header><div class="dialog-content"></div></section>`;
@@ -227,7 +234,8 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
           );
         if (themeKey) {
           try {
-            doc.defaultView?.localStorage.setItem(themeKey, JSON.stringify(theme));
+            // Only the differences, so later default changes still reach this widget.
+            doc.defaultView?.localStorage.setItem(themeKey, JSON.stringify(compactTheme(theme)));
           } catch {
             /* Theme changes still work when browser storage is unavailable. */
           }
@@ -417,7 +425,28 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
         $('#autoscale').setAttribute('aria-pressed', autoscale);
       const overlays = state.indicators.filter(i => i.visible && i.plugin.pane !== 'separate');
       $('.legend-indicator').hidden = !state.document.layers.indicator || !overlays.length;
-      set('indicator-name', overlays.map(i => i.plugin.name).join(' · '));
+      // One swatch per overlay, in the color its series is drawn with.
+      const theme = chart.getTheme();
+      const legend = overlays
+        .map(({ plugin }) => {
+          const [r, g, b] =
+            plugin.pane === 'profile' ? colorRGBA(theme.palette.textMuted) : indicatorColor(theme, plugin);
+          return `${plugin.name}|${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)}`;
+        })
+        .join(';');
+      const host = $('#legend-indicators');
+      if (host.dataset.items !== legend) {
+        host.dataset.items = legend;
+        host.replaceChildren(
+          ...overlays.map(({ plugin }, k) => {
+            const item = doc.createElement('span');
+            const swatch = doc.createElement('i');
+            swatch.style.background = `rgb(${legend.split(';')[k].split('|')[1]})`;
+            item.append(swatch, plugin.name);
+            return item;
+          }),
+        );
+      }
       const log = String(!!state.document.priceScale.log);
       if ($('#log-scale').getAttribute('aria-pressed') !== log)
         $('#log-scale').setAttribute('aria-pressed', log);

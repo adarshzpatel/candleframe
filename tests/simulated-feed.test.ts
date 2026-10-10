@@ -47,7 +47,14 @@ test('simulated intervals aggregate the same minute history without enabling hea
         child => child.timeMs >= bar.timeMs && child.timeMs < bar.timeMs + 300_000,
       );
       assert.equal(children.length, 5);
-      assert.deepEqual(bar, {
+      const { buyVolume, footprint, deltaRange, ...ohlcv } = bar;
+      // Order flow splits the same volume: buckets sum to it and buyers take part of it.
+      const flow = footprint!.reduce((sum, [, buy, sell]) => sum + buy + sell, 0);
+      assert.ok(Math.abs(flow - bar.volume) < 1e-6 * Math.max(1, bar.volume));
+      assert.ok(buyVolume! > 0 && buyVolume! < bar.volume);
+      assert.ok(deltaRange![0] <= 0 && deltaRange![1] >= 0);
+      assert.ok(footprint!.every((level, i) => !i || level[0] > footprint![i - 1][0]));
+      assert.deepEqual(ohlcv, {
         timeMs: children[0].timeMs,
         open: children[0].open,
         high: Math.max(...children.map(child => child.high)),
@@ -131,4 +138,46 @@ test('a dropped depth sequence leaves candles streaming and repeated recovery re
   assert.ok(book.inspect().sequence > lastValidSequence);
   t.mock.timers.tick(150);
   assert.equal(book.inspect().status, 'live');
+});
+
+test('trade mode prints irregular, seeded trades in real time and keeps order flow consistent', t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const run = () => {
+    const events: FeedEvent[] = [];
+    const connection = createSimulatedFeed({ seed: 9, interval: '1m', trades: true }).connect(event =>
+      events.push(event),
+    );
+    t.after(() => connection.dispose());
+    const history = events.find(event => event.type === 'candles.history')!;
+    const startMs = history.candles.at(-1)!.timeMs;
+    const perSecond: number[] = [];
+    for (let second = 0; second < 90; second++) {
+      const before = events.filter(event => event.type === 'candle').length;
+      for (let step = 0; step < 20; step++) t.mock.timers.tick(50);
+      perSecond.push(events.filter(event => event.type === 'candle').length - before);
+    }
+    connection.dispose();
+    return { events, startMs, perSecond };
+  };
+  const first = run(),
+    second = run();
+  const candles = first.events.filter(event => event.type === 'candle').map(event => event.candle);
+  assert.deepEqual(
+    candles,
+    second.events.filter(event => event.type === 'candle').map(event => event.candle),
+    'the same seed prints the same tape',
+  );
+  // 90 real seconds at 1x cross exactly one 1m boundary after the history.
+  assert.deepEqual([...new Set(candles.map(c => c.timeMs))], [first.startMs, first.startMs + 60_000]);
+  assert.ok(new Set(first.perSecond).size > 3, `arrivals vary from second to second: ${first.perSecond}`);
+  assert.ok(
+    first.events.some(event => event.type === 'depth.delta'),
+    'the book keeps updating alongside trades',
+  );
+  for (const bar of candles) {
+    const flow = bar.footprint!.reduce((sum, [, buy, sell]) => sum + buy + sell, 0);
+    assert.ok(Math.abs(flow - bar.volume) < 1e-6 * Math.max(1, bar.volume));
+    assert.ok(bar.high >= Math.max(bar.open, bar.close) && bar.low <= Math.min(bar.open, bar.close));
+  }
+  assert.throws(() => createSimulatedFeed({ trades: true, speed: 0 }), /speed/);
 });

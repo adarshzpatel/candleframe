@@ -1,10 +1,9 @@
 # Widget fonts
 
-These unmodified Latin WOFF2 files are distributed under the SIL Open Font License 1.1. Copyright and license notices are included alongside each font.
+This unmodified Latin WOFF2 file is distributed under the SIL Open Font License 1.1. The copyright and license notice is included alongside it.
 
-- Hanken Grotesk, variable normal weight for UI text. Source: [Google Fonts](https://fonts.google.com/specimen/Hanken+Grotesk), [downloaded WOFF2](https://fonts.gstatic.com/s/hankengrotesk/v12/ieVn2YZDLWuGJpnzaiwFXS9tYtpd59A.woff2). See `Hanken-Grotesk-OFL.txt`.
-- Newsreader, regular weight with optical size 32 for headings. Source: [Google Fonts](https://fonts.google.com/specimen/Newsreader), [downloaded WOFF2](https://fonts.gstatic.com/s/newsreader/v26/cY9VfjOCX1hbuyalUrK49dLafXjalZCsZBsgBgbNJYQ.woff2). See `Newsreader-OFL.txt`.
+- Inter, variable weight 100 to 900 with optical sizing, for UI text and headings. Source: [Google Fonts](https://fonts.google.com/specimen/Inter), [downloaded WOFF2](https://fonts.gstatic.com/s/inter/v20/UcCo3FwrK3iLTcviYwYZ8UA3.woff2). See `Inter-OFL.txt`.
 
-Retrieved on 2026-10-03. `widget-fonts.ts` registers the CSS families `CandleFrame UI` and `CandleFrame Editorial` once per document to avoid colliding with the host's font declarations. The font files themselves are unchanged. System fallbacks cover glyphs outside the Latin subsets.
+Retrieved on 2026-10-10. `widget-fonts.ts` registers the file under the CSS family `CandleFrame UI` once per document to avoid colliding with the host's font declarations. It also registers `CandleFrame Editorial`, `OpenChart UI` and `OpenChart Editorial` so themes saved under earlier names keep working. The font file itself is unchanged. System fallbacks cover glyphs outside the Latin subset.
 
-The production build copies this directory next to the plain JavaScript modules and copies the license notices into the demo output.
+The production build copies this directory next to the plain JavaScript modules and copies the license notice into the demo output.

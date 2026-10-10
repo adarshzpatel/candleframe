@@ -4,6 +4,20 @@ All notable changes are listed here. The project follows [Semantic Versioning](h
 
 ## Unreleased
 
+- Stronger up and down colors: about 95% of the sRGB chroma limit instead of 60% (Evergreen green C 0.113 to 0.169, red 0.115 to 0.184). Volume bars draw at 50% opacity instead of 35%. Every pair still passes `npm run palette:check`.
+- Price delta rows all grow from the price-axis edge, like the volume profile, with the sign shown by color. Labels that do not fit past a bar sit inside it.
+- The forming candle eases between ticks (`candleMotion`, default on, off under reduced motion). The last-price marker glides with it but always shows the exact last trade.
+- `createSimulatedFeed({ trades: true, speed })` simulates individual trades: Poisson arrivals with clustered intensity and bursts, heavy-tailed sizes with occasional blocks, persistent aggressor imbalance and tick-by-tick price impact. The demo uses it in real time as its default source again; Binance and the sample equity remain in the picker.
+- Redesigned built-in palettes in OKLCH. `scripts/palette.mjs` (`npm run palette`) generates them from lightness, chroma and hue, then checks every text, marker, candle, drawing and indicator pair against APCA and WCAG minimums (`npm run palette:check`). Up candles are lighter than down candles in every theme, so they stay distinguishable without color.
+- Palettes gain `indicator2` to `indicator6`. Built-in indicators draw in theme slots (`themeColor` on a plugin or output) instead of fixed colors, and the legend shows one swatch per overlay. Older saved themes borrow the new slots from a preset of their mode.
+- Drawings default to the theme accent, which no indicator series shares.
+- Saved appearances store only their differences from the preset (`compactTheme`), so later default changes still apply. `restoreTheme` reads older full saves and drops values that were defaults when they were saved.
+- Zoomed-in candles keep growing: bodies take 72% of the bar spacing (was 62%) up to 64 px (was 18 px), so wide zooms no longer leave large gaps.
+- Order-flow indicators. `cvd()` draws cumulative volume delta as candles. `volumeProfile()` and `priceDelta()` use a new `profile` pane: rows aggregated from the visible bars, drawn against the price axis, snapped to round prices so they hold still while panning. `buildProfile` exposes the math.
+- Candles accept optional `buyVolume` (taker buys), `footprint` (buy and sell volume per price bucket) and `deltaRange` (intrabar delta swing). The simulation generates all three; the Binance feed reads taker buy volume from klines.
+- `scripts/screenshot.mjs` saves desktop and phone screenshots of the demo, optionally offline and with indicators added.
+- The widget uses Inter for controls and headings, replacing Hanken Grotesk and Newsreader. Headings default to weight 600; title sizes drop to 18 and 16 px to match. One 71 KB font file replaces two (90 KB).
+- The demo fills the window with live Binance data. `?offline` switches to the seeded simulation and sample equity.
 - The market summary (name, OHLC, legend, last price) floats over the plot instead of taking its own row. Pointer input passes through to the chart; its buttons stay clickable.
 - Axis marks sit on round prices and calendar-aligned times and move when you pan, instead of fixed rows relabelled with new values. New days, months and years get bold labels. Grid lines follow the marks.
 - Renamed from OpenChart to CandleFrame. The package is `candleframe`, the widget host class is `candleframe-widget` and the chart root is `cf-chart`. Fonts still register under the old `OpenChart UI` and `OpenChart Editorial` names, so saved custom themes keep working.

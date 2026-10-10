@@ -1,7 +1,16 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { chartThemes, colorRGBA, createTheme, resolveTheme, themeColor } from '../src/themes.ts';
-import type { ThemeInput } from '../src/themes.ts';
+import {
+  chartThemes,
+  colorRGBA,
+  compactTheme,
+  createTheme,
+  resolveTheme,
+  restoreTheme,
+  themeColor,
+  themeTokenDefaults,
+} from '../src/themes.ts';
+import type { ThemeInput, ThemePalette } from '../src/themes.ts';
 
 function luminance(hex: string) {
   const values = colorRGBA(hex)
@@ -23,7 +32,18 @@ test('built-in palettes provide readable text on both chart and control surfaces
         assert.ok(contrast(text, surface) >= 4.5, `${theme.name} text ${text} on ${surface}`);
     }
     assert.ok(contrast(p.accent, p.accentText) >= 4.5, `${theme.name} accent button`);
-    assert.ok(contrast(p.indicator, p.background) >= 3, `${theme.name} indicator`);
+    for (const slot of [
+      'indicator',
+      'indicator2',
+      'indicator3',
+      'indicator4',
+      'indicator5',
+      'indicator6',
+    ] as const)
+      assert.ok(contrast(p[slot], p.background) >= 3, `${theme.name} ${slot}`);
+    for (const tone of [p.positive, p.negative, p.drawing])
+      assert.ok(contrast(tone, p.background) >= 3, `${theme.name} ${tone} graphics`);
+    assert.ok(contrast(p.markerText, p.markerBackground) >= 4.5, `${theme.name} price marker`);
   }
 });
 
@@ -100,5 +120,35 @@ test('custom themes are validated and owned without sharing caller state', () =>
     { ...custom, palette: { ...custom.palette, background: 'red' } },
   ])
     assert.throws(() => resolveTheme(invalid as ThemeInput));
-  assert.equal(chartThemes.paper.palette.accent, '#5657be');
+  assert.equal(chartThemes.paper.palette.accent, '#5050c5', 'the preset is untouched');
+});
+
+test('saved appearances keep only their changes, so later default changes still apply', () => {
+  const custom = createTheme('graphite', { chart: { candleMaxWidth: 30 }, typography: { uiSize: 13 } });
+  const saved = compactTheme(custom);
+  assert.deepEqual(saved.chart, { candleMaxWidth: 30 });
+  assert.deepEqual(saved.typography, { uiSize: 13 });
+  assert.equal(saved.layout, undefined);
+  assert.deepEqual(restoreTheme(JSON.parse(JSON.stringify(saved))), custom);
+});
+
+test('appearances saved in full drop values that were defaults at the time', () => {
+  const legacy = JSON.parse(JSON.stringify(resolveTheme('graphite')));
+  legacy.chart.candleMaxWidth = 18;
+  legacy.chart.candleBodyRatio = 0.62;
+  legacy.typography.titleSize = 23;
+  const restored = restoreTheme(legacy);
+  assert.equal(restored.chart.candleMaxWidth, themeTokenDefaults.chart.candleMaxWidth);
+  assert.equal(restored.chart.candleBodyRatio, themeTokenDefaults.chart.candleBodyRatio);
+  assert.equal(restored.typography.titleSize, themeTokenDefaults.typography.titleSize);
+  assert.deepEqual(restored, resolveTheme('graphite'));
+});
+
+test('themes saved before the extra indicator slots borrow them from a preset of their mode', () => {
+  const older = Object.fromEntries(
+    Object.entries(chartThemes.sand.palette).filter(([key]) => !/^indicator\d$/.test(key)),
+  ) as unknown as ThemePalette;
+  const restored = resolveTheme({ id: 'old', name: 'Old', mode: 'light', palette: older });
+  assert.equal(restored.palette.indicator2, chartThemes.paper.palette.indicator2);
+  assert.equal(restored.palette.indicator, older.indicator);
 });
