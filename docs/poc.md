@@ -122,7 +122,17 @@ Each separate pane takes about a fifth of the chart height; together they take a
 
 The demo submits one instanced market-geometry batch. Per-instance vertical clipping keeps candles and indicators within the price pane even at a manually enlarged scale. Drawings, text and crosshairs render through the clipped Canvas2D overlay; those and DOM controls are separate from the WebGL draw-call count. GPU recovery rebuilds resources from CPU state.
 
-A single `requestAnimationFrame` schedules redraws from data, input or resize. Crosshair movement paints a separate canvas without rebuilding market geometry or drawing scenes. Drawing previews repaint the annotation canvas without a WebGL upload. Market changes and animations redraw all layers. PNG capture forces a fresh WebGL frame before composing the three canvases. Hover callbacks fire only when the candle changes. The widget skips book formatting for document-only gesture updates and exposes render diagnostics on demand through Inspect. Device pixel ratio is capped at 2.5. Calculations and rendering run on the main thread. Workers, GPU timing, level-of-detail aggregation and columnar storage remain future work.
+A single `requestAnimationFrame` schedules redraws from data, input or resize. Crosshair movement paints a separate canvas without rebuilding market geometry or drawing scenes. Drawing previews repaint the annotation canvas without a WebGL upload. Market changes and animations redraw all layers. PNG capture forces a fresh WebGL frame before composing the three canvases. Hover callbacks fire only when the candle changes. The widget skips book formatting for document-only gesture updates and exposes render diagnostics on demand through Inspect. Device pixel ratio is capped at 2.5. Calculations and rendering run on the main thread. When bars are narrower than two pixels, the renderer merges the bars in each two-pixel column into one OHLC bar with summed volume, so zoomed-out views of long histories draw a few hundred candles.
+
+`npm run bench` measures the repeated main-thread work with a no-op WebGL context. On an Apple M3 Pro with 10,000 candles, SMA, EMA, Bollinger Bands, RSI and MACD, and 2,200 visible bars:
+
+| Work | Median |
+| --- | --- |
+| Apply a tick and recalculate indicators | 1.1 ms |
+| Fit autoscale and panes | 0.02 ms |
+| Build and upload a frame's instances | 0.56 ms (2.08 ms before bar merging) |
+
+That is under 2 ms of a 16.7 ms frame. Moving indicators to a worker would add a copy of every candle per tick, which costs more than the calculation, so the engine stays single-threaded until a measured workload needs otherwise. GPU timing and columnar storage remain future work.
 
 The CPU timer covers `renderer.render()`. It excludes geometry setup outside that method, text, UI work, GPU completion and presentation latency. It is not FPS or an end-to-end benchmark. No comparative performance result has been established.
 
@@ -130,7 +140,7 @@ The CPU timer covers `renderer.render()`. It excludes geometry setup outside tha
 
 `npm test` covers book validation and sequencing, heatmap bounds and gaps, indicator corrections, document revisions/migration, market cancellation, independent health, disabled heatmaps, simulator aggregation, live-adapter history reconciliation, retries and disposal. Axis regressions check scale direction, anchors, limits, persistence through ticks, independent resets and atomic rejection of invalid ranges. Motion tests use a deterministic clock to check refresh-rate independence, bounded deceleration, pause/reversal/cancellation, direct mode, wide-zoom and price limits, continuous scale retargeting and coordinate round-trips. `npm run build` type-checks and emits the demo and declarations. `npm run example:headless` exercises the command API without a browser.
 
-Browser verification is recorded in the [v0.2 design and verification notes](v0.2-design.md) and [v0.3 drawing guide](drawing-suite.md). Native file-save behavior, Safari/Firefox, touch hardware, screen readers, extended soak tests, leak profiles and comparative benchmarks remain unverified.
+Browser verification is recorded in the [v0.2 design and verification notes](v0.2-design.md) and [v0.3 drawing guide](drawing-suite.md). `npm run smoke` drives the demo in Chromium, Firefox and WebKit, plus iPhone and Pixel touch emulation. It adds indicator panes, switches to log scale, pans, opens the gapped sample equity market, saves screenshots to `artifacts/smoke/` and fails on page or console errors. CI runs it on Linux. Firefox does not launch on the macOS 27 development machine, so it is covered by CI only. Native file-save behavior, real touch hardware, screen readers, extended soak tests, leak profiles and comparative benchmarks remain unverified.
 
 ## Next slice
 

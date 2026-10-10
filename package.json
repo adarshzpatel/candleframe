@@ -42,10 +42,14 @@
     "preview": "vite preview --host 127.0.0.1",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepublishOnly": "npm test && npm run build"
+    "prepublishOnly": "npm test && npm run build",
+    "smoke": "node scripts/smoke.mjs",
+    "mcp": "node --experimental-strip-types examples/mcp-server.ts",
+    "bench": "node --experimental-strip-types scripts/bench.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "playwright": "^1.64.0",
     "prettier": "^3.9.9",
     "typescript": "~5.9.3",
     "vite": "8.3.2"
