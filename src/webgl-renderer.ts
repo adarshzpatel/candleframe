@@ -105,6 +105,8 @@ void main() {
 type Color = readonly [number, number, number, number];
 const UNCLIPPED: readonly [number, number] = [-1e9, 1e9];
 const INSTANCE_FLOATS = 11;
+/** Pixel width of a level-of-detail column. */
+const LOD_COLUMN = 2;
 const colorsFor = (theme: ResolvedChartTheme) => {
   const chart = theme.chart;
   const token = (value: string, opacity = 1) => colorRGBA(themeColor(theme, value), opacity);
@@ -341,7 +343,20 @@ export class WebGL2Renderer implements ChartRenderer {
       larger.set(this.vertices);
       this.vertices = larger;
     }
-    this.vertices.set([x1, y1, x2, y2, width, ...color, ...clipY], this.used);
+    // Written field by field: this runs for every instance of every frame.
+    const v = this.vertices,
+      i = this.used;
+    v[i] = x1;
+    v[i + 1] = y1;
+    v[i + 2] = x2;
+    v[i + 3] = y2;
+    v[i + 4] = width;
+    v[i + 5] = color[0];
+    v[i + 6] = color[1];
+    v[i + 7] = color[2];
+    v[i + 8] = color[3];
+    v[i + 9] = clipY[0];
+    v[i + 10] = clipY[1];
     this.used += INSTANCE_FLOATS;
   }
 
@@ -414,15 +429,42 @@ export class WebGL2Renderer implements ChartRenderer {
     const priceClip: readonly [number, number] = [g.top, g.top + g.plotHeight];
     const interval = state.feed.intervalMs;
     const range = visibleRange(bars, g.fromMs, g.toMs, interval, 1);
-    const visible = bars.slice(range.start, range.end);
-    const maxVolume = Math.max(1, ...visible.map(b => b.volume));
+    // Below two pixels per bar, merge the bars that share a two-pixel column into one
+    // OHLC bar. Zoomed-out views of long histories then draw a few hundred candles.
+    const merge = g.barSpacing < LOD_COLUMN;
+    const drawn: { x: number; open: number; high: number; low: number; close: number; volume: number }[] = [];
+    let column = NaN,
+      members = 0;
+    for (let i = range.start; i < range.end; i++) {
+      const bar = bars[i],
+        x = g.x(bar.timeMs + interval / 2),
+        key = Math.floor(x / LOD_COLUMN);
+      const last = drawn[drawn.length - 1];
+      if (merge && last && key === column) {
+        last.high = Math.max(last.high, bar.high);
+        last.low = Math.min(last.low, bar.low);
+        last.close = bar.close;
+        last.volume += bar.volume;
+        last.x = (last.x * members + x) / (members + 1);
+        members++;
+      } else {
+        drawn.push({ x, open: bar.open, high: bar.high, low: bar.low, close: bar.close, volume: bar.volume });
+        column = key;
+        members = 1;
+      }
+    }
+    let maxVolume = 1;
+    for (const bar of drawn) maxVolume = Math.max(maxVolume, bar.volume);
     const candleWidth = Math.max(
       1,
-      Math.min(appearance.candleMaxWidth, g.barSpacing * appearance.candleBodyRatio),
+      Math.min(
+        appearance.candleMaxWidth,
+        Math.max(g.barSpacing, merge ? LOD_COLUMN : 0) * appearance.candleBodyRatio,
+      ),
     );
-    for (const bar of visible) {
+    for (const bar of drawn) {
       const up = bar.close >= bar.open;
-      const x = g.x(bar.timeMs + interval / 2),
+      const x = bar.x,
         color = up ? colors.up : colors.down;
       if (state.document.layers.candles) {
         this.line(

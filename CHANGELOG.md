@@ -4,6 +4,8 @@ All notable changes are listed here. The project follows [Semantic Versioning](h
 
 ## Unreleased
 
+- Zoomed-out views merge bars that share a two-pixel column. Frame CPU time drops from 2.1 ms to 0.6 ms at 2,200 visible bars.
+- `npm run bench` measures tick and frame cost. `npm run smoke` runs the demo in Chromium, Firefox and WebKit with touch emulation; CI runs it.
 - `execute` accepts a batch: atomic, one undo step, one revision. It returns `{ documentRevision, created }`.
 - `preview(commands)` dry-runs a batch. `idempotencyKey` makes retries safe. `query()` returns candles and aligned indicator values for a range.
 - `chartCommandSchema` and `chartCommandBatchSchema` describe every command as JSON Schema. `inspect()` lists available commands and indicator kinds.

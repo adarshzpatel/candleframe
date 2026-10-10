@@ -8,9 +8,11 @@ npm run dev           # Demo at the printed URL
 npm test              # Unit tests, no browser needed
 npm run build         # Type check, demo build and library build
 npm run format        # Prettier
+npm run smoke         # Demo in Chromium, Firefox and WebKit; screenshots in artifacts/smoke
+npm run bench         # Main-thread cost of ticks and frames
 ```
 
-CI runs `format:check`, `test`, `build`, the headless example and `npm pack --dry-run`. Run the same commands before opening a pull request.
+CI runs `format:check`, `test`, `build`, the headless example, `npm pack --dry-run` and the cross-browser smoke test. Run the same commands before opening a pull request.
 
 ## Where things live
 
