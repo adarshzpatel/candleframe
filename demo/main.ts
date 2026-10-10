@@ -3,32 +3,33 @@ import {
   createSimulatedFeed,
   createBinanceFeed,
   createTheme,
-  resolveTheme,
+  restoreTheme,
   sma,
 } from '../src/index.ts';
 import type { ResolvedChartTheme, WidgetMarketSource } from '../src/index.ts';
 import './style.css';
 import { sampleEquityFeed } from './sample-equity.ts';
 
-document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-  <header class="demo-heading"><a class="demo-brand" href="#" aria-label="CandleFrame home"><svg viewBox="0 0 28 28" width="26" height="26" fill="none" aria-hidden="true"><path d="M3 3h8v8H3zM17 3h8v8h-8zM3 17h8v8H3z" stroke="currentColor" stroke-width="1.3"/><path d="M17 17h8v8h-8z" fill="currentColor"/></svg>CandleFrame<span class="demo-version">LAB / 03</span></a><nav><span class="demo-caption">An open canvas for the markets.</span><a href="/examples/embed.html">Integration example <span aria-hidden="true">↗</span></a></nav></header>
-  <main id="widget-host" aria-label="CandleFrame demo"></main>
-  <footer class="demo-footer"><span><i></i>Open source. Built to be yours.</span><span>Drag to pan <b>·</b> Scroll to zoom <b>·</b> Double-click to reset</span></footer>`;
+const host = document.querySelector<HTMLElement>('#app')!;
 
+const intervals = ['1m', '5m', '15m', '1h', '4h', '1d', '1w'] as const;
+type SimulatedSymbol = 'BTC/USD' | 'ETH/USD' | 'SOL/USD';
+// Real-time trade simulation: irregular prints, bursts, buy and sell aggression, order flow.
+const simulate = (symbol: SimulatedSymbol, interval: (typeof intervals)[number]) =>
+  createSimulatedFeed({ symbol, interval, trades: true });
 const markets: WidgetMarketSource[] = [
   {
     id: 'simulated',
     label: 'Simulation',
     symbols: ['BTC/USD', 'ETH/USD', 'SOL/USD'],
-    intervals: ['1m', '5m', '15m', '1h', '4h', '1d', '1w'],
-    createFeed: ({ symbol, interval }) =>
-      createSimulatedFeed({ symbol: symbol as 'BTC/USD' | 'ETH/USD' | 'SOL/USD', interval }),
+    intervals: [...intervals],
+    createFeed: ({ symbol, interval }) => simulate(symbol as SimulatedSymbol, interval as '1m'),
   },
   {
     id: 'binance',
-    label: 'Binance live',
+    label: 'Binance',
     symbols: ['BTC/USDT', 'ETH/USDT', 'SOL/USDT'],
-    intervals: ['1m', '5m', '15m', '1h', '4h', '1d', '1w'],
+    intervals: [...intervals],
     createFeed: ({ symbol, interval }) =>
       createBinanceFeed({ symbol: symbol as 'BTC/USDT' | 'ETH/USDT' | 'SOL/USDT', interval }),
   },
@@ -41,12 +42,14 @@ const markets: WidgetMarketSource[] = [
     createFeed: ({ interval }) => sampleEquityFeed(interval),
   },
 ];
+// `?offline` drops Binance, for the smoke test and network-free work.
+if (new URLSearchParams(location.search).has('offline')) markets.splice(1, 1);
 // The demo sets numbers and annotations in Paper Mono. A saved appearance still wins.
 const paperMono = '"Paper Mono", "SFMono-Regular", Consolas, monospace';
 let savedTheme: ResolvedChartTheme | null = null;
 try {
   const saved = localStorage.getItem(JSON.stringify(['demo', 'appearance']));
-  if (saved) savedTheme = resolveTheme(JSON.parse(saved));
+  if (saved) savedTheme = restoreTheme(JSON.parse(saved));
 } catch {
   /* Fall back to the Paper Mono theme. */
 }
@@ -55,8 +58,8 @@ await Promise.race([
   document.fonts.load('12px "Paper Mono"'),
   new Promise(resolve => setTimeout(resolve, 1500)),
 ]).catch(() => {});
-const chart = createChartWidget(document.querySelector<HTMLElement>('#widget-host')!, {
-  feed: createSimulatedFeed({ seed: 42 }),
+const chart = createChartWidget(host, {
+  feed: simulate('BTC/USD', '1m'),
   theme:
     savedTheme ??
     createTheme('evergreen', { typography: { numberFamily: paperMono, annotationFamily: paperMono } }),

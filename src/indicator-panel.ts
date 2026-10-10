@@ -66,7 +66,9 @@ export function createIndicatorPanel(
       note.textContent = indicator.supported
         ? indicator.pane === 'separate'
           ? 'Own pane'
-          : 'On price'
+          : indicator.pane === 'profile'
+            ? 'Price axis'
+            : 'On price'
         : 'Unavailable here';
       const actions = doc.createElement('span');
       actions.className = 'indicator-actions';

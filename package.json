@@ -63,7 +63,9 @@
     "smoke": "node scripts/smoke.mjs",
     "mcp": "node --experimental-strip-types examples/mcp-server.ts",
     "bench": "node --experimental-strip-types scripts/bench.ts",
-    "check:package": "node scripts/check-package.mjs"
+    "check:package": "node scripts/check-package.mjs",
+    "palette": "node scripts/palette.mjs",
+    "palette:check": "node scripts/palette.mjs --check"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

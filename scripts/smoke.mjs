@@ -55,12 +55,12 @@ async function run(name, launch, contextOptions = {}) {
   const problems = [];
   page.on('pageerror', error => problems.push(`pageerror: ${error.message}`));
   page.on('console', message => {
-    // The live Binance source is not selected; network noise from it would be a real failure.
     if (message.type() === 'error') problems.push(`console: ${message.text()}`);
   });
   const shot = step => page.screenshot({ path: `${out}/${name}-${step}.png` });
   try {
-    await page.goto(url, { waitUntil: 'load' });
+    // Offline mode uses the seeded simulation so runs do not depend on Binance.
+    await page.goto(new URL('?offline', url).href, { waitUntil: 'load' });
     await page.waitForFunction(() => window.candleframe?.inspect().candleCount > 100, null, {
       timeout: 15000,
     });
@@ -79,25 +79,25 @@ async function run(name, launch, contextOptions = {}) {
     await shot('2-panes-log');
     // The indicator dialog keeps keyboard focus inside until Escape, then returns it.
     if (!contextOptions.hasTouch) {
-      const host = page.locator('#widget-host > *').first();
+      const host = page.locator('#app > *').first();
       await host.locator('#indicator-menu').click();
       await sleep(150);
       for (let i = 0; i < 25; i++) await page.keyboard.press('Tab');
       const inside = await page.evaluate(() => {
-        const shadow = document.querySelector('#widget-host > *').shadowRoot;
+        const shadow = document.querySelector('#app > *').shadowRoot;
         return shadow.querySelector('.widget-dialog').contains(shadow.activeElement);
       });
       if (!inside) problems.push('focus left the indicator dialog');
       await shot('2b-indicator-dialog');
       await page.keyboard.press('Escape');
       const closed = await page.evaluate(() => {
-        const shadow = document.querySelector('#widget-host > *').shadowRoot;
+        const shadow = document.querySelector('#app > *').shadowRoot;
         return shadow.querySelector('.widget-dialog').hidden && shadow.activeElement?.id === 'indicator-menu';
       });
       if (!closed) problems.push('Escape did not close the dialog and restore focus');
     }
     // Drag the plot to pan, then let paging and motion settle.
-    const box = await page.locator('#widget-host').boundingBox();
+    const box = await page.locator('#app').boundingBox();
     if (contextOptions.hasTouch) {
       await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 3);
     } else {
@@ -110,10 +110,7 @@ async function run(name, launch, contextOptions = {}) {
     await shot('3-panned');
     // Gapped static data: weekends and nights take no space.
     await page.evaluate(() => {
-      const select = document
-        .querySelector('#widget-host')
-        .querySelector('*')
-        ?.shadowRoot?.querySelector('#source');
+      const select = document.querySelector('#app').querySelector('*')?.shadowRoot?.querySelector('#source');
       if (!select) throw new Error('source picker not found');
       select.value = 'sample-equity';
       select.dispatchEvent(new Event('change', { bubbles: true }));

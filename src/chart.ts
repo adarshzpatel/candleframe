@@ -1,5 +1,5 @@
 import { ChartError, toChartError } from './errors.ts';
-import { resolveTheme, themeColor, themeColorCSS } from './themes.ts';
+import { indicatorColor, resolveTheme, themeColor, themeColorCSS } from './themes.ts';
 import type { ResolvedChartTheme, ThemeInput } from './themes.ts';
 import { createGeometry, geometryForRanges, geometryLayout, stateTimeScale } from './geometry.ts';
 import type { TimeScale } from './time-scale.ts';
@@ -12,8 +12,11 @@ import { ChartRuntime } from './runtime.ts';
 import type { CommandResult, DataQuery, DataResult, ExecuteOptions, PreviewResult } from './runtime.ts';
 import { PanMotion } from './pan-motion.ts';
 import { ScaleMotion } from './scale-motion.ts';
+import { CandleMotion } from './candle-motion.ts';
 import { DrawingController } from './drawing-controller.ts';
 import { renderDrawings } from './drawing-scene.ts';
+import { renderProfiles } from './profile-scene.ts';
+import type { ProfileCache } from './profile-scene.ts';
 import type {
   Drawing,
   DrawingContext,
@@ -51,6 +54,8 @@ export interface ChartOptions {
   panMotion?: boolean;
   /** Ease zoom, axis resizing and autoscale changes. Default true; honors reduced motion. */
   scaleMotion?: boolean;
+  /** Ease the forming candle between ticks. Default true; honors reduced motion. */
+  candleMotion?: boolean;
   /** Keep an auto price scale fitted to visible candles while dragging the plot. Default false. */
   autoscaleOnPan?: boolean;
   onStats?: (stats: RendererStats) => void;
@@ -194,6 +199,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
   let frame = 0;
   let drawing = false;
   let redrawRequested = false;
+  const candleMotion = new CandleMotion();
   let marketDirty = true,
     overlayDirty = true;
   let width = 1,
@@ -276,7 +282,8 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     try {
       const wasPanning = !!pan;
       applyPan(now);
-      const paintMarket = marketDirty || wasPanning || !!scaleMotion?.active || !geometry;
+      const paintMarket =
+        marketDirty || wasPanning || !!scaleMotion?.active || candleMotion.active || !geometry;
       const paintOverlay = overlayDirty || paintMarket;
       if (paintMarket) {
         const target = createGeometry(state, width, height, theme.chart);
@@ -316,10 +323,16 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       // may make further edits that still need their own redraw.
       redrawRequested = false;
       marketDirty = overlayDirty = false;
+      // The forming candle may be mid-glide; everything else draws the exact state.
+      const forming = candleMotion.sample(now);
+      const shown =
+        forming && forming !== state.candles.at(-1)
+          ? { ...state, candles: [...state.candles.slice(0, -1), forming] }
+          : state;
       if (paintMarket) {
         ticks = axisTicks(geometry);
         const stats = renderer.render({
-          state,
+          state: shown,
           geometry,
           heatmap: runtime.heatmap,
           theme,
@@ -333,7 +346,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
         });
         options.onStats?.(stats);
       }
-      if (paintOverlay) drawOverlay();
+      if (paintOverlay) drawOverlay(shown.candles.at(-1));
       drawCursor();
       updateHover();
     } catch (error) {
@@ -343,6 +356,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     } finally {
       drawing = false;
       if (redrawRequested || pan?.motion.active || scaleMotion?.active) invalidate('cursor');
+      else if (candleMotion.active) invalidate();
     }
   }
 
@@ -503,11 +517,13 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
     context.clearRect(0, 0, width, height);
   }
-  function drawOverlay(): void {
+  const profiles: ProfileCache = new Map();
+  function drawOverlay(latest = state.candles.at(-1)): void {
     if (!ctx) return;
     clearOverlay(overlay, ctx);
     if (!state.candles.length) return;
     const g = geometry;
+    renderProfiles(ctx, state, g, theme, profiles);
     ctx.font = `${theme.typography.axisSize}px ${theme.typography.numberFamily}`;
     ctx.fillStyle = themeColor(theme, theme.chart.axisColor);
     ctx.textAlign = 'left';
@@ -560,7 +576,6 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
         g.top + theme.typography.axisSize * 1.4,
       );
     }
-    const latest = state.candles.at(-1);
     if (latest) {
       const y = g.y(latest.close);
       if (y >= g.top && y <= g.top + g.plotHeight) {
@@ -574,7 +589,9 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
           ctx.stroke();
         }
         ctx.setLineDash([]);
-        label(ctx, formatPrice.format(latest.close), g.left + g.plotWidth + theme.effects.borderWidth, y);
+        // The marker glides with the candle; its text is always the last traded price.
+        const exact = state.candles.at(-1)?.close ?? latest.close;
+        label(ctx, formatPrice.format(exact), g.left + g.plotWidth + theme.effects.borderWidth, y);
       }
     }
     renderDrawings(
@@ -662,15 +679,24 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       ctx.fillStyle = theme.palette.textFaint;
       ctx.fillText(plugin.name, x, baseline);
       x += ctx.measureText(plugin.name).width + pad;
-      (plugin.outputs?.length ? plugin.outputs : [{ name: '', color: plugin.color }]).forEach((output, k) => {
-        const value = series[k]?.at(-1);
-        if (value === undefined || !Number.isFinite(value)) return;
-        const [r, gr, b] = output.color;
-        ctx.fillStyle = `rgb(${Math.round(r * 255)} ${Math.round(gr * 255)} ${Math.round(b * 255)})`;
-        const text = formatValue(value, pane.max - pane.min);
-        ctx.fillText(text, x, baseline);
-        x += ctx.measureText(text).width + pad * 0.75;
-      });
+      if (plugin.display === 'candles') {
+        // Candle panes show the latest close, colored by the bar's direction.
+        const close = series[3]?.at(-1),
+          open = series[0]?.at(-1);
+        if (close !== undefined && open !== undefined && Number.isFinite(close)) {
+          ctx.fillStyle = close >= open ? theme.palette.positive : theme.palette.negative;
+          ctx.fillText(formatValue(close, pane.max - pane.min), x, baseline);
+        }
+      } else
+        (plugin.outputs?.length ? plugin.outputs : [{ name: '', color: plugin.color }]).forEach((_, k) => {
+          const value = series[k]?.at(-1);
+          if (value === undefined || !Number.isFinite(value)) return;
+          const [r, gr, b] = indicatorColor(theme, plugin, k);
+          ctx.fillStyle = `rgb(${Math.round(r * 255)} ${Math.round(gr * 255)} ${Math.round(b * 255)})`;
+          const text = formatValue(value, pane.max - pane.min);
+          ctx.fillText(text, x, baseline);
+          x += ctx.measureText(text).width + pad * 0.75;
+        });
       ctx.fillStyle = themeColor(theme, theme.chart.axisColor);
       const marks = plugin.levels?.length
         ? plugin.levels.map(value => ({ value, position: pane.y(value) }))
@@ -1243,6 +1269,13 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
           minimumFractionDigits: next.feed.instrument.pricePrecision,
           maximumFractionDigits: next.feed.instrument.pricePrecision,
         });
+      // A tick inside the same bar glides; a new bar or a market change snaps.
+      candleMotion.retarget(
+        next.generation === state.generation ? next.candles.at(-1) : undefined,
+        performance.now(),
+        options.candleMotion === false || reducedMotion.matches ? 0 : 180,
+      );
+      if (next.generation !== state.generation) candleMotion.retarget(next.candles.at(-1), 0, 0);
       state = next;
       drawings.sync(next);
       requestOlderIfNear(next);

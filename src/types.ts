@@ -7,7 +7,18 @@ export interface Candle {
   low: number;
   close: number;
   volume: number;
+  /** Volume from aggressive (taker) buyers; the rest of `volume` was sold. Optional. */
+  buyVolume?: number;
+  /** Optional volume at price, ascending by price. Each price is the low edge of an equal-width bucket. */
+  footprint?: readonly FootprintLevel[];
+  /**
+   * Lowest and highest running buy minus sell volume inside the bar, measured from its
+   * open. Optional; CVD candles use it for wicks and draw bodies only without it.
+   */
+  deltaRange?: readonly [low: number, high: number];
 }
+/** Volume traded inside one price bucket of a candle, split by aggressor side. */
+export type FootprintLevel = readonly [price: number, buyVolume: number, sellVolume: number];
 export type Level = readonly [price: number, quantity: number];
 export interface DepthSnapshot {
   sequence: number;
@@ -109,10 +120,15 @@ export interface FeedAdapter {
   readonly descriptor: FeedDescriptor;
   connect(emit: (event: FeedEvent) => void): FeedConnection;
 }
+/** Theme palette slots for indicator series, in the order built-ins use them. */
+export type IndicatorColorSlot =
+  'indicator' | 'indicator2' | 'indicator3' | 'indicator4' | 'indicator5' | 'indicator6';
 export interface IndicatorOutput {
   readonly id: string;
   readonly name: string;
   readonly color: readonly [number, number, number, number];
+  /** Use this theme slot instead of `color`; the alpha of `color` still applies. */
+  readonly themeColor?: IndicatorColorSlot;
   /** `histogram` draws bars from zero. Default `line`. */
   readonly style?: 'line' | 'histogram';
 }
@@ -120,10 +136,16 @@ export interface IndicatorPlugin {
   readonly id: string;
   readonly name: string;
   readonly color: readonly [number, number, number, number];
-  /** Opt into a theme token; otherwise the explicit plugin color is preserved. */
-  readonly themeColor?: 'indicator';
-  /** `price` overlays the candles (default). `separate` gets its own pane below. */
-  readonly pane?: 'price' | 'separate';
+  /** Opt into a theme slot for a single-series plugin; otherwise `color` is kept. */
+  readonly themeColor?: IndicatorColorSlot;
+  /**
+   * `price` overlays the candles (default). `separate` gets its own pane below.
+   * `profile` draws horizontal rows against the price axis for the visible bars; it
+   * needs `profile` and no series.
+   */
+  readonly pane?: IndicatorPane;
+  /** Required with `pane: 'profile'`. */
+  readonly profile?: ProfileOptions;
   /** Fixed pane range, such as RSI's 0 to 100. Otherwise the pane fits the visible values. */
   readonly range?: { readonly min: number; readonly max: number };
   /** Guide values drawn across the pane, such as RSI 30 and 70. */
@@ -131,6 +153,8 @@ export interface IndicatorPlugin {
   /** Registry kind and inputs, set by built-ins and `IndicatorDefinition.create`. */
   readonly kind?: string;
   readonly inputs?: Readonly<Record<string, number>>;
+  /** `candles` draws four outputs (open, high, low, close) as candles in the pane. */
+  readonly display?: 'candles';
   /** Several series. With `outputs`, the runtime calls `calculateOutputs` instead of `calculate`. */
   readonly outputs?: readonly IndicatorOutput[];
   /** One value per candle; NaN means warmup or missing. Recompute from `changedIndex`. */
@@ -141,6 +165,18 @@ export interface IndicatorPlugin {
     previous: readonly (readonly number[])[],
     changedIndex: number,
   ): number[][];
+}
+export type IndicatorPane = 'price' | 'separate' | 'profile';
+/** How a profile indicator aggregates and draws the visible bars. */
+export interface ProfileOptions {
+  /** `volume` stacks buy and sell volume; `delta` draws buy minus sell from a center line. */
+  readonly mode: 'volume' | 'delta';
+  /** Target row height in pixels. Rows snap to round prices so they stay put while panning. */
+  readonly rowHeight: number;
+  /** Share of the plot width, 0.05 to 0.5. */
+  readonly width: number;
+  /** Share of volume inside the value area, such as 0.7. Volume mode only. */
+  readonly valueArea?: number;
 }
 /** An indicator saved in a layout. The runtime resolves `kind` through its indicator registry. */
 export interface DocumentIndicator {

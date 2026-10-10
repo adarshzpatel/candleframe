@@ -58,13 +58,7 @@ const [packed] = JSON.parse(
   execFileSync('npm', ['pack', '--dry-run', '--json'], { cwd: root, encoding: 'utf8' }),
 );
 const files = new Set(packed.files.map(file => file.path));
-for (const file of [
-  'dist/lib/fonts/hanken-grotesk-latin.woff2',
-  'dist/lib/fonts/newsreader-latin.woff2',
-  'dist/lib/fonts/Hanken-Grotesk-OFL.txt',
-  'dist/lib/fonts/Newsreader-OFL.txt',
-  'LICENSE',
-])
+for (const file of ['dist/lib/fonts/inter-latin.woff2', 'dist/lib/fonts/Inter-OFL.txt', 'LICENSE'])
   check(files.has(file), `tarball contains ${file}`);
 check(
   ![...files].some(file => file.startsWith('src/') || file.startsWith('tests/')),
@@ -72,7 +66,7 @@ check(
 );
 const widgetFonts = readFileSync(`${root}dist/lib/widget-fonts.js`, 'utf8');
 check(
-  widgetFonts.includes("new URL('./fonts/hanken-grotesk-latin.woff2', import.meta.url)"),
+  widgetFonts.includes("new URL('./fonts/inter-latin.woff2', import.meta.url)"),
   'font URLs stay static so bundlers can rewrite them',
 );
 console.log(`\n${packed.files.length} files, ${(packed.unpackedSize / 1024).toFixed(0)} KiB unpacked`);

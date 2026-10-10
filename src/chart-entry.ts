@@ -9,6 +9,8 @@ export type { AxisTick, TimeTickOptions } from './axis-ticks.ts';
 export {
   chartThemes,
   resolveTheme,
+  restoreTheme,
+  compactTheme,
   createTheme,
   themeColor,
   themeColorCSS,

@@ -1,5 +1,5 @@
 import { ChartError } from './errors.ts';
-import { chartThemes, colorRGBA, themeColor } from './themes.ts';
+import { chartThemes, colorRGBA, indicatorColor, themeColor } from './themes.ts';
 import type { ResolvedChartTheme } from './themes.ts';
 import type { ChartGeometry } from './geometry.ts';
 import type { HeatmapStore } from './heatmap.ts';
@@ -509,20 +509,46 @@ export class WebGL2Renderer implements ChartRenderer {
     }
     if (state.document.layers.indicator) {
       for (const { plugin, series, visible: shown } of state.indicators) {
-        if (!shown) continue;
+        if (!shown || plugin.pane === 'profile') continue;
         const pane = plugin.pane === 'separate' ? g.panes.find(p => p.id === plugin.id) : undefined;
         if (plugin.pane === 'separate' && !pane) continue;
         const y = pane ? pane.y : g.y;
         const clip: readonly [number, number] = pane ? [pane.top, pane.top + pane.height] : priceClip;
+        if (plugin.display === 'candles') {
+          const [open, high, low, close] = series;
+          for (let i = range.start; i < range.end; i++) {
+            if (![open[i], high[i], low[i], close[i]].every(Number.isFinite)) continue;
+            const up = close[i] >= open[i];
+            const x = g.x(bars[i].timeMs + interval / 2);
+            this.line(
+              x,
+              y(high[i]),
+              x,
+              y(low[i]),
+              appearance.wickWidth,
+              up ? colors.wickUp : colors.wickDown,
+              clip,
+            );
+            const top = y(Math.max(open[i], close[i])),
+              bottom = y(Math.min(open[i], close[i]));
+            this.line(
+              x - candleWidth / 2,
+              (top + bottom) / 2,
+              x + candleWidth / 2,
+              (top + bottom) / 2,
+              Math.max(appearance.candleMinHeight, bottom - top),
+              up ? colors.up : colors.down,
+              clip,
+            );
+          }
+          continue;
+        }
         const outputs = plugin.outputs?.length
           ? plugin.outputs
           : [{ color: plugin.color, style: 'line' as const }];
         outputs.forEach((output, k) => {
           const values = series[k] ?? [];
-          const color =
-            k === 0 && plugin.themeColor === 'indicator' && !plugin.outputs?.length
-              ? colors.indicator
-              : output.color;
+          const color = indicatorColor(theme, plugin, k);
           if (output.style === 'histogram') {
             const zero = Math.max(clip[0], Math.min(clip[1], y(0)));
             for (let i = range.start; i < range.end; i++) {

@@ -1,5 +1,5 @@
 import { ChartError } from './errors.ts';
-import type { Candle, IndicatorPlugin } from './types.ts';
+import type { Candle, IndicatorPane, IndicatorPlugin } from './types.ts';
 
 type RGBA = readonly [number, number, number, number];
 /** An indicator with a single series and an always-present `calculate`. */
@@ -19,7 +19,7 @@ export interface IndicatorDefinition {
   readonly kind: string;
   readonly name: string;
   readonly description: string;
-  readonly pane: 'price' | 'separate';
+  readonly pane: IndicatorPane;
   readonly inputs: Readonly<Record<string, IndicatorInputSpec>>;
   create(inputs: Readonly<Record<string, number>>, id: string): IndicatorPlugin;
 }
@@ -29,6 +29,7 @@ const AMBER: RGBA = [0.98, 0.72, 0.3, 0.95];
 const VIOLET: RGBA = [0.75, 0.6, 1, 0.95];
 const TEAL: RGBA = [0.35, 0.8, 0.78, 0.9];
 const GREY: RGBA = [0.6, 0.64, 0.7, 0.55];
+const MINT: RGBA = [0.45, 0.86, 0.68, 0.95];
 
 /** Exponential moving average seeded with the SMA of the first `period` values. NaN inputs reset it. */
 function emaSeries(source: readonly number[], period: number, from = 0, previous: readonly number[] = []) {
@@ -80,6 +81,7 @@ export function ema(period = 20): SeriesIndicator {
     name: `EMA ${period}`,
     kind: 'ema',
     inputs: { period },
+    themeColor: 'indicator2',
     color: AMBER,
     calculate(candles, previous, changedIndex) {
       const start = previous.length ? Math.max(0, Math.min(changedIndex, previous.length)) : 0;
@@ -124,9 +126,9 @@ export function bollinger(period = 20, deviations = 2): IndicatorPlugin {
     inputs: { period, deviations },
     color: TEAL,
     outputs: [
-      { id: 'basis', name: 'Basis', color: TEAL },
-      { id: 'upper', name: 'Upper', color: [TEAL[0], TEAL[1], TEAL[2], 0.6] },
-      { id: 'lower', name: 'Lower', color: [TEAL[0], TEAL[1], TEAL[2], 0.6] },
+      { id: 'basis', name: 'Basis', color: TEAL, themeColor: 'indicator3' },
+      { id: 'upper', name: 'Upper', color: [TEAL[0], TEAL[1], TEAL[2], 0.6], themeColor: 'indicator3' },
+      { id: 'lower', name: 'Lower', color: [TEAL[0], TEAL[1], TEAL[2], 0.6], themeColor: 'indicator3' },
     ],
     calculateOutputs(candles, previous, changedIndex) {
       const start = previous[0]?.length ? Math.max(0, Math.min(changedIndex, previous[0].length)) : 0;
@@ -146,6 +148,7 @@ export function rsi(period = 14): SeriesIndicator {
     pane: 'separate',
     range: { min: 0, max: 100 },
     levels: [30, 70],
+    themeColor: 'indicator4',
     color: VIOLET,
     // Wilder averages depend on every earlier bar, so the series is recomputed. It is O(n).
     calculate(candles) {
@@ -192,11 +195,92 @@ export function macd(fast = 12, slow = 26, signal = 9): IndicatorPlugin {
     levels: [0],
     color: BLUE,
     outputs: [
-      { id: 'macd', name: 'MACD', color: BLUE },
-      { id: 'signal', name: 'Signal', color: AMBER },
+      { id: 'macd', name: 'MACD', color: BLUE, themeColor: 'indicator' },
+      { id: 'signal', name: 'Signal', color: AMBER, themeColor: 'indicator2' },
       { id: 'histogram', name: 'Histogram', color: GREY, style: 'histogram' },
     ],
     calculateOutputs: candles => all(candles),
+  };
+}
+
+/**
+ * Cumulative volume delta as candles: each bar opens at the running total and closes after
+ * adding its taker buy minus sell volume. Wicks come from `deltaRange` when the feed has
+ * it. Bars without `buyVolume` add nothing; a series without any is blank.
+ */
+export function cvd(): IndicatorPlugin {
+  return {
+    id: 'cvd',
+    name: 'CVD',
+    kind: 'cvd',
+    inputs: {},
+    pane: 'separate',
+    display: 'candles',
+    color: MINT,
+    outputs: [
+      { id: 'open', name: 'Open', color: MINT },
+      { id: 'high', name: 'High', color: MINT },
+      { id: 'low', name: 'Low', color: MINT },
+      { id: 'close', name: 'Close', color: MINT },
+    ],
+    calculateOutputs(candles, previous, changedIndex) {
+      const done = previous[3]?.length ?? 0;
+      const start = done ? Math.max(0, Math.min(changedIndex, done)) : 0;
+      const [open, high, low, close] = [0, 1, 2, 3].map(k => (previous[k] ?? []).slice(0, start));
+      let sum = start > 0 && Number.isFinite(close[start - 1]) ? close[start - 1] : 0;
+      let seen = start > 0 && Number.isFinite(close[start - 1]);
+      for (let i = start; i < candles.length; i++) {
+        const { buyVolume, volume, deltaRange } = candles[i];
+        if (buyVolume === undefined || !Number.isFinite(buyVolume)) {
+          open[i] = high[i] = low[i] = close[i] = seen ? sum : Number.NaN;
+          continue;
+        }
+        seen = true;
+        const delta = 2 * buyVolume - volume;
+        open[i] = sum;
+        close[i] = sum + delta;
+        high[i] = Math.max(open[i], close[i], sum + (deltaRange?.[1] ?? -Infinity));
+        low[i] = Math.min(open[i], close[i], sum + (deltaRange?.[0] ?? Infinity));
+        sum += delta;
+      }
+      return [open, high, low, close];
+    },
+  };
+}
+
+function checkProfile(rowHeight: number, width: number) {
+  if (!(rowHeight >= 2 && rowHeight <= 40))
+    throw new ChartError('INVALID_INPUT', 'row height must be 2 to 40');
+  if (!(width >= 0.05 && width <= 0.5)) throw new ChartError('INVALID_INPUT', 'width must be 5 to 50%');
+}
+
+/** Visible-range volume profile with point of control and value area, against the price axis. */
+export function volumeProfile(rowHeight = 5, width = 0.2, valueArea = 0.7): IndicatorPlugin {
+  checkProfile(rowHeight, width);
+  if (!(valueArea >= 0.1 && valueArea <= 1))
+    throw new ChartError('INVALID_INPUT', 'value area must be 10 to 100%');
+  return {
+    id: 'vp',
+    name: 'Volume profile',
+    kind: 'vp',
+    inputs: { rowHeight, width: Math.round(width * 100), valueArea: Math.round(valueArea * 100) },
+    pane: 'profile',
+    color: TEAL,
+    profile: { mode: 'volume', rowHeight, width, valueArea },
+  };
+}
+
+/** Buy minus sell volume at each price for the visible bars, drawn from a center line. */
+export function priceDelta(rowHeight = 5, width = 0.1): IndicatorPlugin {
+  checkProfile(rowHeight, width);
+  return {
+    id: 'price-delta',
+    name: 'Price delta',
+    kind: 'price-delta',
+    inputs: { rowHeight, width: Math.round(width * 100) },
+    pane: 'profile',
+    color: MINT,
+    profile: { mode: 'delta', rowHeight, width },
   };
 }
 
@@ -256,6 +340,40 @@ export const builtInIndicators: readonly IndicatorDefinition[] = [
     },
     create: (inputs, id) => ({ ...macd(inputs.fast, inputs.slow, inputs.signal), id }),
   },
+  {
+    kind: 'cvd',
+    name: 'Cumulative volume delta',
+    description: 'Running total of taker buy minus sell volume. Needs buy volume from the feed.',
+    pane: 'separate',
+    inputs: {},
+    create: (_, id) => ({ ...cvd(), id }),
+  },
+  {
+    kind: 'vp',
+    name: 'Volume profile',
+    description: 'Buy and sell volume at each price for the visible bars, with POC and value area.',
+    pane: 'profile',
+    inputs: {
+      rowHeight: { label: 'Row px', default: 5, min: 2, max: 40 },
+      width: { label: 'Width %', default: 20, min: 5, max: 50 },
+      valueArea: { label: 'Value area %', default: 70, min: 10, max: 100 },
+    },
+    create: (inputs, id) => ({
+      ...volumeProfile(inputs.rowHeight, inputs.width / 100, inputs.valueArea / 100),
+      id,
+    }),
+  },
+  {
+    kind: 'price-delta',
+    name: 'Price delta',
+    description: 'Buy minus sell volume at each price for the visible bars.',
+    pane: 'profile',
+    inputs: {
+      rowHeight: { label: 'Row px', default: 5, min: 2, max: 40 },
+      width: { label: 'Width %', default: 10, min: 5, max: 50 },
+    },
+    create: (inputs, id) => ({ ...priceDelta(inputs.rowHeight, inputs.width / 100), id }),
+  },
 ];
 
 export class IndicatorRegistry {
@@ -268,7 +386,7 @@ export class IndicatorRegistry {
         typeof definition.kind !== 'string' ||
         !/^[a-z][a-z0-9-]{0,31}$/.test(definition.kind) ||
         typeof definition.create !== 'function' ||
-        !['price', 'separate'].includes(definition.pane)
+        !['price', 'separate', 'profile'].includes(definition.pane)
       )
         throw new ChartError('INVALID_INDICATOR_DEFINITION', undefined, {
           details: { kind: definition?.kind },
