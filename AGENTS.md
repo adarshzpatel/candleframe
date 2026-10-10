@@ -1,4 +1,4 @@
-# Working on OpenChart
+# Working on CandleFrame
 
 This is a TypeScript/WebGL2 proof of concept. Read `README.md` and `docs/poc.md` for implemented behavior. `docs/architecture.md` describes the future design, including APIs that do not exist yet.
 
@@ -70,4 +70,4 @@ Use Node 24. The build includes type checking and emits the demo and plain JavaS
 - Treat custom indicator code as trusted host code. The current plugin contract is not a safe execution environment for user-supplied scripts.
 - Do not copy proprietary chart implementations or introduce license-key dependencies.
 
-The demo exposes `window.openchart` for developer tools. Agents can use the same API in a host integration or instantiate `ChartRuntime` without a browser. There is no MCP server, remote control service or generated command schema yet.
+The demo exposes `window.candleframe` for developer tools. Agents can use the same API in a host integration or instantiate `ChartRuntime` without a browser. There is no MCP server, remote control service or generated command schema yet.

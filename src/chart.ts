@@ -104,7 +104,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
   });
   const renderer = options.renderer ?? new WebGL2Renderer();
   const root = document.createElement('div');
-  root.className = 'oc-chart';
+  root.className = 'cf-chart';
   Object.assign(root.style, {
     position: 'relative',
     width: '100%',

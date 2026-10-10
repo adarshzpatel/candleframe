@@ -1,6 +1,6 @@
 /**
  * DOM-free entry: runtime, documents, commands, feeds without sockets, indicators and
- * schemas. Safe to import in Node, workers and tests. `openchart/core`.
+ * schemas. Safe to import in Node, workers and tests. `candleframe/core`.
  */
 export { ChartError, isChartError, toChartError } from './errors.ts';
 export { chartCommandSchema, chartCommandBatchSchema, chartCommandTypes } from './command-schema.ts';

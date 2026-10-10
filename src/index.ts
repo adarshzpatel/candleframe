@@ -1,6 +1,6 @@
 // Everything. Bundlers drop unused parts (the package has no side effects).
-// Narrower entries: `openchart/core` (no DOM), `openchart/chart`, `openchart/widget`,
-// `openchart/binance`.
+// Narrower entries: `candleframe/core` (no DOM), `candleframe/chart`, `candleframe/widget`,
+// `candleframe/binance`.
 export * from './core.ts';
 export * from './chart-entry.ts';
 export { createChartWidget } from './widget.ts';

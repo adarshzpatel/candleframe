@@ -32,7 +32,7 @@ export function createDrawingTextEditor(
     if (restoreFocus && previous && editor.contains(tree.activeElement)) {
       const target = previous.focus?.isConnected
         ? previous.focus
-        : panel.querySelector<HTMLElement>('.oc-chart');
+        : panel.querySelector<HTMLElement>('.cf-chart');
       target?.focus({ preventScroll: true });
     }
   }

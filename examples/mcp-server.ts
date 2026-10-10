@@ -4,7 +4,7 @@
 //   node --experimental-strip-types examples/mcp-server.ts --csv prices.csv --symbol AAPL --interval 1d --gaps
 //
 // Register it with Claude Code:
-//   claude mcp add openchart -- node --experimental-strip-types /path/to/examples/mcp-server.ts
+//   claude mcp add candleframe -- node --experimental-strip-types /path/to/examples/mcp-server.ts
 //
 // It speaks JSON-RPC 2.0 over stdio with no dependencies. Tools return JSON text;
 // failures return the ChartError as `{ code, message, path, details }` with isError.
@@ -161,7 +161,7 @@ function handle(message: Message): void {
         result: {
           protocolVersion: (params.protocolVersion as string) ?? '2025-06-18',
           capabilities: { tools: {} },
-          serverInfo: { name: 'openchart', version: '0.3.0' },
+          serverInfo: { name: 'candleframe', version: '0.3.0' },
           instructions:
             'Inspect first. Read candles with chart_query. Preview, then execute with expectedRevision. Errors carry a stable code and a path to the bad input.',
         },

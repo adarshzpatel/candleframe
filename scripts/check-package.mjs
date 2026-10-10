@@ -5,7 +5,7 @@
 //
 // - every `exports` entry resolves to emitted JavaScript and declarations
 // - every entry imports in plain Node without a DOM (no top-level browser access)
-// - `openchart/core` runs a headless chart end to end
+// - `candleframe/core` runs a headless chart end to end
 // - the tarball contains the fonts and their licenses next to the modules
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
@@ -50,7 +50,7 @@ runtime.start();
 const result = runtime.execute([{ type: 'indicator.add', indicator: { kind: 'rsi' } }]);
 check(
   result.created[0] === 'rsi' && runtime.inspect().candleCount === 50,
-  'openchart/core runs a headless chart',
+  'candleframe/core runs a headless chart',
 );
 runtime.dispose();
 

@@ -61,18 +61,20 @@ async function run(name, launch, contextOptions = {}) {
   const shot = step => page.screenshot({ path: `${out}/${name}-${step}.png` });
   try {
     await page.goto(url, { waitUntil: 'load' });
-    await page.waitForFunction(() => window.openchart?.inspect().candleCount > 100, null, { timeout: 15000 });
+    await page.waitForFunction(() => window.candleframe?.inspect().candleCount > 100, null, {
+      timeout: 15000,
+    });
     await sleep(400);
     await shot('1-default');
     await page.evaluate(() => {
-      const chart = window.openchart;
+      const chart = window.candleframe;
       chart.execute({ type: 'indicator.add', indicator: { kind: 'rsi' } });
       chart.execute({ type: 'indicator.add', indicator: { kind: 'macd' } });
       chart.execute({ type: 'indicator.add', indicator: { kind: 'bb' } });
       chart.execute({ type: 'priceScale.log', enabled: true });
     });
     await sleep(400);
-    const panes = await page.evaluate(() => window.openchart.inspect().indicators.map(i => i.kind));
+    const panes = await page.evaluate(() => window.candleframe.inspect().indicators.map(i => i.kind));
     if (!panes.includes('rsi') || !panes.includes('macd')) problems.push(`indicators missing: ${panes}`);
     await shot('2-panes-log');
     // The indicator dialog keeps keyboard focus inside until Escape, then returns it.
@@ -116,10 +118,12 @@ async function run(name, launch, contextOptions = {}) {
       select.value = 'sample-equity';
       select.dispatchEvent(new Event('change', { bubbles: true }));
     });
-    await page.waitForFunction(() => window.openchart?.inspect().symbol === 'ACME', null, { timeout: 10000 });
+    await page.waitForFunction(() => window.candleframe?.inspect().symbol === 'ACME', null, {
+      timeout: 10000,
+    });
     await sleep(500);
     const equity = await page.evaluate(() => {
-      const state = window.openchart.inspect();
+      const state = window.candleframe.inspect();
       return { gaps: state.feed.gaps, candles: state.candleCount, depth: state.streams.depth.status };
     });
     if (!equity.gaps || equity.candles < 100 || equity.depth !== 'unavailable')

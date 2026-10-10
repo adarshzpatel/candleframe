@@ -4,7 +4,8 @@ All notable changes are listed here. The project follows [Semantic Versioning](h
 
 ## Unreleased
 
-- Subpath exports: `openchart/core` (no DOM), `openchart/chart`, `openchart/widget` and `openchart/binance`. `scripts/check-package.mjs` verifies each imports in plain Node and that the tarball carries the fonts.
+- Renamed from OpenChart to CandleFrame. The package is `candleframe`, the widget host class is `candleframe-widget` and the chart root is `cf-chart`. Fonts still register under the old `OpenChart UI` and `OpenChart Editorial` names, so saved custom themes keep working.
+- Subpath exports: `candleframe/core` (no DOM), `candleframe/chart`, `candleframe/widget` and `candleframe/binance`. `scripts/check-package.mjs` verifies each imports in plain Node and that the tarball carries the fonts.
 - Widget `fonts` option: bundled (default), a self-hosted URL, or `false` for system fonts.
 - The widget dialog keeps keyboard focus inside and returns it to the opener on close, including in Safari.
 - Style modules declare `string` types; their declarations no longer include the CSS (14 KB to 171 bytes).

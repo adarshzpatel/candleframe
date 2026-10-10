@@ -1,5 +1,5 @@
 {
-  "name": "openchart",
+  "name": "candleframe",
   "version": "0.3.0",
   "description": "Framework-free WebGL2 financial charting engine and embeddable trading chart widget",
   "license": "MIT",

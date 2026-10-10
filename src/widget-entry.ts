@@ -1,4 +1,4 @@
-/** The complete workbench UI. `openchart/widget`. */
+/** The complete workbench UI. `candleframe/widget`. */
 export { createChartWidget } from './widget.ts';
 export type { ChartWidgetOptions, WidgetMarketSource, WidgetLayoutStore } from './widget.ts';
 export type { WidgetFontSource } from './widget-fonts.ts';
