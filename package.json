@@ -1,0 +1,26 @@
+{
+  "name": "openchart-poc",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "description": "Framework-free WebGL2 financial charting proof of concept",
+  "exports": {
+    ".": {
+      "types": "./dist/lib/index.d.ts",
+      "import": "./dist/lib/index.js"
+    }
+  },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "check": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "example:headless": "node --experimental-strip-types examples/headless.ts",
+    "build": "npm run check && vite build && tsc -p tsconfig.lib.json && node scripts/copy-fonts.mjs",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "~5.9.3",
+    "vite": "8.3.2"
+  }
+}

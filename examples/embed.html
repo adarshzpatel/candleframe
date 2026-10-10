@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>OpenChart · Two independent widgets</title>
+<style>
+/* Host styles deliberately conflict with normal form and canvas elements. */
+body{margin:0;padding:20px;font:14px system-ui;background:#e9edf2;color:#263143}button{background:hotpink;font:26px serif;border:12px solid red}canvas{display:none}select{font:30px serif}h1{font-size:20px}p{font-size:13px}a{color:#24684b}.examples{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.host{height:580px;min-width:0}.controls{margin-top:16px;display:flex;gap:10px}.controls button{font:12px system-ui;background:white;border:1px solid #bbc8d5;padding:8px;border-radius:4px}@media(max-width:850px){.examples{grid-template-columns:1fr}}
+</style></head><body><h1>Two independent chart widgets</h1><p>No chart CSS is imported. These use the built JavaScript library with independent dark and light themes. <a href="/">Back to demo</a></p><div class="examples"><section><h2>Bitcoin</h2><div class="host" id="left"></div></section><section><h2>Ethereum</h2><div class="host" id="right"></div></section></div><div class="controls"><button id="dispose">Dispose Bitcoin widget</button><button id="mount">Mount Bitcoin widget</button></div><p id="lifecycle" role="status">Both widgets mounted.</p>
+<script type="module">
+import {createChartWidget,createSimulatedFeed,sma} from '../dist/lib/index.js';
+let left;
+function mountLeft(){if(left)return;left=createChartWidget(document.querySelector('#left'),{feed:createSimulatedFeed({symbol:'BTC/USD'}),indicators:[sma(20)]});document.querySelector('#lifecycle').textContent='Bitcoin mounted. Ethereum is independent.'}
+mountLeft();
+const right=createChartWidget(document.querySelector('#right'),{feed:createSimulatedFeed({symbol:'ETH/USD'}),indicators:[sma(20)],theme:'paper'});
+document.querySelector('#dispose').addEventListener('click',()=>{left?.dispose();left=undefined;document.querySelector('#lifecycle').textContent='Bitcoin disposed. Ethereum remains mounted.'});
+document.querySelector('#mount').addEventListener('click',mountLeft);
+window.addEventListener('pagehide',()=>{left?.dispose();right.dispose()},{once:true});
+</script></body></html>

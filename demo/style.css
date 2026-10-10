@@ -1,0 +1,21 @@
+:root { color-scheme: dark; font-family: "OpenChart UI", -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #081d16; color: #a2b39d; font-synthesis: none; -webkit-font-smoothing: antialiased; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+a:focus-visible { outline: 2px solid #e1cc76; outline-offset: 4px; }
+#app { max-width: 1920px; margin: auto; padding: 0 16px; }
+.demo-heading { height: 54px; display: flex; align-items: center; gap: 18px; }
+.demo-brand { display: flex; align-items: center; gap: 9px; font: 400 25px "OpenChart Editorial", Georgia, serif; color: #f4f1dc; text-decoration: none; letter-spacing: -.8px; }
+.demo-brand svg { color: #e1cc76; }
+.demo-version { margin-left: 5px; font: 10px "OpenChart UI", sans-serif; letter-spacing: 1px; color: #a2b39d; border-left: 1px solid #284437; padding-left: 12px; }
+.demo-caption { font-size: 12px; color: #91a58f; }
+.demo-heading nav { display: flex; align-items: center; gap: 20px; margin-left: auto; }
+.demo-heading nav a { font-size: 12px; color: #f4f1dc; text-decoration: none; border: 1px solid #365342; padding: 7px 10px; }
+.demo-heading nav a:hover { background: #19372a; border-color: #e1cc76; }
+.demo-heading nav a span { margin-left: 10px; color: #e1cc76; }
+#widget-host { width: 100%; height: calc(100dvh - 82px); min-height: 460px; }
+.demo-footer { min-height: 28px; display: flex; align-items: center; justify-content: space-between; gap: 16px; font-size: 10px; color: #91a58f; }
+.demo-footer > span { display: flex; align-items: center; gap: 8px; }
+.demo-footer i { width: 4px; height: 4px; background: #e1cc76; }
+.demo-footer b { font-weight: 400; color: #4b6251; }
+@media (max-width: 850px) { #app { padding: 0 14px; } .demo-heading { height: 48px; } .demo-caption { display: none; } #widget-host { height: calc(100dvh - 74px); } .demo-footer { min-height: 26px; } }
+@media (max-width: 580px) { #app { padding: 0 8px; } .demo-heading { height: 46px; gap: 10px; } .demo-brand { font-size: 24px; gap: 8px; } .demo-brand svg { width: 22px; } .demo-heading nav a { font-size: 10px; padding: 8px; } .demo-heading nav a span { margin-left: 5px; } .demo-heading .demo-version { display: none; } #widget-host { height: calc(100dvh - 72px); } .demo-footer { min-height: 26px; font-size: 9px; } .demo-footer > span:last-child { display: none; } }
