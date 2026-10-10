@@ -4,6 +4,7 @@ All notable changes are listed here. The project follows [Semantic Versioning](h
 
 ## Unreleased
 
+- Axis marks sit on round prices and calendar-aligned times and move when you pan, instead of fixed rows relabelled with new values. New days, months and years get bold labels. Grid lines follow the marks.
 - Renamed from OpenChart to CandleFrame. The package is `candleframe`, the widget host class is `candleframe-widget` and the chart root is `cf-chart`. Fonts still register under the old `OpenChart UI` and `OpenChart Editorial` names, so saved custom themes keep working.
 - Subpath exports: `candleframe/core` (no DOM), `candleframe/chart`, `candleframe/widget` and `candleframe/binance`. `scripts/check-package.mjs` verifies each imports in plain Node and that the tarball carries the fonts.
 - Widget `fonts` option: bundled (default), a self-hosted URL, or `false` for system fonts.

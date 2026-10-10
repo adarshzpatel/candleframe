@@ -5,6 +5,8 @@ import { createGeometry, geometryForRanges, geometryLayout, stateTimeScale } fro
 import type { TimeScale } from './time-scale.ts';
 import type { IndicatorDefinition } from './indicators.ts';
 import { createTimeFormats } from './time-format.ts';
+import { priceTicks, timeTicks, valueTicks, zoneOffsets, TICK_RANK } from './axis-ticks.ts';
+import type { AxisTick } from './axis-ticks.ts';
 import type { ChartGeometry } from './geometry.ts';
 import { ChartRuntime } from './runtime.ts';
 import type { CommandResult, DataQuery, DataResult, ExecuteOptions, PreviewResult } from './runtime.ts';
@@ -315,7 +317,20 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       redrawRequested = false;
       marketDirty = overlayDirty = false;
       if (paintMarket) {
-        const stats = renderer.render({ state, geometry, heatmap: runtime.heatmap, theme });
+        ticks = axisTicks(geometry);
+        const stats = renderer.render({
+          state,
+          geometry,
+          heatmap: runtime.heatmap,
+          theme,
+          grid: {
+            x: ticks.time.map(tick => tick.position),
+            y: [
+              ...ticks.price.map(tick => tick.position),
+              ...[...ticks.panes.values()].flatMap(list => list.map(tick => tick.position)),
+            ],
+          },
+        });
         options.onStats?.(stats);
       }
       if (paintOverlay) drawOverlay();
@@ -496,28 +511,29 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     ctx.font = `${theme.typography.axisSize}px ${theme.typography.numberFamily}`;
     ctx.fillStyle = themeColor(theme, theme.chart.axisColor);
     ctx.textAlign = 'left';
-    for (let i = 0; i <= theme.chart.gridRows; i++) {
-      // Grid rows are evenly spaced in pixels; on a log axis the prices between them are not.
-      const y = g.top + (g.plotHeight / theme.chart.gridRows) * i;
+    const size = theme.typography.axisSize;
+    for (const tick of ticks.price) {
+      // Keep labels whole inside the plot's vertical extent.
+      if (tick.position < g.top + size * 0.4 || tick.position > g.top + g.plotHeight - size * 0.2) continue;
       ctx.fillText(
-        formatPrice.format(g.price(y)),
+        tick.label,
         g.left + g.plotWidth + theme.chart.axisLabelPadding,
-        y + theme.typography.axisSize * 0.4,
+        tick.position + size * 0.4,
       );
     }
     drawPanes(g);
+    const timeBaseline = height - theme.chart.timeAxisHeight / 2 + size * 0.2;
+    const regular = `${size}px ${theme.typography.numberFamily}`,
+      bold = `${Math.min(900, Number(theme.typography.uiWeight) + 200) || 600} ${size}px ${theme.typography.numberFamily}`;
     ctx.textAlign = 'center';
-    const spanMs = g.toMs - g.fromMs;
-    const tickWidth =
-      ctx.measureText(timeFormats.axis(g.fromMs, spanMs)).width + theme.chart.axisLabelPadding * 2;
-    const timeTicks = Math.max(1, Math.min(theme.chart.gridColumns, Math.floor(g.plotWidth / tickWidth)));
-    const timeBaseline = height - theme.chart.timeAxisHeight / 2 + theme.typography.axisSize * 0.2;
-    for (let i = 0; i <= timeTicks; i++) {
-      // Sample the scale at evenly spaced pixels; with session gaps, time is not linear in x.
-      const x = g.left + (g.plotWidth / timeTicks) * i;
-      ctx.textAlign = i === 0 ? 'left' : i === timeTicks ? 'right' : 'center';
-      ctx.fillText(timeFormats.axis(g.anchor(x, g.top).timeMs, spanMs), x, timeBaseline);
+    for (const tick of ticks.time) {
+      // Day, month and year boundaries stand out from clock times.
+      ctx.font = tick.rank >= TICK_RANK.day ? bold : regular;
+      const half = ctx.measureText(tick.label).width / 2;
+      const x = Math.max(g.left + half, Math.min(g.left + g.plotWidth - half, tick.position));
+      ctx.fillText(tick.label, x, timeBaseline);
     }
+    ctx.font = regular;
     ctx.textAlign = 'left';
     ctx.fillStyle = theme.palette.textFaint;
     if (state.document.layers.volume && g.volumeHeight > 0)
@@ -578,6 +594,42 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     );
   }
 
+  let ticks: { price: AxisTick[]; time: AxisTick[]; panes: Map<string, AxisTick[]> } = {
+    price: [],
+    time: [],
+    panes: new Map(),
+  };
+  let zoneOffset = zoneOffsets(timeZone);
+  /** Round-value price marks and calendar-aligned time marks that move with the data. */
+  function axisTicks(g: ChartGeometry) {
+    const size = theme.typography.axisSize;
+    ctx!.font = `${size}px ${theme.typography.numberFamily}`;
+    const widest = Math.max(...['00:00', '2026', 'Sept', '28'].map(sample => ctx!.measureText(sample).width));
+    const spacing = Math.max(size * 2.4, theme.chart.axisLabelPadding * 2) + 6;
+    return {
+      price: priceTicks(g, value => formatPrice.format(value), spacing),
+      time: timeTicks(g, {
+        candles: state.candles,
+        intervalMs: state.feed.intervalMs,
+        offset: zoneOffset,
+        label: (time, rank) => timeFormats.tick(time, rank),
+        spacing: Math.max(56, widest + theme.chart.axisLabelPadding * 3),
+      }),
+      panes: new Map(
+        g.panes.map(pane => [
+          pane.id,
+          valueTicks(
+            pane.min,
+            pane.max,
+            pane.height,
+            pane.y,
+            value => formatValue(value, pane.max - pane.min),
+            32,
+          ),
+        ]),
+      ),
+    };
+  }
   /** Titles, latest values, guide levels and axis labels for indicator panes. */
   function drawPanes(g: ChartGeometry): void {
     if (!ctx || !g.panes.length) return;
@@ -620,13 +672,16 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
         x += ctx.measureText(text).width + pad * 0.75;
       });
       ctx.fillStyle = themeColor(theme, theme.chart.axisColor);
-      const marks = plugin.levels?.length ? plugin.levels : [pane.max, (pane.max + pane.min) / 2, pane.min];
-      for (const value of marks) {
-        const y = Math.max(
-          pane.top + size * 0.5,
-          Math.min(pane.top + pane.height - size * 0.2, pane.y(value)),
+      const marks = plugin.levels?.length
+        ? plugin.levels.map(value => ({ value, position: pane.y(value) }))
+        : (ticks.panes.get(pane.id) ?? []);
+      for (const { value, position } of marks) {
+        if (position < pane.top + size * 0.5 || position > pane.top + pane.height - size * 0.2) continue;
+        ctx.fillText(
+          formatValue(value, pane.max - pane.min),
+          g.left + g.plotWidth + pad,
+          position + size * 0.4,
         );
-        ctx.fillText(formatValue(value, pane.max - pane.min), g.left + g.plotWidth + pad, y + size * 0.4);
       }
     }
   }
@@ -1239,6 +1294,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     getTheme: () => structuredClone(theme),
     setTimeZone(value) {
       timeFormats = createTimeFormats(state.feed.intervalMs, value);
+      zoneOffset = zoneOffsets(value);
       timeZone = value;
       invalidate('overlay');
     },
