@@ -36,4 +36,9 @@ label.theme-field,.theme-field-input>label{display:grid;grid-template-columns:mi
 .dialog-content .theme-error{position:sticky;top:0;z-index:2;background:var(--surface);margin:0 0 calc(9px * var(--space));padding:calc(7px * var(--space));border:var(--border-width) solid var(--negative);border-radius:var(--radius);color:var(--negative);font-size:calc(var(--small-size) + 1px);line-height:1.4;overflow-wrap:anywhere}
 .theme-editor-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:calc(5px * var(--space));padding-block:calc(8px * var(--space))}.theme-editor-actions .button{min-height:var(--control-height);padding:calc(5px * var(--space)) calc(8px * var(--space));font-size:var(--small-size)}
 
+
+/* The summary floats over the plot like a chart legend; the chart gets the full panel height. */
+.chart-panel>.chart-toolbar{position:absolute;inset:0 var(--theme-chart-priceAxisWidth,78px) auto 0;z-index:2;min-height:0;background:transparent;pointer-events:none;text-shadow:0 0 3px var(--bg),0 0 6px var(--bg)}
+.chart-toolbar button,.chart-toolbar a,.chart-toolbar input,.chart-toolbar select,.chart-toolbar [role=button]{pointer-events:auto}
+.chart-panel>.connection-notice{position:absolute;left:0;right:0;bottom:0;z-index:3}
 `;
