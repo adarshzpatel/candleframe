@@ -29,12 +29,38 @@ export interface DrawingInput {
   text?: string;
   levels?: number[];
 }
-export type DrawingPatch = Partial<Pick<Drawing, 'points' | 'locked' | 'visible' | 'text' | 'levels'>> & { style?: Partial<DrawingStyle> };
-export interface DrawingPoint { x: number; y: number }
-export interface DrawingHandle { id: number | string; at: DrawingPoint; cursor: 'move' | 'ns-resize' | 'ew-resize' }
+export type DrawingPatch = Partial<Pick<Drawing, 'points' | 'locked' | 'visible' | 'text' | 'levels'>> & {
+  style?: Partial<DrawingStyle>;
+};
+export interface DrawingPoint {
+  x: number;
+  y: number;
+}
+export interface DrawingHandle {
+  id: number | string;
+  at: DrawingPoint;
+  cursor: 'move' | 'ns-resize' | 'ew-resize';
+}
 export type DrawingPrimitive =
-  | { kind: 'path'; points: DrawingPoint[]; closed?: boolean; fill?: string; color?: string; width?: number; dash?: number[]; opacity?: number }
-  | { kind: 'text'; at: DrawingPoint; text: string; color?: string; size?: number; background?: string; align?: 'left' | 'center' | 'right' };
+  | {
+      kind: 'path';
+      points: DrawingPoint[];
+      closed?: boolean;
+      fill?: string;
+      color?: string;
+      width?: number;
+      dash?: number[];
+      opacity?: number;
+    }
+  | {
+      kind: 'text';
+      at: DrawingPoint;
+      text: string;
+      color?: string;
+      size?: number;
+      background?: string;
+      align?: 'left' | 'center' | 'right';
+    };
 export interface DrawingContext {
   theme?: ResolvedChartTheme;
   geometry: ChartGeometry;

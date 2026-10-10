@@ -1,13 +1,40 @@
 import type { Drawing, DrawingInput, DrawingPatch } from './drawing-types.ts';
 
-export interface Candle { timeMs: number; open: number; high: number; low: number; close: number; volume: number }
+export interface Candle {
+  timeMs: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
 export type Level = readonly [price: number, quantity: number];
-export interface DepthSnapshot { sequence: number; bids: readonly Level[]; asks: readonly Level[] }
-export interface DepthDelta extends DepthSnapshot { previousSequence: number }
-export interface DepthColumn { timeMs: number; values: Float32Array; valid: boolean }
-export interface HeatmapGrid { minPrice: number; binSize: number; rows: number; intervalMs: number }
+export interface DepthSnapshot {
+  sequence: number;
+  bids: readonly Level[];
+  asks: readonly Level[];
+}
+export interface DepthDelta extends DepthSnapshot {
+  previousSequence: number;
+}
+export interface DepthColumn {
+  timeMs: number;
+  values: Float32Array;
+  valid: boolean;
+}
+export interface HeatmapGrid {
+  minPrice: number;
+  binSize: number;
+  rows: number;
+  intervalMs: number;
+}
 export type Interval = '1m' | '5m' | '15m' | '1h';
-export const INTERVAL_MS: Readonly<Record<Interval, number>> = { '1m': 60000, '5m': 300000, '15m': 900000, '1h': 3600000 };
+export const INTERVAL_MS: Readonly<Record<Interval, number>> = {
+  '1m': 60000,
+  '5m': 300000,
+  '15m': 900000,
+  '1h': 3600000,
+};
 export interface Instrument {
   symbol: string;
   name: string;
@@ -40,9 +67,16 @@ export type FeedEvent =
   | { type: 'depth.delta'; book: DepthDelta }
   | { type: 'stream.status'; stream: Stream; status: 'loading' | 'stale' | 'error'; message?: string }
   | { type: 'heatmap.history'; grid: HeatmapGrid; columns: readonly DepthColumn[] };
-export interface FeedConnection { setPaused(paused: boolean): void; requestSnapshot(): void; dispose(): void }
+export interface FeedConnection {
+  setPaused(paused: boolean): void;
+  requestSnapshot(): void;
+  dispose(): void;
+}
 /** One immutable market selection; each connection owns its transport and recovery state. */
-export interface FeedAdapter { readonly descriptor: FeedDescriptor; connect(emit: (event: FeedEvent) => void): FeedConnection }
+export interface FeedAdapter {
+  readonly descriptor: FeedDescriptor;
+  connect(emit: (event: FeedEvent) => void): FeedConnection;
+}
 export interface IndicatorPlugin {
   readonly id: string;
   readonly name: string;
@@ -52,8 +86,15 @@ export interface IndicatorPlugin {
   calculate(candles: readonly Candle[], previous: readonly number[], changedIndex: number): number[];
 }
 export type Layer = 'heatmap' | 'candles' | 'volume' | 'indicator';
-export interface Anchor { timeMs: number; price: number }
-export interface TrendLine { id: string; start: Anchor; end: Anchor }
+export interface Anchor {
+  timeMs: number;
+  price: number;
+}
+export interface TrendLine {
+  id: string;
+  start: Anchor;
+  end: Anchor;
+}
 export type PriceScale = { mode: 'auto' } | { mode: 'manual'; minPrice: number; maxPrice: number };
 export interface ChartDocument {
   version: 3;
@@ -83,7 +124,12 @@ export type ChartCommand =
   | { type: 'history.undo' }
   | { type: 'history.redo' }
   | { type: 'feed.pause'; paused: boolean };
-export interface BookView { status: 'waiting' | 'live' | 'stale'; sequence: number; bids: readonly Level[]; asks: readonly Level[] }
+export interface BookView {
+  status: 'waiting' | 'live' | 'stale';
+  sequence: number;
+  bids: readonly Level[];
+  asks: readonly Level[];
+}
 export interface RuntimeState {
   feed: FeedDescriptor;
   generation: number;

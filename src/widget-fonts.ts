@@ -8,8 +8,14 @@ export function loadWidgetFonts(doc: Document): void {
     ['OpenChart UI', new URL('./fonts/hanken-grotesk-latin.woff2', import.meta.url).href, '400 600'],
     ['OpenChart Editorial', new URL('./fonts/newsreader-latin.woff2', import.meta.url).href, '400'],
   ]) {
-    const face = new Font(family, `url("${url}") format("woff2")`, { weight, style: 'normal', display: 'swap' });
+    const face = new Font(family, `url("${url}") format("woff2")`, {
+      weight,
+      style: 'normal',
+      display: 'swap',
+    });
     doc.fonts.add(face);
-    void face.load().catch(() => { doc.fonts.delete(face); });
+    void face.load().catch(() => {
+      doc.fonts.delete(face);
+    });
   }
 }

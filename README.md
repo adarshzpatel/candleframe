@@ -19,7 +19,7 @@ npm run build
 npm run example:headless
 ```
 
-The build creates the static demo in `dist/` and ES modules with TypeScript declarations in `dist/lib/`. The package is private and unpublished. It has no runtime package dependencies.
+The build creates the static demo in `dist/` and ES modules with TypeScript declarations in `dist/lib/`. The package has no runtime dependencies.
 
 ## Try version 0.3
 
@@ -86,7 +86,7 @@ The PoC implements candles, volume, SMA, a 30-tool drawing suite with undo/redo,
 
 Interfaces remain experimental. Multiple panes, session calendars, log scales, paging older history, scripting and broker execution are not implemented. Rendering and calculations run on the main thread. No comparative performance claim has been established.
 
-The project license has not yet been applied. Apache-2.0 remains the proposal; public release preparation must resolve it.
+OpenChart is released under the [MIT license](LICENSE). Bundled fonts use the SIL Open Font License; see `src/fonts/`.
 
 ## Project documents
 
@@ -98,3 +98,4 @@ The project license has not yet been applied. Apache-2.0 remains the proposal; p
 - [Research and feature comparison](docs/research.md)
 - [Roadmap and release gates](docs/roadmap.md)
 - [Target architecture and proposed future APIs](docs/architecture.md)
+- [Contributing](CONTRIBUTING.md) and [changelog](CHANGELOG.md)

@@ -21,10 +21,20 @@ export class HeatmapStore {
   readonly grid: HeatmapGrid;
   readonly capacity: number;
   constructor(grid: HeatmapGrid, capacity = 512) {
-    if (!Number.isSafeInteger(capacity) || capacity < 1 || capacity > 4096
-      || !Number.isInteger(grid.rows) || grid.rows < 1 || grid.rows > 1024
-      || !Number.isFinite(grid.minPrice) || !Number.isFinite(grid.binSize) || grid.binSize <= 0
-      || !Number.isFinite(grid.intervalMs) || grid.intervalMs <= 0) throw new Error('INVALID_HEATMAP_GRID');
+    if (
+      !Number.isSafeInteger(capacity) ||
+      capacity < 1 ||
+      capacity > 4096 ||
+      !Number.isInteger(grid.rows) ||
+      grid.rows < 1 ||
+      grid.rows > 1024 ||
+      !Number.isFinite(grid.minPrice) ||
+      !Number.isFinite(grid.binSize) ||
+      grid.binSize <= 0 ||
+      !Number.isFinite(grid.intervalMs) ||
+      grid.intervalMs <= 0
+    )
+      throw new Error('INVALID_HEATMAP_GRID');
     this.grid = { ...grid };
     this.capacity = capacity;
     this.columns = Array.from({ length: capacity });
@@ -32,8 +42,13 @@ export class HeatmapStore {
   }
 
   append(column: DepthColumn): void {
-    if (!Number.isFinite(column.timeMs) || column.timeMs < 0 || column.values.length !== this.grid.rows
-      || column.values.some(value => !Number.isFinite(value) || value < 0)) throw new Error('INVALID_HEATMAP_COLUMN');
+    if (
+      !Number.isFinite(column.timeMs) ||
+      column.timeMs < 0 ||
+      column.values.length !== this.grid.rows ||
+      column.values.some(value => !Number.isFinite(value) || value < 0)
+    )
+      throw new Error('INVALID_HEATMAP_COLUMN');
     const timeMs = Math.floor(column.timeMs / this.grid.intervalMs) * this.grid.intervalMs;
     const lastSlot = (this.startSlot + this.count - 1 + this.capacity) % this.capacity;
     const last = this.columns[lastSlot];
@@ -44,8 +59,12 @@ export class HeatmapStore {
       return;
     }
     if (last && this.count && timeMs - last.timeMs > this.grid.intervalMs) {
-      const start = Math.max(last.timeMs + this.grid.intervalMs, timeMs - (this.capacity - 1) * this.grid.intervalMs);
-      for (let t = start; t < timeMs; t += this.grid.intervalMs) this.write({ timeMs: t, values: new Float32Array(this.grid.rows), valid: false });
+      const start = Math.max(
+        last.timeMs + this.grid.intervalMs,
+        timeMs - (this.capacity - 1) * this.grid.intervalMs,
+      );
+      for (let t = start; t < timeMs; t += this.grid.intervalMs)
+        this.write({ timeMs: t, values: new Float32Array(this.grid.rows), valid: false });
     }
     this.write({ ...column, timeMs });
   }
@@ -58,5 +77,7 @@ export class HeatmapStore {
     else this.startSlot = (this.startSlot + 1) % this.capacity;
   }
 
-  get firstTimeMs(): number { return this.columns[this.startSlot]?.timeMs ?? 0; }
+  get firstTimeMs(): number {
+    return this.columns[this.startSlot]?.timeMs ?? 0;
+  }
 }

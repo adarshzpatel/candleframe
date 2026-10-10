@@ -1,6 +1,15 @@
 import { binBook } from './heatmap.ts';
 import { INTERVAL_MS } from './types.ts';
-import type { Candle, DepthSnapshot, FeedAdapter, FeedConnection, HeatmapGrid, Instrument, Interval, Level } from './types.ts';
+import type {
+  Candle,
+  DepthSnapshot,
+  FeedAdapter,
+  FeedConnection,
+  HeatmapGrid,
+  Instrument,
+  Interval,
+  Level,
+} from './types.ts';
 
 const MINUTE = 60_000;
 const START_TIME = Date.UTC(2026, 9, 2, 12);
@@ -20,16 +29,23 @@ function random(seed: number): () => number {
 }
 
 /** Synthetic quantities only; this is not recorded exchange liquidity. */
-export function simulatedBook(price: number, sequence: number, phase: number, priceStep = 5, quantityScale = 1): DepthSnapshot {
+export function simulatedBook(
+  price: number,
+  sequence: number,
+  phase: number,
+  priceStep = 5,
+  quantityScale = 1,
+): DepthSnapshot {
   const midpoint = Math.round(price / priceStep) * priceStep;
-  const side = (direction: -1 | 1): Level[] => Array.from({ length: 80 }, (_, i) => {
-    const p = Number((midpoint + direction * (i + 1) * priceStep).toFixed(8));
-    const referencePrice = p / priceStep * 5;
-    const wall = Math.exp(-Math.pow((referencePrice % 200 - 100) / 15, 2)) * 15;
-    const broad = 1.3 + Math.pow(Math.sin(referencePrice * 0.018 + phase * 0.025), 8) * 7;
-    const wave = 0.6 + 0.4 * Math.sin(referencePrice * 0.07 + phase * 0.04);
-    return [p, Math.round((broad + wall) * wave * quantityScale * 1000) / 1000];
-  });
+  const side = (direction: -1 | 1): Level[] =>
+    Array.from({ length: 80 }, (_, i) => {
+      const p = Number((midpoint + direction * (i + 1) * priceStep).toFixed(8));
+      const referencePrice = (p / priceStep) * 5;
+      const wall = Math.exp(-Math.pow(((referencePrice % 200) - 100) / 15, 2)) * 15;
+      const broad = 1.3 + Math.pow(Math.sin(referencePrice * 0.018 + phase * 0.025), 8) * 7;
+      const wave = 0.6 + 0.4 * Math.sin(referencePrice * 0.07 + phase * 0.04);
+      return [p, Math.round((broad + wall) * wave * quantityScale * 1000) / 1000];
+    });
   return { sequence, bids: side(-1), asks: side(1) };
 }
 
@@ -84,16 +100,28 @@ export function createSimulatedFeed(input: number | SimulatedFeedOptions = 42): 
   const quantityScale = 1 / priceScale;
   const rounded = (price: number) => Number(price.toFixed(preset.precision));
   const instrument: Instrument = {
-    symbol, name: preset.name, base: preset.base, quote: 'USD',
-    tickSize: 10 ** -preset.precision, pricePrecision: preset.precision, quantityPrecision: preset.quantityPrecision,
+    symbol,
+    name: preset.name,
+    base: preset.base,
+    quote: 'USD',
+    tickSize: 10 ** -preset.precision,
+    pricePrecision: preset.precision,
+    quantityPrecision: preset.quantityPrecision,
   };
   const connections = new Set<() => void>();
   return {
     descriptor: {
-      id: 'simulated', label: 'Local simulation', instrument, interval, intervalMs,
-      simulated: true, depth: { kind: 'sequenced', levels: 80 },
+      id: 'simulated',
+      label: 'Local simulation',
+      instrument,
+      interval,
+      intervalMs,
+      simulated: true,
+      depth: { kind: 'sequenced', levels: 80 },
     },
-    injectGap() { for (const drop of connections) drop(); },
+    injectGap() {
+      for (const drop of connections) drop();
+    },
     connect(emit): FeedConnection {
       const rng = random(seed);
       // Every interval uses the same minute history and consumes the same random
@@ -102,12 +130,18 @@ export function createSimulatedFeed(input: number | SimulatedFeedOptions = 42): 
       let close = preset.price as number;
       for (let i = 0; i < HISTORY_MINUTES; i++) {
         const open = close;
-        const reference = 68_000 + 650 * Math.sin(i / 600) + 400 * Math.sin(i / 130)
-          + 130 * Math.sin(i / 31) + 60 * Math.sin(i / 9) + (rng() - 0.5) * 32;
+        const reference =
+          68_000 +
+          650 * Math.sin(i / 600) +
+          400 * Math.sin(i / 130) +
+          130 * Math.sin(i / 31) +
+          60 * Math.sin(i / 9) +
+          (rng() - 0.5) * 32;
         close = rounded(reference * priceScale);
         minutes.push({
           timeMs: START_TIME - (HISTORY_MINUTES - i) * MINUTE,
-          open, close,
+          open,
+          close,
           high: rounded(Math.max(open, close) + rng() * 27 * priceScale),
           low: rounded(Math.min(open, close) - rng() * 27 * priceScale),
           volume: (3 + rng() * 15) * quantityScale,
@@ -124,7 +158,9 @@ export function createSimulatedFeed(input: number | SimulatedFeedOptions = 42): 
       let disposed = false;
       let omitted = false;
       let recovering: ReturnType<typeof setTimeout> | undefined;
-      const drop = () => { omitted = true; };
+      const drop = () => {
+        omitted = true;
+      };
       connections.add(drop);
       emit({ type: 'candles.history', candles });
       emit({ type: 'depth.snapshot', book });
@@ -132,26 +168,52 @@ export function createSimulatedFeed(input: number | SimulatedFeedOptions = 42): 
         const low = Math.min(...candles.map(bar => bar.low)) - 80 * preset.step;
         const high = Math.max(...candles.map(bar => bar.high)) + 80 * preset.step;
         const binSize = Math.ceil((high - low) / 256 / preset.step) * preset.step;
-        const grid: HeatmapGrid = { minPrice: Math.floor(low / binSize) * binSize, binSize, rows: 256, intervalMs };
+        const grid: HeatmapGrid = {
+          minPrice: Math.floor(low / binSize) * binSize,
+          binSize,
+          rows: 256,
+          intervalMs,
+        };
         emit({
-          type: 'heatmap.history', grid,
-          columns: candles.map((bar, i) => binBook({
-            ...simulatedBook(bar.close, i, i, preset.step, quantityScale), status: 'live',
-          }, grid, bar.timeMs)),
+          type: 'heatmap.history',
+          grid,
+          columns: candles.map((bar, i) =>
+            binBook(
+              {
+                ...simulatedBook(bar.close, i, i, preset.step, quantityScale),
+                status: 'live',
+              },
+              grid,
+              bar.timeMs,
+            ),
+          ),
         });
       }
       const timer = setInterval(() => {
         if (paused || disposed) return;
         steps++;
         clockMs += 10_000;
-        const next = rounded(Math.max(preset.price * 0.94, Math.min(preset.price * 1.06,
-          current.close + (rng() - 0.48) * 11 * priceScale)));
+        const next = rounded(
+          Math.max(
+            preset.price * 0.94,
+            Math.min(preset.price * 1.06, current.close + (rng() - 0.48) * 11 * priceScale),
+          ),
+        );
         const timeMs = Math.floor(clockMs / intervalMs) * intervalMs;
-        if (timeMs !== current.timeMs) current = {
-          timeMs, open: current.close, high: current.close, low: current.close, close: current.close, volume: 0,
-        };
+        if (timeMs !== current.timeMs)
+          current = {
+            timeMs,
+            open: current.close,
+            high: current.close,
+            low: current.close,
+            close: current.close,
+            volume: 0,
+          };
         current = {
-          ...current, close: next, high: Math.max(current.high, next), low: Math.min(current.low, next),
+          ...current,
+          close: next,
+          high: Math.max(current.high, next),
+          low: Math.min(current.low, next),
           volume: current.volume + rng() * 2 * quantityScale,
         };
         // Depth transport problems never prevent a candle publication.
@@ -159,10 +221,19 @@ export function createSimulatedFeed(input: number | SimulatedFeedOptions = 42): 
         if (disposed || paused) return;
         const old = book;
         book = simulatedBook(next, ++sequence, HISTORY_MINUTES + steps / 6, preset.step, quantityScale);
-        if (omitted) { omitted = false; return; }
-        emit({ type: 'depth.delta', book: {
-          sequence, previousSequence: sequence - 1, bids: diff(old.bids, book.bids), asks: diff(old.asks, book.asks),
-        } });
+        if (omitted) {
+          omitted = false;
+          return;
+        }
+        emit({
+          type: 'depth.delta',
+          book: {
+            sequence,
+            previousSequence: sequence - 1,
+            bids: diff(old.bids, book.bids),
+            asks: diff(old.asks, book.asks),
+          },
+        });
       }, 250);
       return {
         setPaused(value) {

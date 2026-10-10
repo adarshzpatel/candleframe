@@ -22,18 +22,30 @@ test('simulated intervals aggregate the same minute history without enabling hea
       const history = events.find(event => event.type === 'candles.history');
       assert.ok(history);
       assert.equal(history.candles.length, 360);
-      assert.equal(events.some(event => event.type === 'heatmap.history'), false);
-      assert.ok(history.candles.every((bar, i) => bar.timeMs % feed.descriptor.intervalMs === 0
-        && (!i || bar.timeMs > history.candles[i - 1].timeMs)));
+      assert.equal(
+        events.some(event => event.type === 'heatmap.history'),
+        false,
+      );
+      assert.ok(
+        history.candles.every(
+          (bar, i) =>
+            bar.timeMs % feed.descriptor.intervalMs === 0 &&
+            (!i || bar.timeMs > history.candles[i - 1].timeMs),
+        ),
+      );
       histories[interval] = history.candles;
       connection.dispose();
     }
     assert.equal(histories['1m'].at(-1)!.close, histories['5m'].at(-1)!.close);
-    const overlapping = histories['5m'].filter(bar => bar.timeMs >= histories['1m'][0].timeMs
-      && bar.timeMs + 300_000 <= histories['1m'].at(-1)!.timeMs);
+    const overlapping = histories['5m'].filter(
+      bar =>
+        bar.timeMs >= histories['1m'][0].timeMs && bar.timeMs + 300_000 <= histories['1m'].at(-1)!.timeMs,
+    );
     assert.ok(overlapping.length > 60, 'Compare a substantial overlapping history');
     for (const bar of overlapping) {
-      const children = histories['1m'].filter(child => child.timeMs >= bar.timeMs && child.timeMs < bar.timeMs + 300_000);
+      const children = histories['1m'].filter(
+        child => child.timeMs >= bar.timeMs && child.timeMs < bar.timeMs + 300_000,
+      );
       assert.equal(children.length, 5);
       assert.deepEqual(bar, {
         timeMs: children[0].timeMs,
@@ -65,7 +77,10 @@ test('five-minute candles take 30 ticks, pause freezes the clock and disposal ca
   t.mock.timers.tick(15_000);
   assert.equal(events.length, pausedCount);
   connection.setPaused(false);
-  assert.deepEqual(events.slice(pausedCount).map(event => event.type), ['candle', 'depth.snapshot']);
+  assert.deepEqual(
+    events.slice(pausedCount).map(event => event.type),
+    ['candle', 'depth.snapshot'],
+  );
   assert.deepEqual(latestCandle(events), beforePause);
 
   t.mock.timers.tick(250);
@@ -95,7 +110,10 @@ test('a dropped depth sequence leaves candles streaming and repeated recovery re
   const beforeGap = events.length;
   feed.injectGap();
   t.mock.timers.tick(250);
-  assert.deepEqual(events.slice(beforeGap).map(event => event.type), ['candle']);
+  assert.deepEqual(
+    events.slice(beforeGap).map(event => event.type),
+    ['candle'],
+  );
   t.mock.timers.tick(250);
   assert.equal(book.inspect().status, 'stale');
   assert.equal(book.inspect().sequence, lastValidSequence);

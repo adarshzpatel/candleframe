@@ -10,7 +10,13 @@ export interface RenderFrame {
   heatmap?: HeatmapStore;
   theme?: ResolvedChartTheme;
 }
-export interface RendererStats { cpuMs: number; drawCalls: number; instances: number; textureBytes: number; status: 'ready' | 'lost' | 'unavailable' }
+export interface RendererStats {
+  cpuMs: number;
+  drawCalls: number;
+  instances: number;
+  textureBytes: number;
+  status: 'ready' | 'lost' | 'unavailable';
+}
 export interface ChartRenderer {
   readonly name: string;
   mount(canvas: HTMLCanvasElement, invalidate: () => void, onStatus: (message: string | null) => void): void;
@@ -101,11 +107,19 @@ const colorsFor = (theme: ResolvedChartTheme) => {
   const chart = theme.chart;
   const token = (value: string, opacity = 1) => colorRGBA(themeColor(theme, value), opacity);
   return {
-    background: colorRGBA(theme.palette.background), up: token(chart.candleUp), down: token(chart.candleDown),
-    wickUp: token(chart.wickUp), wickDown: token(chart.wickDown),
-    volumeUp: token(chart.volumeUp, chart.volumeOpacity), volumeDown: token(chart.volumeDown, chart.volumeOpacity),
-    grid: colorRGBA(theme.palette.grid, chart.gridOpacity), indicator: colorRGBA(theme.palette.indicator),
-    heatLow: token(chart.heatmapLow), heatMid: token(chart.heatmapMid), heatHigh: token(chart.heatmapHigh), heatPeak: token(chart.heatmapPeak),
+    background: colorRGBA(theme.palette.background),
+    up: token(chart.candleUp),
+    down: token(chart.candleDown),
+    wickUp: token(chart.wickUp),
+    wickDown: token(chart.wickDown),
+    volumeUp: token(chart.volumeUp, chart.volumeOpacity),
+    volumeDown: token(chart.volumeDown, chart.volumeOpacity),
+    grid: colorRGBA(theme.palette.grid, chart.gridOpacity),
+    indicator: colorRGBA(theme.palette.indicator),
+    heatLow: token(chart.heatmapLow),
+    heatMid: token(chart.heatmapMid),
+    heatHigh: token(chart.heatmapHigh),
+    heatPeak: token(chart.heatmapPeak),
     heatUnknown: token(chart.heatmapUnknown, chart.heatmapUnknownOpacity),
   };
 };
@@ -146,15 +160,27 @@ export class WebGL2Renderer implements ChartRenderer {
   };
   private onRestored = () => {
     if (this.disposed) return;
-    try { this.initialize(); this.onStatus(null); this.invalidate(); }
-    catch (error) { this.status = 'unavailable'; this.onStatus(String(error)); }
+    try {
+      this.initialize();
+      this.onStatus(null);
+      this.invalidate();
+    } catch (error) {
+      this.status = 'unavailable';
+      this.onStatus(String(error));
+    }
   };
 
   mount(canvas: HTMLCanvasElement, invalidate: () => void, onStatus: (message: string | null) => void): void {
     this.canvas = canvas;
     this.invalidate = invalidate;
     this.onStatus = onStatus;
-    const gl = canvas.getContext('webgl2', { alpha: false, antialias: true, depth: false, stencil: false, preserveDrawingBuffer: false });
+    const gl = canvas.getContext('webgl2', {
+      alpha: false,
+      antialias: true,
+      depth: false,
+      stencil: false,
+      preserveDrawingBuffer: false,
+    });
     if (!gl) throw new Error('WEBGL2_UNAVAILABLE: This device or browser could not create a WebGL2 context.');
     this.gl = gl;
     canvas.addEventListener('webglcontextlost', this.onLost);
@@ -170,13 +196,22 @@ export class WebGL2Renderer implements ChartRenderer {
       gl.compileShader(shader);
       return shader;
     };
-    const vs = makeShader(gl.VERTEX_SHADER, vertex), fs = makeShader(gl.FRAGMENT_SHADER, fragment);
+    const vs = makeShader(gl.VERTEX_SHADER, vertex),
+      fs = makeShader(gl.FRAGMENT_SHADER, fragment);
     const program = gl.createProgram()!;
-    gl.attachShader(program, vs); gl.attachShader(program, fs); gl.linkProgram(program);
+    gl.attachShader(program, vs);
+    gl.attachShader(program, fs);
+    gl.linkProgram(program);
     const ok = gl.getProgramParameter(program, gl.LINK_STATUS);
-    const log = ok ? '' : `${gl.getProgramInfoLog(program)} ${gl.getShaderInfoLog(vs)} ${gl.getShaderInfoLog(fs)}`;
-    gl.deleteShader(vs); gl.deleteShader(fs);
-    if (!ok) { gl.deleteProgram(program); throw new Error(`SHADER_ERROR: ${log}`); }
+    const log = ok
+      ? ''
+      : `${gl.getProgramInfoLog(program)} ${gl.getShaderInfoLog(vs)} ${gl.getShaderInfoLog(fs)}`;
+    gl.deleteShader(vs);
+    gl.deleteShader(fs);
+    if (!ok) {
+      gl.deleteProgram(program);
+      throw new Error(`SHADER_ERROR: ${log}`);
+    }
     return program;
   }
 
@@ -200,7 +235,13 @@ export class WebGL2Renderer implements ChartRenderer {
     this.lineVao = vao();
     this.instances = gl.createBuffer()!;
     gl.bindBuffer(gl.ARRAY_BUFFER, this.instances);
-    for (const [location, count, offset] of [[1, 2, 0], [2, 2, 2], [3, 1, 4], [4, 4, 5], [5, 2, 9]]) {
+    for (const [location, count, offset] of [
+      [1, 2, 0],
+      [2, 2, 2],
+      [3, 1, 4],
+      [4, 4, 5],
+      [5, 2, 9],
+    ]) {
       gl.enableVertexAttribArray(location);
       gl.vertexAttribPointer(location, count, gl.FLOAT, false, INSTANCE_FLOATS * 4, offset * 4);
       gl.vertexAttribDivisor(location, 1);
@@ -221,9 +262,15 @@ export class WebGL2Renderer implements ChartRenderer {
 
   private uniform(program: WebGLProgram, name: string): WebGLUniformLocation {
     let cache = this.uniforms.get(program);
-    if (!cache) { cache = new Map(); this.uniforms.set(program, cache); }
+    if (!cache) {
+      cache = new Map();
+      this.uniforms.set(program, cache);
+    }
     let location = cache.get(name);
-    if (!location) { location = this.gl.getUniformLocation(program, name)!; cache.set(name, location); }
+    if (!location) {
+      location = this.gl.getUniformLocation(program, name)!;
+      cache.set(name, location);
+    }
     return location;
   }
 
@@ -232,7 +279,17 @@ export class WebGL2Renderer implements ChartRenderer {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.texture);
     if (this.uploadedStore !== store) {
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG8, store.capacity, store.grid.rows, 0, gl.RG, gl.UNSIGNED_BYTE, null);
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RG8,
+        store.capacity,
+        store.grid.rows,
+        0,
+        gl.RG,
+        gl.UNSIGNED_BYTE,
+        null,
+      );
       this.uploadedStamps = Array(store.capacity).fill(-1);
       this.columnBytes = new Uint8Array(store.grid.rows * 2);
       this.uploadedStore = store;
@@ -244,30 +301,63 @@ export class WebGL2Renderer implements ChartRenderer {
       const column = store.columns[slot];
       if (!column || this.uploadedStamps[slot] === store.stamps[slot]) continue;
       for (let row = 0; row < store.grid.rows; row++) {
-        this.columnBytes[row * 2] = Math.round(Math.min(1, Math.log1p(column.values[row]) / Math.log(45)) * 255);
+        this.columnBytes[row * 2] = Math.round(
+          Math.min(1, Math.log1p(column.values[row]) / Math.log(45)) * 255,
+        );
         this.columnBytes[row * 2 + 1] = column.valid ? 255 : 0;
       }
-      gl.texSubImage2D(gl.TEXTURE_2D, 0, slot, 0, 1, store.grid.rows, gl.RG, gl.UNSIGNED_BYTE, this.columnBytes);
+      gl.texSubImage2D(
+        gl.TEXTURE_2D,
+        0,
+        slot,
+        0,
+        1,
+        store.grid.rows,
+        gl.RG,
+        gl.UNSIGNED_BYTE,
+        this.columnBytes,
+      );
       this.uploadedStamps[slot] = store.stamps[slot];
     }
     this.uploadedRevision = store.revision;
   }
 
-  private line(x1: number, y1: number, x2: number, y2: number, width: number, color: Color, clipY = UNCLIPPED): void {
-    if (this.used + INSTANCE_FLOATS > this.vertices.length) { const larger = new Float32Array(this.vertices.length * 2); larger.set(this.vertices); this.vertices = larger; }
+  private line(
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    width: number,
+    color: Color,
+    clipY = UNCLIPPED,
+  ): void {
+    if (this.used + INSTANCE_FLOATS > this.vertices.length) {
+      const larger = new Float32Array(this.vertices.length * 2);
+      larger.set(this.vertices);
+      this.vertices = larger;
+    }
     this.vertices.set([x1, y1, x2, y2, width, ...color, ...clipY], this.used);
     this.used += INSTANCE_FLOATS;
   }
 
   render({ state, geometry: g, heatmap, theme = chartThemes.evergreen }: RenderFrame): RendererStats {
     const start = performance.now();
-    if (this.status !== 'ready') return { cpuMs: 0, drawCalls: 0, instances: 0, textureBytes: 0, status: this.status };
-    if (this.theme !== theme) { this.theme = theme; this.colors = colorsFor(theme); }
-    const colors = this.colors, appearance = theme.chart;
+    if (this.status !== 'ready')
+      return { cpuMs: 0, drawCalls: 0, instances: 0, textureBytes: 0, status: this.status };
+    if (this.theme !== theme) {
+      this.theme = theme;
+      this.colors = colorsFor(theme);
+    }
+    const colors = this.colors,
+      appearance = theme.chart;
     const gl = this.gl;
     const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
-    const pixelWidth = Math.max(1, Math.round(g.width * dpr)), pixelHeight = Math.max(1, Math.round(g.height * dpr));
-    if (this.canvas.width !== pixelWidth || this.canvas.height !== pixelHeight) { this.canvas.width = pixelWidth; this.canvas.height = pixelHeight; }
+    const pixelWidth = Math.max(1, Math.round(g.width * dpr)),
+      pixelHeight = Math.max(1, Math.round(g.height * dpr));
+    if (this.canvas.width !== pixelWidth || this.canvas.height !== pixelHeight) {
+      this.canvas.width = pixelWidth;
+      this.canvas.height = pixelHeight;
+    }
     gl.viewport(0, 0, pixelWidth, pixelHeight);
     gl.disable(gl.SCISSOR_TEST);
     gl.clearColor(...colors.background);
@@ -279,8 +369,20 @@ export class WebGL2Renderer implements ChartRenderer {
       gl.bindVertexArray(this.heatVao);
       gl.uniform2f(this.uniform(this.heatProgram, 'resolution'), g.width, g.height);
       gl.uniform4f(this.uniform(this.heatProgram, 'rect'), g.left, g.top, g.plotWidth, g.plotHeight);
-      gl.uniform4f(this.uniform(this.heatProgram, 'view'), (g.fromMs - heatmap.firstTimeMs) / heatmap.grid.intervalMs, (g.toMs - heatmap.firstTimeMs) / heatmap.grid.intervalMs, g.minPrice, g.maxPrice);
-      gl.uniform4f(this.uniform(this.heatProgram, 'grid'), heatmap.grid.minPrice, heatmap.grid.binSize, heatmap.grid.rows, heatmap.count);
+      gl.uniform4f(
+        this.uniform(this.heatProgram, 'view'),
+        (g.fromMs - heatmap.firstTimeMs) / heatmap.grid.intervalMs,
+        (g.toMs - heatmap.firstTimeMs) / heatmap.grid.intervalMs,
+        g.minPrice,
+        g.maxPrice,
+      );
+      gl.uniform4f(
+        this.uniform(this.heatProgram, 'grid'),
+        heatmap.grid.minPrice,
+        heatmap.grid.binSize,
+        heatmap.grid.rows,
+        heatmap.count,
+      );
       gl.uniform2f(this.uniform(this.heatProgram, 'ring'), heatmap.startSlot, heatmap.capacity);
       gl.uniform1f(this.uniform(this.heatProgram, 'intensity'), state.document.intensity);
       gl.uniform4f(this.uniform(this.heatProgram, 'lowColor'), ...colors.heatLow);
@@ -295,37 +397,84 @@ export class WebGL2Renderer implements ChartRenderer {
     }
     this.used = 0;
     for (let i = 0; i <= appearance.gridRows; i++) {
-      const y = g.top + g.plotHeight / appearance.gridRows * i;
-      if (appearance.gridWidth) this.line(g.left, y, g.left + g.plotWidth, y, appearance.gridWidth, colors.grid);
+      const y = g.top + (g.plotHeight / appearance.gridRows) * i;
+      if (appearance.gridWidth)
+        this.line(g.left, y, g.left + g.plotWidth, y, appearance.gridWidth, colors.grid);
     }
     for (let i = 0; i <= appearance.gridColumns; i++) {
-      const x = g.left + g.plotWidth / appearance.gridColumns * i;
-      if (appearance.gridWidth) this.line(x, g.top, x, g.volumeTop + g.volumeHeight, appearance.gridWidth, colors.grid);
+      const x = g.left + (g.plotWidth / appearance.gridColumns) * i;
+      if (appearance.gridWidth)
+        this.line(x, g.top, x, g.volumeTop + g.volumeHeight, appearance.gridWidth, colors.grid);
     }
     const bars = state.candles;
     const priceClip: readonly [number, number] = [g.top, g.top + g.plotHeight];
     const interval = state.feed.intervalMs;
     const visible = bars.filter(b => b.timeMs >= g.fromMs - interval && b.timeMs <= g.toMs + interval);
     const maxVolume = Math.max(1, ...visible.map(b => b.volume));
-    const candleWidth = Math.max(1, Math.min(appearance.candleMaxWidth, g.plotWidth / ((g.toMs - g.fromMs) / interval) * appearance.candleBodyRatio));
+    const candleWidth = Math.max(
+      1,
+      Math.min(
+        appearance.candleMaxWidth,
+        (g.plotWidth / ((g.toMs - g.fromMs) / interval)) * appearance.candleBodyRatio,
+      ),
+    );
     for (const bar of visible) {
       const up = bar.close >= bar.open;
-      const x = g.x(bar.timeMs + interval / 2), color = up ? colors.up : colors.down;
+      const x = g.x(bar.timeMs + interval / 2),
+        color = up ? colors.up : colors.down;
       if (state.document.layers.candles) {
-        this.line(x, g.y(bar.high), x, g.y(bar.low), appearance.wickWidth, up ? colors.wickUp : colors.wickDown, priceClip);
-        const top = g.y(Math.max(bar.open, bar.close)), bottom = g.y(Math.min(bar.open, bar.close));
-        this.line(x - candleWidth / 2, (top + bottom) / 2, x + candleWidth / 2, (top + bottom) / 2, Math.max(appearance.candleMinHeight, bottom - top), color, priceClip);
+        this.line(
+          x,
+          g.y(bar.high),
+          x,
+          g.y(bar.low),
+          appearance.wickWidth,
+          up ? colors.wickUp : colors.wickDown,
+          priceClip,
+        );
+        const top = g.y(Math.max(bar.open, bar.close)),
+          bottom = g.y(Math.min(bar.open, bar.close));
+        this.line(
+          x - candleWidth / 2,
+          (top + bottom) / 2,
+          x + candleWidth / 2,
+          (top + bottom) / 2,
+          Math.max(appearance.candleMinHeight, bottom - top),
+          color,
+          priceClip,
+        );
       }
       if (state.document.layers.volume && g.volumeHeight > 0) {
-        const h = bar.volume / maxVolume * g.volumeHeight;
-        this.line(x - candleWidth / 2, g.volumeTop + g.volumeHeight - h / 2, x + candleWidth / 2, g.volumeTop + g.volumeHeight - h / 2, h, up ? colors.volumeUp : colors.volumeDown);
+        const h = (bar.volume / maxVolume) * g.volumeHeight;
+        this.line(
+          x - candleWidth / 2,
+          g.volumeTop + g.volumeHeight - h / 2,
+          x + candleWidth / 2,
+          g.volumeTop + g.volumeHeight - h / 2,
+          h,
+          up ? colors.volumeUp : colors.volumeDown,
+        );
       }
     }
     if (state.document.layers.indicator) {
       for (const { plugin, values } of state.indicators) {
         for (let i = 1; i < bars.length; i++) {
-          if (bars[i].timeMs < g.fromMs || bars[i - 1].timeMs > g.toMs || !Number.isFinite(values[i - 1]) || !Number.isFinite(values[i])) continue;
-          this.line(g.x(bars[i - 1].timeMs + interval / 2), g.y(values[i - 1]), g.x(bars[i].timeMs + interval / 2), g.y(values[i]), appearance.indicatorWidth, plugin.themeColor === 'indicator' ? colors.indicator : plugin.color, priceClip);
+          if (
+            bars[i].timeMs < g.fromMs ||
+            bars[i - 1].timeMs > g.toMs ||
+            !Number.isFinite(values[i - 1]) ||
+            !Number.isFinite(values[i])
+          )
+            continue;
+          this.line(
+            g.x(bars[i - 1].timeMs + interval / 2),
+            g.y(values[i - 1]),
+            g.x(bars[i].timeMs + interval / 2),
+            g.y(values[i]),
+            appearance.indicatorWidth,
+            plugin.themeColor === 'indicator' ? colors.indicator : plugin.color,
+            priceClip,
+          );
         }
       }
     }
@@ -339,11 +488,22 @@ export class WebGL2Renderer implements ChartRenderer {
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.vertices.subarray(0, this.used));
     gl.uniform2f(this.uniform(this.lineProgram, 'resolution'), g.width, g.height);
     gl.enable(gl.SCISSOR_TEST);
-    gl.scissor(Math.round(g.left * dpr), Math.round((g.height - g.volumeTop - g.volumeHeight) * dpr), Math.round(g.plotWidth * dpr), Math.round((g.volumeTop + g.volumeHeight - g.top) * dpr));
+    gl.scissor(
+      Math.round(g.left * dpr),
+      Math.round((g.height - g.volumeTop - g.volumeHeight) * dpr),
+      Math.round(g.plotWidth * dpr),
+      Math.round((g.volumeTop + g.volumeHeight - g.top) * dpr),
+    );
     gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, this.used / INSTANCE_FLOATS);
     gl.disable(gl.SCISSOR_TEST);
     drawCalls++;
-    return { cpuMs: performance.now() - start, drawCalls, instances: this.used / INSTANCE_FLOATS, textureBytes: this.uploadedStore ? this.uploadedStore.capacity * this.uploadedStore.grid.rows * 2 : 0, status: this.status };
+    return {
+      cpuMs: performance.now() - start,
+      drawCalls,
+      instances: this.used / INSTANCE_FLOATS,
+      textureBytes: this.uploadedStore ? this.uploadedStore.capacity * this.uploadedStore.grid.rows * 2 : 0,
+      status: this.status,
+    };
   }
 
   /** Development diagnostic. Retains CPU state while rebuilding GPU resources. */
@@ -352,7 +512,9 @@ export class WebGL2Renderer implements ChartRenderer {
     const extension = this.gl.getExtension('WEBGL_lose_context');
     if (!extension) return false;
     extension.loseContext();
-    this.recoveryTimer = setTimeout(() => { if (!this.disposed) extension.restoreContext(); }, 2000);
+    this.recoveryTimer = setTimeout(() => {
+      if (!this.disposed) extension.restoreContext();
+    }, 2000);
     return true;
   }
 
@@ -365,9 +527,12 @@ export class WebGL2Renderer implements ChartRenderer {
     }
     if (!this.gl) return;
     const gl = this.gl;
-    gl.deleteProgram(this.lineProgram); gl.deleteProgram(this.heatProgram);
-    gl.deleteBuffer(this.corners); gl.deleteBuffer(this.instances);
-    gl.deleteVertexArray(this.lineVao); gl.deleteVertexArray(this.heatVao);
+    gl.deleteProgram(this.lineProgram);
+    gl.deleteProgram(this.heatProgram);
+    gl.deleteBuffer(this.corners);
+    gl.deleteBuffer(this.instances);
+    gl.deleteVertexArray(this.lineVao);
+    gl.deleteVertexArray(this.heatVao);
     gl.deleteTexture(this.texture);
     this.uniforms.clear();
   }

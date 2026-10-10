@@ -17,7 +17,9 @@ export class PanMotion {
     this.options = options;
   }
 
-  get active(): boolean { return Math.hypot(this.target.x - this.position.x, this.target.y - this.position.y) > 0; }
+  get active(): boolean {
+    return Math.hypot(this.target.x - this.position.x, this.target.y - this.position.y) > 0;
+  }
 
   move(dx: number, dy: number, now: number): void {
     if (this.stopped || this.glide) return;
@@ -25,11 +27,14 @@ export class PanMotion {
     const next = this.options.constrain({ x: this.target.x + dx, y: this.target.y + dy });
     const elapsed = now - this.lastMove;
     for (const axis of ['x', 'y'] as const) {
-      const speed = elapsed > 0 && elapsed <= 80 ? (next[axis] - this.target[axis]) / Math.max(8, elapsed) : 0;
+      const speed =
+        elapsed > 0 && elapsed <= 80 ? (next[axis] - this.target[axis]) / Math.max(8, elapsed) : 0;
       // A reversal must not inherit momentum in the previous direction.
       const previous = this.velocity[axis];
-      this.velocity[axis] = speed === 0 || Math.sign(speed) !== Math.sign(previous)
-        ? speed : previous + (speed - previous) * (1 - Math.exp(-elapsed / 40));
+      this.velocity[axis] =
+        speed === 0 || Math.sign(speed) !== Math.sign(previous)
+          ? speed
+          : previous + (speed - previous) * (1 - Math.exp(-elapsed / 40));
     }
     this.target = next;
     this.lastMove = now;
@@ -45,8 +50,8 @@ export class PanMotion {
     // A held pause ends the fling. Travel is capped even after a very fast swipe.
     const distance = age < 80 && speed > 0.05 ? Math.min(60, speed * 50) * Math.exp(-age / 32) : 0;
     this.target = this.options.constrain({
-      x: this.target.x + (speed ? this.velocity.x / speed * distance : 0),
-      y: this.target.y + (speed ? this.velocity.y / speed * distance : 0),
+      x: this.target.x + (speed ? (this.velocity.x / speed) * distance : 0),
+      y: this.target.y + (speed ? (this.velocity.y / speed) * distance : 0),
     });
     this.glide = { from: { ...this.position }, start: now, duration: distance > 0 ? 180 : 60 };
   }

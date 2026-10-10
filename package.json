@@ -1,25 +1,52 @@
 {
-  "name": "openchart-poc",
+  "name": "openchart",
   "version": "0.3.0",
-  "private": true,
+  "description": "Framework-free WebGL2 financial charting engine and embeddable trading chart widget",
+  "license": "MIT",
+  "author": "adarshzpatel",
   "type": "module",
-  "description": "Framework-free WebGL2 financial charting proof of concept",
+  "keywords": [
+    "chart",
+    "charting",
+    "financial",
+    "candlestick",
+    "trading",
+    "webgl",
+    "webgl2",
+    "order-book",
+    "typescript"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist/lib",
+    "LICENSE",
+    "README.md"
+  ],
   "exports": {
     ".": {
       "types": "./dist/lib/index.d.ts",
       "import": "./dist/lib/index.js"
     }
   },
+  "types": "./dist/lib/index.d.ts",
+  "module": "./dist/lib/index.js",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "check": "tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "example:headless": "node --experimental-strip-types examples/headless.ts",
     "build": "npm run check && vite build && tsc -p tsconfig.lib.json && node scripts/copy-fonts.mjs",
-    "preview": "vite preview --host 127.0.0.1"
+    "preview": "vite preview --host 127.0.0.1",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepublishOnly": "npm test && npm run build"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "prettier": "^3.9.9",
     "typescript": "~5.9.3",
     "vite": "8.3.2"
   }
