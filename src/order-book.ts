@@ -3,7 +3,13 @@ import type { BookView, DepthDelta, DepthSnapshot, Level } from './types.ts';
 function validateLevels(levels: readonly Level[]): void {
   const prices = new Set<number>();
   for (const [price, quantity] of levels) {
-    if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(quantity) || quantity < 0 || prices.has(price)) {
+    if (
+      !Number.isFinite(price) ||
+      price <= 0 ||
+      !Number.isFinite(quantity) ||
+      quantity < 0 ||
+      prices.has(price)
+    ) {
       throw new Error('INVALID_DEPTH: prices must be unique and positive, quantities non-negative.');
     }
     prices.add(price);
@@ -24,12 +30,15 @@ export class OrderBook {
   private sequence = -1;
   private status: BookView['status'] = 'waiting';
 
-  markStale(): void { if (this.sequence >= 0) this.status = 'stale'; }
+  markStale(): void {
+    if (this.sequence >= 0) this.status = 'stale';
+  }
 
   private commit(bids: Map<number, number>, asks: Map<number, number>, sequence: number): void {
     if (!Number.isSafeInteger(sequence) || sequence < 0) throw new Error('INVALID_SEQUENCE');
     if (bids.size > 2048 || asks.size > 2048) throw new Error('DEPTH_LIMIT: maximum 2048 levels per side.');
-    if (bids.size && asks.size && Math.max(...bids.keys()) >= Math.min(...asks.keys())) throw new Error('CROSSED_BOOK');
+    if (bids.size && asks.size && Math.max(...bids.keys()) >= Math.min(...asks.keys()))
+      throw new Error('CROSSED_BOOK');
     this.bids = bids;
     this.asks = asks;
     this.sequence = sequence;
@@ -54,7 +63,11 @@ export class OrderBook {
       throw new Error('INVALID_SEQUENCE');
     }
     if (delta.sequence <= this.sequence) return 'duplicate';
-    if (this.status !== 'live' || delta.previousSequence !== this.sequence || delta.sequence !== this.sequence + 1) {
+    if (
+      this.status !== 'live' ||
+      delta.previousSequence !== this.sequence ||
+      delta.sequence !== this.sequence + 1
+    ) {
       this.status = 'stale';
       return 'gap';
     }
@@ -66,8 +79,10 @@ export class OrderBook {
       updateSide(bids, delta.bids);
       updateSide(asks, delta.asks);
       this.commit(bids, asks, delta.sequence);
+    } catch (error) {
+      this.status = 'stale';
+      throw error;
     }
-    catch (error) { this.status = 'stale'; throw error; }
     return 'applied';
   }
 

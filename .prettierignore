@@ -1,0 +1,6 @@
+dist/
+node_modules/
+artifacts/
+package-lock.json
+*.md
+.github/

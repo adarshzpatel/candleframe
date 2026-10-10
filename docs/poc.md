@@ -122,6 +122,6 @@ Browser verification is recorded in the [v0.2 design and verification notes](v0.
 1. Capture replayable real depth fixtures and measure full-frame latency, memory and burst recovery.
 2. Introduce multiple panes and explicit scale ownership, then prove EMA and another drawing through extension contracts.
 3. Add history paging, session-aware fixtures and reconnect soak tests before expanding chart types.
-4. Formalize schemas/errors, choose the source license and document package delivery before public release.
+4. Formalize schemas/errors, document package delivery before public release.
 
 Reintroduce a heatmap demo only after recorded data, aggregation semantics and presentation are validated.

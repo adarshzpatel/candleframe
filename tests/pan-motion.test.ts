@@ -4,7 +4,8 @@ import { PanMotion } from '../src/pan-motion.ts';
 import { panPriceScale, panTimeScale } from '../src/scales.ts';
 
 const options = { smooth: true, constrain: (point: { x: number; y: number }) => point };
-const close = (actual: number, expected: number) => assert.ok(Math.abs(actual - expected) < 1e-6, `${actual} != ${expected}`);
+const close = (actual: number, expected: number) =>
+  assert.ok(Math.abs(actual - expected) < 1e-6, `${actual} != ${expected}`);
 
 test('drag follows both axes without overshoot, independently of display refresh rate', () => {
   function replay(hz: number) {
@@ -20,8 +21,11 @@ test('drag follows both axes without overshoot, independently of display refresh
     assert.equal(motion.active, false);
     return following;
   }
-  const slow = replay(30), normal = replay(60), fast = replay(120);
-  close(slow.x, normal.x); close(normal.x, fast.x);
+  const slow = replay(30),
+    normal = replay(60),
+    fast = replay(120);
+  close(slow.x, normal.x);
+  close(normal.x, fast.x);
   close(slow.y, fast.y);
 });
 
@@ -56,10 +60,12 @@ test('cancel freezes motion and a new grab starts without old velocity or queued
   const grabbed = old.sample(80);
   old.cancel();
   assert.deepEqual(old.sample(10000), grabbed);
-  old.move(10, 10, 10010); old.release(10020);
+  old.move(10, 10, 10010);
+  old.release(10020);
   assert.deepEqual(old.sample(11000), grabbed);
   const next = new PanMotion(80, options);
-  next.move(-10, 0, 100); next.release(200);
+  next.move(-10, 0, 100);
+  next.release(200);
   assert.deepEqual(next.sample(400), { x: -10, y: 0 });
 });
 
@@ -81,21 +87,25 @@ test('reversing a flick reverses its momentum instead of retaining the old direc
 });
 
 test('wide-zoom history edges and the price floor clamp glide and discard pointer overshoot', () => {
-  const minute = 60_000, width = 1000, height = 400;
-  const span = 2200 * minute, min = 90, max = 110;
+  const minute = 60_000,
+    width = 1000,
+    height = 400;
+  const span = 2200 * minute,
+    min = 90,
+    max = 110;
   const history = { firstMs: 0, lastMs: 359 * minute, intervalMs: minute };
   const motion = new PanMotion(0, {
     smooth: true,
     constrain(point) {
       const time = panTimeScale(0, span, point.x, width, history);
       const price = panPriceScale(min, max, point.y, height, 0.01);
-      return { x: -time.fromMs / span * width, y: (price.minPrice - min) / (max - min) * height };
+      return { x: (-time.fromMs / span) * width, y: ((price.minPrice - min) / (max - min)) * height };
     },
   });
   motion.move(10000, -10000, 20);
   const atEdge = motion.sample(1000);
-  close(atEdge.x, (2200 - 5) / 2200 * width);
-  close(min + atEdge.y / height * (max - min), 0.01);
+  close(atEdge.x, ((2200 - 5) / 2200) * width);
+  close(min + (atEdge.y / height) * (max - min), 0.01);
   motion.move(-10, 10, 1020);
   const reversed = motion.sample(1500);
   close(reversed.x, atEdge.x - 10);

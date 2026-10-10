@@ -17,6 +17,21 @@ export { DrawingRegistry, builtInDrawingTools, DEFAULT_DRAWING_STYLE } from './d
 export type * from './drawing-types.ts';
 export type { ChartGeometry } from './geometry.ts';
 
-export { chartThemes, resolveTheme, createTheme, themeColor, themeColorCSS, themeTokenSchema, themeTokenDefaults } from './themes.ts';
-export type { ChartTheme, ResolvedChartTheme, ThemePalette, ThemeId, ThemeInput, ThemeOverrides } from './themes.ts';
+export {
+  chartThemes,
+  resolveTheme,
+  createTheme,
+  themeColor,
+  themeColorCSS,
+  themeTokenSchema,
+  themeTokenDefaults,
+} from './themes.ts';
+export type {
+  ChartTheme,
+  ResolvedChartTheme,
+  ThemePalette,
+  ThemeId,
+  ThemeInput,
+  ThemeOverrides,
+} from './themes.ts';
 export type * from './theme-tokens.ts';

@@ -11,15 +11,24 @@ export function applyWidgetTheme(mount: HTMLElement, theme: ResolvedChartTheme):
   for (const group of Object.keys(themeTokenSchema) as ThemeTokenGroup[]) {
     const values = theme[group] as Readonly<Record<string, string | number | readonly number[]>>;
     for (const [key, descriptor] of Object.entries(themeTokenSchema[group])) {
-      const spec: ThemeToken = descriptor, value = values[key];
-      const css = spec.kind === 'color' ? themeColor(theme, value as string)
-        : spec.kind === 'number' ? `${value}${spec.unit === 'px' ? 'px' : ''}`
-        : Array.isArray(value) ? value.join(' ') : String(value);
+      const spec: ThemeToken = descriptor,
+        value = values[key];
+      const css =
+        spec.kind === 'color'
+          ? themeColor(theme, value as string)
+          : spec.kind === 'number'
+            ? `${value}${spec.unit === 'px' ? 'px' : ''}`
+            : Array.isArray(value)
+              ? value.join(' ')
+              : String(value);
       style.setProperty(`--theme-${group}-${key}`, css);
     }
   }
   const effects = theme.effects;
-  style.setProperty('--theme-shadow', `0 ${effects.shadowY}px ${effects.shadowBlur}px ${themeColorCSS(theme, effects.shadowColor, effects.shadowOpacity)}`);
+  style.setProperty(
+    '--theme-shadow',
+    `0 ${effects.shadowY}px ${effects.shadowBlur}px ${themeColorCSS(theme, effects.shadowColor, effects.shadowOpacity)}`,
+  );
   const chevron = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12"><path d="m3 4.5 3 3 3-3" fill="none" stroke="${theme.palette.textMuted}" stroke-width="${effects.iconStroke}"/></svg>`;
   style.setProperty('--theme-chevron', `url("data:image/svg+xml,${encodeURIComponent(chevron)}")`);
 }
