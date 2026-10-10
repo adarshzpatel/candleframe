@@ -7,6 +7,7 @@ import type { IndicatorDefinition } from './indicators.ts';
 import { createTimeFormats } from './time-format.ts';
 import type { ChartGeometry } from './geometry.ts';
 import { ChartRuntime } from './runtime.ts';
+import type { CommandResult, DataQuery, DataResult, ExecuteOptions, PreviewResult } from './runtime.ts';
 import { PanMotion } from './pan-motion.ts';
 import { ScaleMotion } from './scale-motion.ts';
 import { DrawingController } from './drawing-controller.ts';
@@ -65,7 +66,16 @@ export interface ChartApi {
   setTimeZone(timeZone: string): void;
   getTheme(): ResolvedChartTheme;
   replaceFeed(feed: FeedAdapter, expectedRevision?: number): void;
-  execute(command: ChartCommand, expectedRevision?: number): void;
+  /** One command, or an atomic batch that is a single undo step. See `ChartRuntime.execute`. */
+  execute(
+    command: ChartCommand | readonly ChartCommand[],
+    expectedRevision?: number,
+    options?: ExecuteOptions,
+  ): CommandResult;
+  /** Dry-runs commands and returns the resulting document or the first error. */
+  preview(commands: readonly ChartCommand[], expectedRevision?: number): PreviewResult;
+  /** Candles and indicator values for a range. */
+  query(request?: DataQuery): DataResult;
   inspect(): ReturnType<ChartRuntime['inspect']>;
   exportDocument(): ChartDocument;
   restoreDocument(document: unknown, expectedRevision?: number): void;
@@ -226,7 +236,9 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
   const drawings = new DrawingController({
     registry: runtime.drawingRegistry,
     state: () => state,
-    execute: (command, revision) => runtime.execute(command, revision),
+    execute: (command, revision) => {
+      runtime.execute(command, revision);
+    },
     changed(value) {
       options.onToolChange?.(value.tool);
       options.onDrawingChange?.(value);
@@ -1235,11 +1247,13 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       cancelDrawing();
       runtime.replaceFeed(feed, revision);
     },
-    execute: (command, revision) => {
+    execute: (command, revision, executeOptions) => {
       cancelPan();
       cancelDrawing();
-      runtime.execute(command, revision);
+      return runtime.execute(command, revision, executeOptions);
     },
+    preview: (commands, revision) => runtime.preview(commands, revision),
+    query: request => runtime.query(request),
     inspect: () => runtime.inspect(),
     exportDocument: () => runtime.exportDocument(),
     restoreDocument: (value, revision) => {

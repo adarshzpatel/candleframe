@@ -41,6 +41,13 @@ Use Node 24. The build includes type checking and emits the demo and plain JavaS
 | Reproducible market fixture | `src/simulated-feed.ts` |
 | Widget integration examples | `demo/main.ts`, `examples/embed.html` |
 | Headless agent example | `examples/headless.ts` |
+| Agent API: batches, preview, idempotency, query | `src/runtime.ts` (`execute`, `preview`, `query`), `docs/agents.md` |
+| Command JSON Schema | `src/command-schema.ts` |
+| MCP server example | `examples/mcp-server.ts` |
+| Indicators, registry and panes | `src/indicators.ts`, `src/geometry.ts` (`paneRanges`), `src/indicator-panel.ts` |
+| Intervals, session gaps and time labels | `src/intervals.ts`, `src/time-scale.ts`, `src/time-format.ts` |
+| Static feed and history paging | `src/static-feed.ts`, `ChartRuntime.loadOlderHistory` |
+| Structured errors | `src/errors.ts` |
 | Correctness regressions | `tests/core.test.ts`, `tests/binance-feed.test.ts`, `tests/simulated-feed.test.ts` |
 
 ## Working rules

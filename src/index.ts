@@ -1,10 +1,18 @@
 export { ChartError, isChartError, toChartError } from './errors.ts';
+export { chartCommandSchema, chartCommandBatchSchema, chartCommandTypes } from './command-schema.ts';
 export { createChart } from './chart.ts';
 export type { ChartApi, ChartOptions } from './chart.ts';
 export { createChartWidget } from './widget.ts';
 export type { ChartWidgetOptions, WidgetMarketSource, WidgetLayoutStore } from './widget.ts';
 export { ChartRuntime, parseDocument } from './runtime.ts';
-export type { RuntimeOptions } from './runtime.ts';
+export type {
+  RuntimeOptions,
+  CommandResult,
+  DataQuery,
+  DataResult,
+  ExecuteOptions,
+  PreviewResult,
+} from './runtime.ts';
 export { WebGL2Renderer } from './webgl-renderer.ts';
 export type { ChartRenderer, RenderFrame, RendererStats } from './webgl-renderer.ts';
 export { createSimulatedFeed } from './simulated-feed.ts';
