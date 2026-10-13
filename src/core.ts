@@ -11,13 +11,25 @@ export type {
   DataQuery,
   DataResult,
   ExecuteOptions,
+  RestoreOptions,
   PreviewResult,
 } from './runtime.ts';
 export { createSimulatedFeed } from './simulated-feed.ts';
 export { createStaticFeed } from './static-feed.ts';
 export type { StaticFeed, StaticFeedOptions } from './static-feed.ts';
 export { INTERVAL_MS } from './types.ts';
-export { intervalToMs, isInterval, alignTime } from './intervals.ts';
+export {
+  intervalToMs,
+  isInterval,
+  alignTime,
+  parseInterval,
+  isTimeInterval,
+  intervalLabel,
+  TRADE_BAR_SLOT_MS,
+} from './intervals.ts';
+export type { IntervalSpec, TimeIntervalUnit, TradeIntervalUnit } from './intervals.ts';
+export { TradeBarBuilder } from './trade-bars.ts';
+export type { BarRule, Trade } from './trade-bars.ts';
 export { createTimeScale } from './time-scale.ts';
 export type { TimeScale } from './time-scale.ts';
 export { createTimeFormats } from './time-format.ts';

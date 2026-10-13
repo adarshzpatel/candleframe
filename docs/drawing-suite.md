@@ -20,7 +20,7 @@ Position plans start at 1:1 reward/risk and show target/stop prices, percentage 
 
 ## Editing
 
-Choose a category in the left rail, or search the tool picker. A tool returns to Cursor after placement unless **Keep drawing** is on. The drawing strip controls color, width and line style for the selected object or the next drawing. **Objects** opens the drawing list and properties.
+Choose a category in the left rail, then a tool from its menu; arrow keys move through the menu. A tool returns to Cursor after placement unless **Keep drawing** is on. The drawing strip controls color, width and line style for the selected object or the next drawing. Its gear opens text, fill, font size, Fibonacci levels and anchor coordinates, plus duplicate and ordering; lock and delete sit beside it. **Objects** opens the drawing list, with show, lock and delete on each row.
 
 - Click an object to select it. Drag its body to move all points together or drag a handle to edit an anchor. Paths with more than eight points expose endpoint handles.
 - Text, callouts and price labels open a text editor after placement. Double-click an annotation, select it and press Enter, or use **Edit text** to reopen it. Enter inserts a new line; Ctrl/Command+Enter or **Apply text** saves text, size and color together as one undo step. Escape or **Cancel** discards the pending edit. Streamed prices do not replace typed text.

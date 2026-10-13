@@ -3,7 +3,7 @@ import { binBook, HeatmapStore } from './heatmap.ts';
 import { OrderBook } from './order-book.ts';
 import { DrawingRegistry, translateDrawing } from './drawing-tools.ts';
 import type { DrawingToolDefinition } from './drawing-types.ts';
-import { intervalToMs, isAligned } from './intervals.ts';
+import { intervalToMs, isAligned, isTimeInterval } from './intervals.ts';
 import { createTimeScale } from './time-scale.ts';
 import { IndicatorRegistry } from './indicators.ts';
 import { chartCommandTypes } from './command-schema.ts';
@@ -57,6 +57,10 @@ export interface ExecuteOptions {
   /** A retry with the same key and commands returns the first result without applying again. */
   idempotencyKey?: string;
 }
+export interface RestoreOptions {
+  /** Default true. */
+  undoable?: boolean;
+}
 export interface CommandResult {
   documentRevision: number;
   /** Ids created by the commands: added indicators (including generated ids) and drawings. */
@@ -109,6 +113,12 @@ function validateDescriptor(d: FeedDescriptor): FeedDescriptor {
     throw new ChartError('INVALID_FEED', 'intervalMs does not match interval', {
       path: 'intervalMs',
       details: { interval: d.interval, intervalMs: d.intervalMs },
+    });
+  // Tick and range bars start at irregular times; only a gapped time axis can place them.
+  if (d && !d.gaps && !isTimeInterval(d.interval))
+    throw new ChartError('INVALID_FEED', 'tick and range intervals need gaps: true', {
+      path: 'gaps',
+      details: { interval: d.interval },
     });
   if (
     !d ||
@@ -1174,9 +1184,10 @@ export class ChartRuntime {
   exportDocument(): ChartDocument {
     return structuredClone(this.document);
   }
-  restoreDocument(value: unknown, expectedRevision?: number): void {
+  /** `undoable: false` restores without adding an undo step, such as when loading a saved layout. */
+  restoreDocument(value: unknown, expectedRevision?: number, options: RestoreOptions = {}): void {
     this.assertRevision(expectedRevision);
-    this.commit(this.parse(value), true);
+    this.commit(this.parse(value), options.undoable !== false);
   }
   /** Borrowed subscription views must not be mutated. inspect/exportDocument return owned copies. */
   state(): RuntimeState {

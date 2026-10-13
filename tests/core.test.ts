@@ -569,3 +569,20 @@ test('invalid price ranges are rejected atomically and older layouts default to 
   assert.deepEqual(runtime.exportDocument().priceScale, { mode: 'auto' });
   runtime.dispose();
 });
+
+test('a non-undoable restore leaves the undo history alone', () => {
+  const { runtime } = harness();
+  runtime.execute({
+    type: 'drawing.add',
+    drawing: { id: 'line-1', start: { timeMs: 0, price: 100 }, end: { timeMs: minute, price: 110 } },
+  });
+  const saved = runtime.exportDocument();
+  runtime.execute({ type: 'drawing.clear' });
+  runtime.execute({ type: 'history.undo' });
+  runtime.execute({ type: 'history.undo' });
+  assert.equal(runtime.inspect().history.canUndo, false);
+  runtime.restoreDocument(saved, undefined, { undoable: false });
+  assert.equal(runtime.exportDocument().drawings.length, 1);
+  assert.equal(runtime.inspect().history.canUndo, false);
+  runtime.dispose();
+});
