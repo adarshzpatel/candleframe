@@ -125,7 +125,7 @@ test('gapped viewports are limited in bars, not milliseconds', () => {
   // 300 weekday bars span about 420 calendar days. That is valid as 300 bars.
   runtime.execute({ type: 'viewport.set', fromMs: bars[50].timeMs, toMs: bars[350].timeMs });
   assert.throws(
-    () => runtime.execute({ type: 'viewport.set', fromMs: bars[0].timeMs, toMs: bars[10].timeMs }),
+    () => runtime.execute({ type: 'viewport.set', fromMs: bars[0].timeMs, toMs: bars[4].timeMs }),
     { code: 'INVALID_VIEWPORT' },
   );
   runtime.dispose();

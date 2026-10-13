@@ -60,6 +60,10 @@ label.theme-field,.theme-field-input>label{display:grid;grid-template-columns:mi
 .layout-glyph{display:grid;gap:2px;width:100%;height:100%}
 .layout-glyph i{border:1.5px solid currentColor;border-radius:2px}
 .layout-glyph[data-preset="1+2"] i:first-child{grid-row:span 2}
+.choice-group{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:calc(6px * var(--space));margin-bottom:calc(16px * var(--space))}
+.choice-group button{min-height:var(--control-height);padding:0 calc(8px * var(--space));border:var(--border-width) solid var(--line);border-radius:var(--radius);color:var(--muted)}
+.choice-group button[aria-pressed=true]{border-color:var(--accent);color:var(--accent);background:var(--selected)}
+.chart-type-note{margin:0;color:var(--muted);font-size:var(--small-size)}
 .layout-sync{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 calc(12px * var(--space));margin-bottom:calc(14px * var(--space))}
 .layout-sync label{display:flex;align-items:center;gap:calc(8px * var(--space));min-height:var(--control-height);cursor:pointer}
 .layout-sync input{width:16px;height:16px;margin:0;accent-color:var(--accent)}

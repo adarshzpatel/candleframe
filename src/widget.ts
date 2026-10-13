@@ -12,6 +12,7 @@ import {
   restoreTheme,
 } from './themes.ts';
 import type { ThemeInput } from './themes.ts';
+import { FOOTPRINT_DEFAULTS } from './footprint.ts';
 import { applyWidgetTheme } from './widget-theme.ts';
 import { createThemeEditor } from './theme-editor.ts';
 import { createChart } from './chart.ts';
@@ -149,7 +150,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
   root.className = 'widget';
   root.setAttribute('aria-label', 'Chart widget');
   root.innerHTML = `<header class="widget-header">
-    <div class="market-controls"><span class="asset-mark" id="asset-mark" aria-hidden="true">B</span><select id="symbol" class="symbol-picker" aria-label="Symbol"></select><span class="toolbar-divider"></span><select id="interval" class="interval-picker" aria-label="Candle interval"></select></div>
+    <div class="market-controls"><span class="asset-mark" id="asset-mark" aria-hidden="true">B</span><select id="symbol" class="symbol-picker" aria-label="Symbol"></select><span class="toolbar-divider"></span><select id="interval" class="interval-picker" aria-label="Candle interval"></select><span class="toolbar-divider"></span><button id="chart-type" class="icon-button" aria-label="Chart type" aria-haspopup="dialog" data-tooltip="Chart type">${icon('candles')}</button></div>
     <div class="analysis-controls"><button data-layer="indicator" aria-label="Toggle indicators" aria-pressed="true" data-tooltip="Indicators">${icon('indicators')}<span>Indicators</span></button><button id="indicator-menu" class="icon-button" aria-label="Add or edit indicators" aria-haspopup="dialog" data-tooltip="Add or edit indicators"><b aria-hidden="true" class="add-mark">+</b></button><button data-layer="volume" aria-label="Toggle volume" aria-pressed="true" data-tooltip="Volume">${icon('volume')}<span>Volume</span></button></div>
     <div class="widget-actions"><button id="book-toggle" aria-label="Toggle order book" aria-pressed="false" data-tooltip="Order book">${icon('book')}<span>Order book</span></button><span class="toolbar-divider"></span><button id="pause" class="icon-button" aria-label="Pause feed" data-tooltip="Pause feed">${icon('pause')}</button><button id="layout" class="icon-button" aria-label="Chart layout" aria-haspopup="dialog" data-tooltip="Layout">${icon('layout')}</button><button id="save" class="save-button" aria-label="Save layout" data-tooltip="Save layout">${icon('save', 18)}<span>Save</span></button><button id="restore" class="icon-button" aria-label="Restore layout" data-tooltip="Restore layout">${icon('restore')}</button><button id="theme" class="icon-button" aria-label="Chart appearance" data-tooltip="Appearance">${icon('palette')}</button><button id="export" class="icon-button" aria-label="Export PNG" data-tooltip="Export image">${icon('camera')}</button></div>
   </header>
@@ -169,6 +170,8 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
   let disposed = false,
     toastTimer: ReturnType<typeof setTimeout> | undefined;
   let indicatorPanel: ReturnType<typeof createIndicatorPanel> | undefined;
+  /** Bars shown when switching a wide view to footprints. */
+  const FOOTPRINT_VIEW_BARS = 14;
   // Ranges count bars, not milliseconds, so session gaps do not shrink them.
   const barsRange = (state: RuntimeState, bars: number) => {
     const scale = stateTimeScale(state);
@@ -204,6 +207,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     }
   }
   let renderLayoutMenu: (() => void) | undefined;
+  let renderChartTypeMenu: (() => void) | undefined;
   function openPanel(title: string, content: HTMLElement) {
     if (themeEditor && !content.contains(themeEditor.element)) {
       themeEditor.dispose();
@@ -215,6 +219,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     popup.classList.toggle('indicator-dialog', title === 'Indicators');
     popup.classList.toggle('layout-dialog', title === 'Layout');
     if (title !== 'Layout') renderLayoutMenu = undefined;
+    if (title !== 'Chart type') renderChartTypeMenu = undefined;
     popup.querySelector('h2')!.textContent = title;
     popup.setAttribute('aria-label', title);
     popupContent.replaceChildren(content);
@@ -227,6 +232,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     themeEditor?.dispose();
     themeEditor = undefined;
     renderLayoutMenu = undefined;
+    renderChartTypeMenu = undefined;
     popup.hidden = true;
     if (popup.contains(shadow.activeElement)) popupFocus?.focus({ preventScroll: true });
   }
@@ -1057,6 +1063,21 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
       const autoscale = String(state.document.priceScale.mode === 'auto');
       if ($('#autoscale').getAttribute('aria-pressed') !== autoscale)
         $('#autoscale').setAttribute('aria-pressed', autoscale);
+      const type = state.document.chartType ?? 'candles';
+      const typeButton = $('#chart-type');
+      if (typeButton.dataset.type !== type) {
+        typeButton.dataset.type = type;
+        typeButton.innerHTML = icon(type);
+        typeButton.setAttribute(
+          'aria-label',
+          `Chart type: ${type === 'footprint' ? 'Footprint' : 'Candles'}`,
+        );
+      }
+      if (
+        previous?.document.chartType !== state.document.chartType ||
+        previous?.document.footprint !== state.document.footprint
+      )
+        renderChartTypeMenu?.();
       const log = String(!!state.document.priceScale.log);
       if ($('#log-scale').getAttribute('aria-pressed') !== log)
         $('#log-scale').setAttribute('aria-pressed', log);
@@ -1237,6 +1258,125 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
         2,
       );
       openPanel('Chart state', pre);
+    });
+    on('#chart-type', () => {
+      const content = doc.createElement('div');
+      content.className = 'layout-menu chart-type-menu';
+      const render = () => {
+        const state = lastState;
+        if (!state) return;
+        const focused = shadow.activeElement as HTMLElement | null;
+        const focusKey = focused && content.contains(focused) ? focused.dataset.focusKey : undefined;
+        const type = state.document.chartType ?? 'candles';
+        const options = state.document.footprint ?? FOOTPRINT_DEFAULTS;
+        content.replaceChildren();
+        const heading = (text: string) => {
+          const h = doc.createElement('h3');
+          h.textContent = text;
+          content.append(h);
+        };
+        const choices = <T extends string>(
+          label: string,
+          items: readonly (readonly [T, string])[],
+          current: T,
+          pick: (value: T) => void,
+          disabled = false,
+        ) => {
+          const group = doc.createElement('div');
+          group.className = 'choice-group';
+          group.setAttribute('role', 'group');
+          group.setAttribute('aria-label', label);
+          for (const [value, text] of items) {
+            const button = doc.createElement('button');
+            button.textContent = text;
+            button.dataset.focusKey = `${label}:${value}`;
+            button.setAttribute('aria-pressed', String(value === current));
+            button.disabled = disabled;
+            button.addEventListener('click', () => attempt(() => pick(value)));
+            group.append(button);
+          }
+          content.append(group);
+        };
+        heading('Bars');
+        choices(
+          'Bars',
+          [
+            ['candles', 'Candles'],
+            ['footprint', 'Footprint'],
+          ] as const,
+          type,
+          value => {
+            const state = lastState!;
+            chart.execute({ type: 'chartType.set', chartType: value });
+            // Cells need room: zoom a wide view in to the latest bars.
+            if (value === 'footprint' && state.candles.length) {
+              const scale = stateTimeScale(state);
+              const { fromMs, toMs } = state.document.viewport;
+              if (scale.bars(fromMs, toMs) > FOOTPRINT_VIEW_BARS * 2) {
+                const end = scale.logical(state.candles.at(-1)!.timeMs) + 2;
+                chart.execute({
+                  type: 'viewport.set',
+                  fromMs: scale.time(end - FOOTPRINT_VIEW_BARS),
+                  toMs: scale.time(end),
+                });
+              }
+            }
+          },
+        );
+        heading('Footprint cells');
+        choices(
+          'Footprint cells',
+          [
+            ['bidAsk', 'Bid × Ask'],
+            ['delta', 'Delta'],
+            ['volume', 'Volume'],
+          ] as const,
+          options.mode,
+          mode =>
+            chart.execute({
+              type: 'chartType.set',
+              chartType: lastState?.document.chartType ?? 'candles',
+              footprint: { mode },
+            }),
+        );
+        heading('Show');
+        const toggles = doc.createElement('div');
+        toggles.className = 'layout-sync';
+        for (const [key, text] of [
+          ['imbalance', 'Imbalances (3:1)'],
+          ['poc', 'Point of control'],
+          ['summary', 'Delta and volume'],
+        ] as const) {
+          const label = doc.createElement('label');
+          const input = doc.createElement('input');
+          input.type = 'checkbox';
+          input.dataset.focusKey = `footprint:${key}`;
+          input.checked = options[key];
+          input.addEventListener('change', () =>
+            attempt(() =>
+              chart.execute({
+                type: 'chartType.set',
+                chartType: lastState?.document.chartType ?? 'candles',
+                footprint: { [key]: input.checked },
+              }),
+            ),
+          );
+          label.append(input, text);
+          toggles.append(label);
+        }
+        content.append(toggles);
+        const note = doc.createElement('p');
+        note.className = 'chart-type-note';
+        note.textContent = state.candles.some(candle => candle.footprint?.length)
+          ? 'Zoom in to read cells. Wide views draw candles.'
+          : 'This feed sends no volume at price, so its bars draw as candles.';
+        content.append(note);
+        const restore = focusKey && content.querySelector<HTMLElement>(`[data-focus-key="${focusKey}"]`);
+        if (restore) restore.focus({ preventScroll: true });
+      };
+      render();
+      openPanel('Chart type', content);
+      renderChartTypeMenu = render;
     });
     on('#theme', () => {
       const content = doc.createElement('div');
