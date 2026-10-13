@@ -68,6 +68,10 @@ const paths: Record<string, string> = {
   chevron: '<path d="m8 10 4 4 4-4"/>',
   code: '<path d="m8 7-5 5 5 5m8-10 5 5-5 5m-3-13-2 20"/>',
   arrowRight: '<path d="M4 12h16m-6-6 6 6-6 6"/>',
+  candles:
+    '<path d="M7 3v18M17 5v14"/><rect x="5" y="7" width="4" height="9" rx=".5"/><rect x="15" y="9" width="4" height="6" rx=".5"/>',
+  footprint:
+    '<path d="M5 3v18"/><rect x="8" y="5" width="12" height="14" rx="1"/><path d="M8 9.7h12M8 14.3h12M14 5v14"/>',
   layout: '<rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M12 4v16M3 12h9"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16v4Zm9-13 4 4"/>',
 };

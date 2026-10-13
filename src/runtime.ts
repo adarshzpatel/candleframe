@@ -6,6 +6,7 @@ import type { DrawingToolDefinition } from './drawing-types.ts';
 import { intervalToMs, isAligned, isTimeInterval } from './intervals.ts';
 import { createTimeScale } from './time-scale.ts';
 import { IndicatorRegistry } from './indicators.ts';
+import { footprintOptions } from './footprint.ts';
 import { chartCommandTypes } from './command-schema.ts';
 import type { IndicatorDefinition } from './indicators.ts';
 
@@ -141,7 +142,7 @@ function validateDescriptor(d: FeedDescriptor): FeedDescriptor {
   validateInstrument(d.instrument);
   return structuredClone(d);
 }
-export const MIN_VIEWPORT_BARS = 20;
+export const MIN_VIEWPORT_BARS = 8;
 export const MAX_VIEWPORT_BARS = 2200;
 function validateViewport(value: unknown, scale: Pick<TimeScale, 'bars'>): ChartDocument['viewport'] {
   const v = value as ChartDocument['viewport'] | undefined;
@@ -151,11 +152,25 @@ function validateViewport(value: unknown, scale: Pick<TimeScale, 'bars'>): Chart
     !(bars >= MIN_VIEWPORT_BARS - 1e-6 && bars <= MAX_VIEWPORT_BARS + 1e-6) ||
     typeof v.following !== 'boolean'
   )
-    throw new ChartError('INVALID_VIEWPORT', 'span must be 20 to 2200 bars', {
+    throw new ChartError('INVALID_VIEWPORT', 'span must be 8 to 2200 bars', {
       path: 'viewport',
       details: { bars, minBars: MIN_VIEWPORT_BARS, maxBars: MAX_VIEWPORT_BARS },
     });
   return { fromMs: v.fromMs, toMs: v.toMs, following: v.following };
+}
+/** Chart type and footprint settings, present in documents only when set. */
+function validateChartStyle(
+  chartType: unknown,
+  footprint: unknown,
+): Pick<ChartDocument, 'chartType' | 'footprint'> {
+  if (chartType !== undefined && chartType !== 'candles' && chartType !== 'footprint')
+    throw new ChartError('INVALID_CHART_TYPE', 'chartType must be candles or footprint', {
+      path: 'chartType',
+    });
+  return {
+    ...(chartType === 'footprint' ? { chartType } : {}),
+    ...(footprint === undefined ? {} : { footprint: footprintOptions(footprint) }),
+  };
 }
 function validatePriceScale(value: unknown, tickSize: number): ChartDocument['priceScale'] {
   if (value === undefined) return { mode: 'auto' };
@@ -282,6 +297,7 @@ export function parseDocument(
     throw new ChartError('INVALID_INTENSITY');
   const v = validateViewport(doc.viewport, timeScale);
   const priceScale = validatePriceScale(doc.priceScale, feed.instrument.tickSize);
+  const style = validateChartStyle(doc.chartType, doc.footprint);
   const indicatorRegistry = indicatorOptions.registry ?? new IndicatorRegistry();
   const indicators = validateIndicators(
     doc.version === 4 ? doc.indicators : structuredClone(indicatorOptions.defaults ?? []),
@@ -304,6 +320,7 @@ export function parseDocument(
     intensity: doc.intensity,
     viewport: v,
     priceScale,
+    ...style,
     indicators,
     drawings,
   });
@@ -553,6 +570,7 @@ export class ChartRuntime {
       intensity: previous.intensity,
       // Log scale is a preference like the layers; the range itself refits.
       priceScale: previous.priceScale.log ? { mode: 'auto', log: true } : { mode: 'auto' },
+      ...validateChartStyle(previous.chartType, previous.footprint),
       indicators: structuredClone(previous.indicators),
       drawings: sameInstrument ? structuredClone(previous.drawings) : [],
     };
@@ -1038,6 +1056,16 @@ export class ChartRuntime {
         break;
       case 'heatmap.intensity':
         next.intensity = command.value;
+        break;
+      case 'chartType.set':
+        if (command.chartType === 'footprint') next.chartType = 'footprint';
+        else if (command.chartType === 'candles') delete next.chartType;
+        else
+          throw new ChartError('INVALID_CHART_TYPE', 'chartType must be candles or footprint', {
+            path: 'chartType',
+          });
+        if (command.footprint !== undefined)
+          next.footprint = footprintOptions(command.footprint, next.footprint);
         break;
       case 'drawing.add': {
         const drawing = this.drawingRegistry.normalize(command.drawing);

@@ -29,6 +29,17 @@ export {
 } from './intervals.ts';
 export type { IntervalSpec, TimeIntervalUnit, TradeIntervalUnit } from './intervals.ts';
 export { TradeBarBuilder } from './trade-bars.ts';
+export {
+  footprintBar,
+  footprintBucket,
+  footprintOptions,
+  footprintShown,
+  cellFormat,
+  FOOTPRINT_DEFAULTS,
+  FOOTPRINT_MIN_SPACING,
+  IMBALANCE_RATIO,
+} from './footprint.ts';
+export type { FootprintBar, FootprintRow } from './footprint.ts';
 export type { BarRule, Trade, TradeBarOptions } from './trade-bars.ts';
 export { createTimeScale } from './time-scale.ts';
 export type { TimeScale } from './time-scale.ts';

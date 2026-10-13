@@ -216,6 +216,22 @@ export interface TrendLine {
 /** `log: true` spaces prices by ratio, so equal percentage moves have equal height. */
 export type PriceScale =
   { mode: 'auto'; log?: boolean } | { mode: 'manual'; minPrice: number; maxPrice: number; log?: boolean };
+/** What each footprint cell shows: sell × buy volume, buy minus sell, or a volume bar. */
+export type FootprintMode = 'bidAsk' | 'delta' | 'volume';
+export interface FootprintOptions {
+  mode: FootprintMode;
+  /** Highlight rows where one side beats the diagonal opposite side 3 to 1. */
+  imbalance: boolean;
+  /** Outline each bar's heaviest row. */
+  poc: boolean;
+  /** Bar delta and volume under each bar. */
+  summary: boolean;
+}
+/**
+ * `footprint` draws each bar's `footprint` levels as price cells beside a thin candle.
+ * Bars without levels, and views zoomed out past readable cells, draw as candles.
+ */
+export type ChartType = 'candles' | 'footprint';
 export interface ChartDocument {
   version: 4;
   feedId: string;
@@ -225,6 +241,10 @@ export interface ChartDocument {
   intensity: number;
   viewport: { fromMs: number; toMs: number; following: boolean };
   priceScale: PriceScale;
+  /** Omitted means candles. Builds without footprint support ignore it. */
+  chartType?: ChartType;
+  /** Footprint cell settings, kept while candles show. Omitted means the defaults. */
+  footprint?: FootprintOptions;
   /** Active indicators, in pane order. Version 3 layouts migrate to the host's defaults. */
   indicators: DocumentIndicator[];
   drawings: Drawing[];
@@ -237,6 +257,7 @@ export type ChartCommand =
   | { type: 'priceScale.set'; minPrice: number; maxPrice: number }
   | { type: 'priceScale.reset' }
   | { type: 'priceScale.log'; enabled: boolean }
+  | { type: 'chartType.set'; chartType: ChartType; footprint?: Partial<FootprintOptions> }
   | { type: 'indicator.add'; indicator: { id?: string; kind: string; inputs?: Record<string, number> } }
   | { type: 'indicator.update'; id: string; inputs?: Record<string, number>; visible?: boolean }
   | { type: 'indicator.remove'; id: string }

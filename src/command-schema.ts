@@ -85,7 +85,7 @@ const commands = {
   ),
   'viewport.set': command(
     'viewport.set',
-    'Show a time range, 20 to 2,200 bars wide. Stops following live data.',
+    'Show a time range, 8 to 2,200 bars wide. Stops following live data.',
     { fromMs: finite, toMs: finite, priceScale },
     ['fromMs', 'toMs'],
   ),
@@ -102,6 +102,27 @@ const commands = {
     'Switch between log and linear price axes. Refits the range.',
     { enabled: { type: 'boolean' } },
     ['enabled'],
+  ),
+  'chartType.set': command(
+    'chartType.set',
+    'Draw bars as candles or footprints. Footprint settings merge with the current ones.',
+    {
+      chartType: { enum: ['candles', 'footprint'] },
+      footprint: {
+        type: 'object',
+        properties: {
+          mode: {
+            enum: ['bidAsk', 'delta', 'volume'],
+            description: 'Cells show sell × buy volume, buy minus sell, or a volume bar.',
+          },
+          imbalance: { type: 'boolean', description: 'Highlight 3:1 diagonal imbalances.' },
+          poc: { type: 'boolean', description: "Outline each bar's heaviest row." },
+          summary: { type: 'boolean', description: 'Show delta and volume under each bar.' },
+        },
+        additionalProperties: false,
+      },
+    },
+    ['chartType'],
   ),
   'indicator.add': command(
     'indicator.add',

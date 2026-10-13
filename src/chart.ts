@@ -27,6 +27,8 @@ import { CandleMotion } from './candle-motion.ts';
 import { DrawingController } from './drawing-controller.ts';
 import { renderDrawings } from './drawing-scene.ts';
 import { renderProfiles } from './profile-scene.ts';
+import { renderFootprints } from './footprint-scene.ts';
+import type { FootprintCache } from './footprint-scene.ts';
 import type { ProfileCache } from './profile-scene.ts';
 import type {
   Drawing,
@@ -571,6 +573,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     context.clearRect(0, 0, width, height);
   }
   const profiles: ProfileCache = new Map();
+  const footprints: FootprintCache = new WeakMap();
   let priceLines: PriceLine[] = [];
   let markers: ChartMarker[] = [];
   function drawOverlay(latest = state.candles.at(-1)): void {
@@ -578,6 +581,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     clearOverlay(overlay, ctx);
     if (!state.candles.length) return;
     const g = geometry;
+    renderFootprints(ctx, state, g, theme, footprints);
     renderProfiles(ctx, state, g, theme, profiles);
     renderBubbles(ctx, state, g, theme);
     ctx.font = `${theme.typography.axisSize}px ${theme.typography.numberFamily}`;

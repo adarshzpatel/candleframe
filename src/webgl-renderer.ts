@@ -1,3 +1,4 @@
+import { footprintShown } from './footprint.ts';
 import { ChartError } from './errors.ts';
 import { chartThemes, colorRGBA, indicatorColor, themeColor } from './themes.ts';
 import type { ResolvedChartTheme } from './themes.ts';
@@ -439,7 +440,17 @@ export class WebGL2Renderer implements ChartRenderer {
     // Below two pixels per bar, merge the bars that share a two-pixel column into one
     // OHLC bar. Zoomed-out views of long histories then draw a few hundred candles.
     const merge = g.barSpacing < LOD_COLUMN;
-    const drawn: { x: number; open: number; high: number; low: number; close: number; volume: number }[] = [];
+    const drawn: {
+      x: number;
+      open: number;
+      high: number;
+      low: number;
+      close: number;
+      volume: number;
+      footprint?: boolean;
+    }[] = [];
+    // Footprint bars leave their candle to the overlay, which draws it beside the cells.
+    const footprints = !merge && footprintShown(state.document, g.barSpacing);
     let column = NaN,
       members = 0;
     for (let i = range.start; i < range.end; i++) {
@@ -455,7 +466,15 @@ export class WebGL2Renderer implements ChartRenderer {
         last.x = (last.x * members + x) / (members + 1);
         members++;
       } else {
-        drawn.push({ x, open: bar.open, high: bar.high, low: bar.low, close: bar.close, volume: bar.volume });
+        drawn.push({
+          x,
+          open: bar.open,
+          high: bar.high,
+          low: bar.low,
+          close: bar.close,
+          volume: bar.volume,
+          footprint: footprints && !!bar.footprint?.length,
+        });
         column = key;
         members = 1;
       }
@@ -473,7 +492,7 @@ export class WebGL2Renderer implements ChartRenderer {
       const up = bar.close >= bar.open;
       const x = bar.x,
         color = up ? colors.up : colors.down;
-      if (state.document.layers.candles) {
+      if (state.document.layers.candles && !bar.footprint) {
         this.line(
           x,
           g.y(bar.high),
