@@ -8,6 +8,7 @@ import { createTimeFormats } from './time-format.ts';
 import { priceTicks, timeTicks, valueTicks, zoneOffsets, TICK_RANK } from './axis-ticks.ts';
 import { isTimeInterval } from './intervals.ts';
 import { copyMarkers, copyPriceLines, renderMarkers, renderPriceLines } from './chart-overlays.ts';
+import { renderBubbles } from './bubble-scene.ts';
 import type { ChartMarker, PriceLine } from './chart-overlays.ts';
 import type { AxisTick } from './axis-ticks.ts';
 import type { ChartGeometry } from './geometry.ts';
@@ -578,6 +579,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     if (!state.candles.length) return;
     const g = geometry;
     renderProfiles(ctx, state, g, theme, profiles);
+    renderBubbles(ctx, state, g, theme);
     ctx.font = `${theme.typography.axisSize}px ${theme.typography.numberFamily}`;
     ctx.fillStyle = themeColor(theme, theme.chart.axisColor);
     ctx.textAlign = 'left';
@@ -631,7 +633,6 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       );
     }
     renderMarkers(ctx, markers, state.candles, state.feed.intervalMs, g, theme);
-    renderPriceLines(ctx, priceLines, g, theme, price => formatPrice.format(price));
     if (latest) {
       const y = g.y(latest.close);
       if (y >= g.top && y <= g.top + g.plotHeight) {
@@ -650,6 +651,8 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
         label(ctx, formatPrice.format(exact), g.left + g.plotWidth + theme.effects.borderWidth, y);
       }
     }
+    // Orders and positions sit above the last-price line, so their tags stay legible.
+    renderPriceLines(ctx, priceLines, g, theme, price => formatPrice.format(price));
     renderDrawings(
       ctx,
       drawings.visible(),

@@ -87,6 +87,7 @@ function validCandle(bar: Candle, intervalMs: number, gaps = false): boolean {
     (bar.buyVolume === undefined ||
       (Number.isFinite(bar.buyVolume) && bar.buyVolume >= 0 && bar.buyVolume <= bar.volume * (1 + 1e-9))) &&
     (bar.footprint === undefined || Array.isArray(bar.footprint)) &&
+    (bar.largeTrades === undefined || Array.isArray(bar.largeTrades)) &&
     (bar.deltaRange === undefined ||
       (Array.isArray(bar.deltaRange) &&
         bar.deltaRange.length === 2 &&
@@ -364,12 +365,12 @@ export class ChartRuntime {
         !(
           typeof plugin.calculate === 'function' ||
           (plugin.outputs?.length && typeof plugin.calculateOutputs === 'function') ||
-          (plugin.pane === 'profile' && plugin.profile)
+          (plugin.pane === 'profile' && (plugin.profile || plugin.bubbles))
         )
       )
         throw new ChartError(
           'INVALID_INDICATOR',
-          'plugins need calculate, outputs with calculateOutputs, or a profile',
+          'plugins need calculate, outputs with calculateOutputs, a profile or bubbles',
           {
             details: { id: plugin?.id },
           },

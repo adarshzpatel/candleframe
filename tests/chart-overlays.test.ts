@@ -30,3 +30,11 @@ test('markers are sorted by time for drawing', () => {
     [10, 20, 30],
   );
 });
+
+test('big trades is a registered indicator that draws bubbles, not a series', async () => {
+  const { IndicatorRegistry, bigTrades } = await import('../src/indicators.ts');
+  const plugin = new IndicatorRegistry().create('big-trades', { minSize: 50, maxRadius: 30 }, 'bt');
+  assert.deepEqual(plugin.bubbles, { minSize: 50, maxRadius: 30 });
+  assert.equal(plugin.pane, 'profile');
+  assert.throws(() => bigTrades(0), { code: 'INVALID_INPUT' });
+});

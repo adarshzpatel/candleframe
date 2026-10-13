@@ -29,7 +29,7 @@ export {
 } from './intervals.ts';
 export type { IntervalSpec, TimeIntervalUnit, TradeIntervalUnit } from './intervals.ts';
 export { TradeBarBuilder } from './trade-bars.ts';
-export type { BarRule, Trade } from './trade-bars.ts';
+export type { BarRule, Trade, TradeBarOptions } from './trade-bars.ts';
 export { createTimeScale } from './time-scale.ts';
 export type { TimeScale } from './time-scale.ts';
 export { createTimeFormats } from './time-format.ts';
@@ -43,6 +43,7 @@ export {
   cvd,
   volumeProfile,
   priceDelta,
+  bigTrades,
   builtInIndicators,
   IndicatorRegistry,
 } from './indicators.ts';

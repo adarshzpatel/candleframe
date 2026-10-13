@@ -16,9 +16,19 @@ export interface Candle {
    * open. Optional; CVD candles use it for wicks and draw bodies only without it.
    */
   deltaRange?: readonly [low: number, high: number];
+  /**
+   * Large aggressive prints inside the bar, oldest first. Optional; the feed decides the
+   * smallest size it keeps, and the big trades indicator filters further.
+   */
+  largeTrades?: readonly LargeTrade[];
 }
 /** Volume traded inside one price bucket of a candle, split by aggressor side. */
 export type FootprintLevel = readonly [price: number, buyVolume: number, sellVolume: number];
+/**
+ * One aggressive print: `side` 1 for a buyer lifting offers, -1 for a seller hitting bids.
+ * A sweep through several prices is one print at its volume-weighted price.
+ */
+export type LargeTrade = readonly [price: number, size: number, side: 1 | -1, timeMs: number];
 export type Level = readonly [price: number, quantity: number];
 export interface DepthSnapshot {
   sequence: number;
@@ -140,12 +150,14 @@ export interface IndicatorPlugin {
   readonly themeColor?: IndicatorColorSlot;
   /**
    * `price` overlays the candles (default). `separate` gets its own pane below.
-   * `profile` draws horizontal rows against the price axis for the visible bars; it
-   * needs `profile` and no series.
+   * `profile` draws on the price plot from the visible bars without a series: rows
+   * against the price axis (`profile`) or trade bubbles (`bubbles`).
    */
   readonly pane?: IndicatorPane;
-  /** Required with `pane: 'profile'`. */
+  /** With `pane: 'profile'`: rows against the price axis. */
   readonly profile?: ProfileOptions;
+  /** With `pane: 'profile'`: bubbles for the candles' `largeTrades`. */
+  readonly bubbles?: BubbleOptions;
   /** Fixed pane range, such as RSI's 0 to 100. Otherwise the pane fits the visible values. */
   readonly range?: { readonly min: number; readonly max: number };
   /** Guide values drawn across the pane, such as RSI 30 and 70. */
@@ -177,6 +189,12 @@ export interface ProfileOptions {
   readonly width: number;
   /** Share of volume inside the value area, such as 0.7. Volume mode only. */
   readonly valueArea?: number;
+}
+export interface BubbleOptions {
+  /** Smallest print shown, in contracts or units. */
+  readonly minSize: number;
+  /** Radius of the largest bubble in view, in pixels. */
+  readonly maxRadius: number;
 }
 /** An indicator saved in a layout. The runtime resolves `kind` through its indicator registry. */
 export interface DocumentIndicator {

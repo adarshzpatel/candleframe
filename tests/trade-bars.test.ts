@@ -94,3 +94,36 @@ test('footprint and buy volume always add up to the bar volume', () => {
     assert.ok(Math.round((c.high - c.low) / 0.1) <= 8);
   }
 });
+
+test('fills of one aggressive order become one large print at their average price', () => {
+  const bars = new TradeBarBuilder({ kind: 'time', ms: 60_000 }, 0.25, { largeTradeMin: 10 });
+  bars.add({ ...trade(100, 100, 6, 'buy'), orderId: 'A' });
+  bars.add({ ...trade(100, 100.25, 6, 'buy'), orderId: 'A' });
+  bars.add({ ...trade(200, 100.25, 3, 'sell'), orderId: 'B' });
+  const { candle } = bars.add({ ...trade(300, 100, 12, 'sell'), orderId: 'C' })!;
+  assert.deepEqual(candle.largeTrades, [
+    [100.25, 12, 1, t0 + 100], // 6 @ 100 and 6 @ 100.25 average 100.125, snapped to a tick.
+    [100, 12, -1, t0 + 300],
+  ]);
+});
+
+test('without order ids, fills with the same side and time merge', () => {
+  const bars = new TradeBarBuilder({ kind: 'tick', count: 100 }, 0.25, { largeTradeMin: 5 });
+  bars.add(trade(5, 100, 3, 'sell'));
+  bars.add(trade(5, 99.75, 3, 'sell'));
+  bars.add(trade(6, 99.75, 4, 'sell'));
+  const { candle } = bars.add(trade(7, 99.75, 1, 'buy'))!;
+  assert.deepEqual(candle.largeTrades, [[100, 6, -1, t0 + 5]]);
+});
+
+test('large prints are off by default and stay within their bar', () => {
+  const plain = new TradeBarBuilder({ kind: 'tick', count: 2 }, 0.25);
+  assert.equal(plain.add(trade(0, 100, 500))!.candle.largeTrades, undefined);
+  const bars = new TradeBarBuilder({ kind: 'tick', count: 1 }, 0.25, { largeTradeMin: 5 });
+  bars.add({ ...trade(0, 100, 5), orderId: 'A' });
+  bars.add({ ...trade(0, 100, 5), orderId: 'A' }); // A new bar: the print does not carry over.
+  assert.deepEqual(
+    bars.candles.map(c => c.largeTrades?.map(t => t[1])),
+    [[5], [5]],
+  );
+});

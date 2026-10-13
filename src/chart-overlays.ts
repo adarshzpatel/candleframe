@@ -1,6 +1,6 @@
 import { ChartError } from './errors.ts';
 import type { ChartGeometry } from './geometry.ts';
-import { themeColorCSS, type ChartTheme, type ResolvedChartTheme } from './themes.ts';
+import { colorRGBA, themeColor, themeColorCSS, type ChartTheme, type ResolvedChartTheme } from './themes.ts';
 import type { Candle } from './types.ts';
 
 /**
@@ -70,6 +70,18 @@ export function copyMarkers(markers: readonly ChartMarker[]): ChartMarker[] {
     .sort((a, b) => a.timeMs - b.timeMs);
 }
 
+/**
+ * Text color for a tag filled with `color`: the theme's background on light fills,
+ * its strongest text on dark ones, whichever reads better (relative luminance).
+ */
+function tagText(theme: ResolvedChartTheme, color: string | undefined): string {
+  const [r, g, b] = colorRGBA(themeColor(theme, color ?? '@accent')).map(c =>
+    c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4,
+  );
+  const luminance = 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+  return luminance > 0.3 ? '#0b0e11' : '#ffffff';
+}
+
 const css = (theme: Pick<ChartTheme, 'palette'>, color: string | undefined, opacity = 1) =>
   themeColorCSS(theme, color ?? '@accent', opacity);
 
@@ -100,7 +112,7 @@ export function renderPriceLines(
     const x = g.left + g.plotWidth - w - 4;
     ctx.fillStyle = css(theme, line.color);
     ctx.fillRect(x, y - height / 2, w, height);
-    ctx.fillStyle = theme.palette.markerText;
+    ctx.fillStyle = tagText(theme, line.color);
     ctx.textAlign = 'left';
     ctx.fillText(text, x + theme.chart.markerPadding, y + theme.typography.markerSize * 0.35);
   }
