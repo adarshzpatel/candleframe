@@ -127,3 +127,41 @@ test('large prints are off by default and stay within their bar', () => {
     [[5], [5]],
   );
 });
+
+test('momentum bars close at open ± range and the next opens there, with no gaps', () => {
+  const bars = new TradeBarBuilder({ kind: 'momentum', ticks: 4 }, 0.25);
+  // Up a point from 100: the bar closes at exactly 101 and the next opens at 101.
+  const changed = [100, 100.5, 99.75, 101.25].map(price => bars.add(trade(0, price))!.changed);
+  assert.deepEqual(
+    bars.candles.map(c => [c.open, c.high, c.low, c.close]),
+    [
+      [100, 101, 99.75, 101],
+      [101, 101.25, 101, 101.25],
+    ],
+  );
+  // The trade that completed the first bar reports both bars, with the first one final.
+  assert.deepEqual(
+    changed.at(-1)!.map(c => c.close),
+    [101, 101.25],
+  );
+});
+
+test('a momentum jump of several ranges fills the bars in between', () => {
+  const bars = new TradeBarBuilder({ kind: 'momentum', ticks: 2 }, 0.25);
+  bars.add(trade(0, 100));
+  const { changed } = bars.add(trade(5, 98.25))!;
+  // Down 7 ticks with a 2-tick range: bars close at 99.5, 99 and 98.5; the last opens there.
+  assert.deepEqual(
+    bars.candles.map(c => [c.open, c.close]),
+    [
+      [100, 99.5],
+      [99.5, 99],
+      [99, 98.5],
+      [98.5, 98.25],
+    ],
+  );
+  assert.equal(changed.length, 4);
+  // Times stay strictly increasing for the filled bars.
+  const times = bars.candles.map(c => c.timeMs);
+  assert.ok(times.every((t, i) => i === 0 || t > times[i - 1]!));
+});

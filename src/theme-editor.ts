@@ -1,4 +1,5 @@
 import { ChartError } from './errors.ts';
+import { defineSelect, type CfSelectElement } from './select.ts';
 import type { ChartApi } from './chart.ts';
 import { chartThemes, createTheme, resolveTheme, themeColor, themeTokenSchema } from './themes.ts';
 import type { ResolvedChartTheme, ThemeInput, ThemeOverrides, ThemeToken } from './themes.ts';
@@ -51,14 +52,13 @@ export function createThemeEditor(chart: ChartApi, doc: Document) {
   const modeLabel = doc.createElement('label');
   modeLabel.className = 'theme-field';
   modeLabel.textContent = 'Color scheme';
-  const mode = doc.createElement('select');
+  defineSelect(doc.defaultView?.customElements);
+  const mode = doc.createElement('cf-select') as CfSelectElement;
   mode.setAttribute('aria-label', 'Theme color scheme');
-  for (const value of ['dark', 'light']) {
-    const option = doc.createElement('option');
-    option.value = value;
-    option.textContent = title(value);
-    mode.append(option);
-  }
+  mode.setItems(
+    ['dark', 'light'].map(value => ({ value, label: title(value) })),
+    'dark',
+  );
   modeLabel.append(mode);
   identity.append(nameLabel, modeLabel);
   element.append(summary, error, identity, search);

@@ -75,4 +75,8 @@ label.theme-field,.theme-field-input>label{display:grid;grid-template-columns:mi
 .layout-save-as input,.layout-rename input{flex:1;min-width:0;height:var(--control-height);padding:0 calc(8px * var(--space));border:var(--border-width) solid var(--line-strong);border-radius:var(--radius);background:var(--bg);color:var(--bright)}
 .layout-save-as .button,.layout-rename .button{flex-shrink:0}
 .layout-note{margin:calc(12px * var(--space)) 0 0;color:var(--muted);font-size:var(--small-size);line-height:1.45}
+.widget-header cf-select{height:var(--control-height);max-width:160px}.widget-header cf-select::part(trigger){border:0;background-color:transparent;padding-top:0;padding-bottom:0}.widget-header cf-select::part(trigger):hover{background-color:var(--hover)}
+.widget-footer cf-select{height:calc(var(--control-height) - 4px)}.widget-footer cf-select::part(trigger){padding-top:0;padding-bottom:0}
+.theme-customize cf-select{height:var(--control-height);max-width:100%}.theme-customize cf-select::part(trigger){padding-top:0;padding-bottom:0;background:var(--bg);border-color:var(--line-strong);color:var(--bright)}
+.chart-toolbar cf-select,.drawing-strip cf-select{pointer-events:auto}.drawing-strip cf-select{height:var(--control-height)}.drawing-strip cf-select::part(trigger){padding-top:0;padding-bottom:0}
 `;

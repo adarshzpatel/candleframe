@@ -1,7 +1,14 @@
 /** The chart engine with its WebGL renderer and themes, without the widget UI. `candleframe/chart`. */
 export { createChart } from './chart.ts';
 export type { ChartApi, ChartOptions } from './chart.ts';
-export type { ChartMarker, PriceLine } from './chart-overlays.ts';
+export type {
+  ChartMarker,
+  PriceLine,
+  PriceLineActionEvent,
+  PriceLineActionListener,
+  PriceLineDragEvent,
+  PriceLineDragListener,
+} from './chart-overlays.ts';
 export { createChartGroup, linkedViewport } from './chart-group.ts';
 export type { ChartGroup, ChartSync, GroupChart } from './chart-group.ts';
 export { WebGL2Renderer } from './webgl-renderer.ts';
@@ -29,3 +36,5 @@ export type {
   ThemeOverrides,
 } from './themes.ts';
 export type * from './theme-tokens.ts';
+export { attachTrading } from './trading.ts';
+export type { TradingLayer, TradingOptions } from './trading.ts';

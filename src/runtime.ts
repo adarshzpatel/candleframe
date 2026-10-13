@@ -382,12 +382,12 @@ export class ChartRuntime {
         !(
           typeof plugin.calculate === 'function' ||
           (plugin.outputs?.length && typeof plugin.calculateOutputs === 'function') ||
-          (plugin.pane === 'profile' && (plugin.profile || plugin.bubbles))
+          (plugin.pane === 'profile' && (plugin.profile || plugin.bubbles || plugin.flowSignals))
         )
       )
         throw new ChartError(
           'INVALID_INDICATOR',
-          'plugins need calculate, outputs with calculateOutputs, a profile or bubbles',
+          'plugins need calculate, outputs with calculateOutputs, a profile, bubbles or flowSignals',
           {
             details: { id: plugin?.id },
           },

@@ -7,9 +7,24 @@ import type { IndicatorDefinition } from './indicators.ts';
 import { createTimeFormats } from './time-format.ts';
 import { priceTicks, timeTicks, valueTicks, zoneOffsets, TICK_RANK } from './axis-ticks.ts';
 import { isTimeInterval } from './intervals.ts';
-import { copyMarkers, copyPriceLines, renderMarkers, renderPriceLines } from './chart-overlays.ts';
+import {
+  copyMarkers,
+  copyPriceLines,
+  hitCloseBox,
+  hitPriceLine,
+  renderMarkers,
+  renderPriceLines,
+} from './chart-overlays.ts';
 import { renderBubbles } from './bubble-scene.ts';
-import type { ChartMarker, PriceLine } from './chart-overlays.ts';
+import { renderFlowSignals } from './signal-scene.ts';
+import type {
+  ChartMarker,
+  PriceLine,
+  PriceLineActionListener,
+  PriceLineCloseBox,
+  PriceLineDragEvent,
+  PriceLineDragListener,
+} from './chart-overlays.ts';
 import type { AxisTick } from './axis-ticks.ts';
 import type { ChartGeometry } from './geometry.ts';
 import { ChartRuntime } from './runtime.ts';
@@ -124,6 +139,15 @@ export interface ChartApi {
   setPriceLines(lines: readonly PriceLine[]): void;
   /** Replaces the host's markers, such as fills or large trades. View state only. */
   setMarkers(markers: readonly ChartMarker[]): void;
+  /** Reports drags of price lines that have `drag` set. See `PriceLineDragListener`. */
+  subscribePriceLineDrag(listener: PriceLineDragListener): () => void;
+  /** Reports clicks on the × box of `closable` price lines. */
+  subscribePriceLineAction(listener: PriceLineActionListener): () => void;
+  /**
+   * The price and time under a point in viewport (client) coordinates, with the price
+   * snapped to the tick size. Null outside the price plot.
+   */
+  priceAt(clientX: number, clientY: number): { price: number; timeMs: number } | null;
   dispose(): void;
 }
 
@@ -576,6 +600,51 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
   const footprints: FootprintCache = new WeakMap();
   let priceLines: PriceLine[] = [];
   let markers: ChartMarker[] = [];
+  const lineDragListeners = new Set<PriceLineDragListener>();
+  const lineActionListeners = new Set<PriceLineActionListener>();
+  /** Where the × boxes were drawn last, for click and hover tests. */
+  let closeBoxes: PriceLineCloseBox[] = [];
+  let lineDrag: {
+    line: PriceLine;
+    pointerId: number;
+    price: number;
+    label: string | null;
+  } | null = null;
+
+  /** Tells listeners about a line drag; the last string returned labels the dragged line. */
+  function emitLineDrag(phase: PriceLineDragEvent['phase']): void {
+    if (!lineDrag) return;
+    const event: PriceLineDragEvent = {
+      id: lineDrag.line.id!,
+      phase,
+      mode: lineDrag.line.drag!,
+      fromPrice: lineDrag.line.price,
+      price: lineDrag.price,
+    };
+    for (const listener of lineDragListeners) {
+      const label = listener(event);
+      if (typeof label === 'string') lineDrag.label = label;
+    }
+  }
+
+  /** The host's lines with the dragged one moved, or a copy added, while a drag runs. */
+  function shownPriceLines(): readonly PriceLine[] {
+    if (!lineDrag) return priceLines;
+    const { line, price, label } = lineDrag;
+    const dragged: PriceLine = { ...line, price, style: 'dashed', label: label ?? line.label };
+    return line.drag === 'move'
+      ? priceLines.map(other => (other.id === line.id ? dragged : other))
+      : [...priceLines, dragged];
+  }
+
+  function endLineDrag(phase: 'end' | 'cancel'): void {
+    if (!lineDrag) return;
+    emitLineDrag(phase);
+    if (root.hasPointerCapture(lineDrag.pointerId)) root.releasePointerCapture(lineDrag.pointerId);
+    lineDrag = null;
+    root.style.cursor = 'crosshair';
+    invalidate('overlay');
+  }
   function drawOverlay(latest = state.candles.at(-1)): void {
     if (!ctx) return;
     clearOverlay(overlay, ctx);
@@ -584,6 +653,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     renderFootprints(ctx, state, g, theme, footprints);
     renderProfiles(ctx, state, g, theme, profiles);
     renderBubbles(ctx, state, g, theme);
+    renderFlowSignals(ctx, state, g, theme);
     ctx.font = `${theme.typography.axisSize}px ${theme.typography.numberFamily}`;
     ctx.fillStyle = themeColor(theme, theme.chart.axisColor);
     ctx.textAlign = 'left';
@@ -656,7 +726,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       }
     }
     // Orders and positions sit above the last-price line, so their tags stay legible.
-    renderPriceLines(ctx, priceLines, g, theme, price => formatPrice.format(price));
+    closeBoxes = renderPriceLines(ctx, shownPriceLines(), g, theme, price => formatPrice.format(price));
     renderDrawings(
       ctx,
       drawings.visible(),
@@ -975,6 +1045,21 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
         p.y > geometry.top + geometry.plotHeight
       )
         return;
+      const closeBox =
+        drawings.currentTool === 'cursor' && !lineDrag ? hitCloseBox(closeBoxes, p.x, p.y) : null;
+      if (closeBox) {
+        for (const listener of lineActionListeners) listener({ id: closeBox.id, action: 'close' });
+        return;
+      }
+      const grabbed = drawings.currentTool === 'cursor' ? hitPriceLine(priceLines, geometry, p.x, p.y) : null;
+      if (grabbed) {
+        lineDrag = { line: grabbed, pointerId: event.pointerId, price: grabbed.price, label: null };
+        root.setPointerCapture(event.pointerId);
+        root.style.cursor = 'ns-resize';
+        emitLineDrag('start');
+        invalidate('overlay');
+        return;
+      }
       const placing = drawings.currentTool !== 'cursor';
       if (drawings.down(p, drawingContext())) {
         if (
@@ -1013,7 +1098,24 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     event => {
       if (!geometry || !event.isPrimary) return;
       pointer = point(event);
-      if (!drag) root.style.cursor = drawings.cursor(pointer, drawingContext());
+      if (lineDrag) {
+        const tick = state.feed.instrument.tickSize;
+        const price = Math.round(geometry.price(pointer.y) / tick) * tick;
+        const snapped = Number(price.toFixed(state.feed.instrument.pricePrecision));
+        if (snapped !== lineDrag.price) {
+          lineDrag.price = snapped;
+          emitLineDrag('move');
+          invalidate('overlay');
+        }
+        return;
+      }
+      if (!drag)
+        root.style.cursor =
+          drawings.currentTool === 'cursor' && hitCloseBox(closeBoxes, pointer.x, pointer.y)
+            ? 'pointer'
+            : drawings.currentTool === 'cursor' && hitPriceLine(priceLines, geometry, pointer.x, pointer.y)
+              ? 'ns-resize'
+              : drawings.cursor(pointer, drawingContext());
       if (!drag && drawings.move(pointer, drawingContext())) {
         invalidate('overlay');
         return;
@@ -1078,6 +1180,10 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
   root.addEventListener(
     'pointerup',
     event => {
+      if (lineDrag?.pointerId === event.pointerId) {
+        endLineDrag('end');
+        return;
+      }
       if (drawingPointerId === event.pointerId) {
         const placing = drawings.currentTool !== 'cursor';
         drawingPointerId = null;
@@ -1102,6 +1208,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
   root.addEventListener(
     'pointercancel',
     () => {
+      endLineDrag('cancel');
       cancelPan();
       cancelDrawing();
       invalidate();
@@ -1111,6 +1218,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
   root.addEventListener(
     'lostpointercapture',
     () => {
+      endLineDrag('cancel');
       if (drag) cancelPan();
       if (drawingPointerId !== null) cancelDrawing();
       invalidate();
@@ -1300,6 +1408,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       else if (event.key === '-') zoom(1.25);
       else if (event.key === 'Home') runtime.execute({ type: 'viewport.reset' });
       else if (event.key === 'Escape') {
+        endLineDrag('cancel');
         cancelDrawing();
         drawings.setTool('cursor');
         invalidate();
@@ -1455,6 +1564,25 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     setMarkers(next) {
       markers = copyMarkers(next);
       invalidate('overlay');
+    },
+    subscribePriceLineDrag(listener) {
+      lineDragListeners.add(listener);
+      return () => void lineDragListeners.delete(listener);
+    },
+    subscribePriceLineAction(listener) {
+      lineActionListeners.add(listener);
+      return () => void lineActionListeners.delete(listener);
+    },
+    priceAt(clientX, clientY) {
+      if (!geometry) return null;
+      const box = root.getBoundingClientRect();
+      const x = clientX - box.left,
+        y = clientY - box.top;
+      const g = geometry;
+      if (x < g.left || x > g.left + g.plotWidth || y < g.top || y > g.top + g.plotHeight) return null;
+      const { tickSize, pricePrecision } = state.feed.instrument;
+      const price = Number((Math.round(g.price(y) / tickSize) * tickSize).toFixed(pricePrecision));
+      return { price, timeMs: g.anchor(x, y).timeMs };
     },
     setCrosshair(timeMs) {
       const next = timeMs === null || !Number.isFinite(timeMs) ? null : timeMs;

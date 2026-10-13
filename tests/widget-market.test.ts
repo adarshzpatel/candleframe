@@ -172,3 +172,33 @@ test('factory failures propagate before a caller replaces its active feed', () =
   assert.equal(active, previous);
   assert.equal(counts.connections, 0);
 });
+
+test('typed intervals read in short or long form', async () => {
+  const { parseIntervalInput } = await import('../src/widget-market.ts');
+  assert.equal(parseIntervalInput('3m'), '3m');
+  assert.equal(parseIntervalInput(' 3 min '), '3m');
+  assert.equal(parseIntervalInput('700 ticks'), '700t');
+  assert.equal(parseIntervalInput('15 range'), '15r');
+  assert.equal(parseIntervalInput('12 momentum'), '12mr');
+  assert.equal(parseIntervalInput('12mr'), '12mr');
+  assert.equal(parseIntervalInput('2 hours'), '2h');
+  for (const bad of ['', 'abc', '0t', '5 parsecs', 't']) assert.equal(parseIntervalInput(bad), null, bad);
+});
+
+test('a source accepts any length of the kinds it declares, and still its listed intervals', async () => {
+  const { supportsInterval, validateMarketSources } = await import('../src/widget-market.ts');
+  const base = {
+    id: 's',
+    label: 'S',
+    symbols: ['X'],
+    intervals: ['1m' as const],
+    createFeed: () => ({}) as never,
+  };
+  const custom = { ...base, customIntervals: ['time', 'tick'] as const };
+  assert.ok(supportsInterval(base, '1m') && !supportsInterval(base, '3m'));
+  assert.ok(supportsInterval(custom, '3m') && supportsInterval(custom, '700t'));
+  assert.ok(!supportsInterval(custom, '15r'));
+  assert.throws(() => validateMarketSources([{ ...base, customIntervals: ['weird' as never] }]), {
+    code: 'INVALID_MARKET_SOURCE',
+  });
+});

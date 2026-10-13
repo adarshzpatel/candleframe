@@ -152,6 +152,28 @@ const themes = {
     markerText: color(0.94, 0.3, 172),
     series: series(0.79, 0.8, [230, 75, 330, 130, 190, 282]),
   },
+  // Black, white and grays like a monochrome trading terminal. Blue marks the user's
+  // own things (accent, orders); green and red stay for money and order flow.
+  monochrome: {
+    mode: 'dark',
+    ...darkNeutrals(0, 0),
+    background: absolute(0, 0, 0),
+    surface: absolute(0.13, 0, 0),
+    raised: absolute(0.19, 0, 0),
+    border: absolute(0.24, 0, 0),
+    borderStrong: absolute(0.52, 0, 0),
+    grid: absolute(0.15, 0, 0),
+    watermark: absolute(0.27, 0, 0),
+    accent: color(0.55, 0.85, 264),
+    accentText: absolute(1, 0, 0),
+    // Lighter than the accent: drawings sit on black, buttons carry white text.
+    drawing: color(0.74, 0.7, 264),
+    positive: color(0.74, 0.9, 162),
+    negative: color(0.71, 0.9, 24),
+    markerBackground: absolute(0.3, 0, 0),
+    markerText: absolute(0.96, 0, 0),
+    series: series(0.72, 0.8, [255, 75, 330, 130, 190, 25]),
+  },
   midnight: {
     mode: 'dark',
     ...darkNeutrals(252, 0.035),
@@ -205,8 +227,9 @@ const pairs = [
   ['grid', 'background', 0, 1.05, 'grid lines (quiet by design)'],
 ];
 let failures = 0;
-// Drawings use the accent: the brand color, never mistaken for an indicator series.
-for (const t of Object.values(themes)) t.drawing = t.accent;
+// Drawings use the accent, the brand color, never mistaken for an indicator series. A
+// theme may pick its own, as monochrome does for contrast on black.
+for (const t of Object.values(themes)) t.drawing ??= t.accent;
 for (const [id, t] of Object.entries(themes)) {
   console.log(`\n${id} (${t.mode})`);
   const rows = [...pairs];

@@ -18,5 +18,6 @@ export type {
   WorkspaceCell,
 } from './widget.ts';
 export { LAYOUT_PRESETS, DEFAULT_WIDGET_SYNC } from './widget-layout.ts';
+export { parseIntervalInput, supportsInterval } from './widget-market.ts';
 export type { WidgetFontSource } from './widget-fonts.ts';
 export { createBinanceFeed, BINANCE_INTERVALS } from './binance-feed.ts';

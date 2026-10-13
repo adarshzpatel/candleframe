@@ -1,8 +1,11 @@
 import { ChartError } from './errors.ts';
 
 export type TimeIntervalUnit = 's' | 'm' | 'h' | 'd' | 'w';
-/** `t`: a bar every N trades. `r`: a bar spanning at most N price increments (tick sizes). */
-export type TradeIntervalUnit = 't' | 'r';
+/**
+ * `t`: a bar every N trades. `r`: a bar spanning at most N price increments (tick sizes).
+ * `mr`: momentum range, a bar that closes N increments from its open, where the next opens.
+ */
+export type TradeIntervalUnit = 't' | 'r' | 'mr';
 export type IntervalUnit = TimeIntervalUnit | TradeIntervalUnit;
 /**
  * A candle interval: fixed-length time such as `1m`, `4h`, `1d` or `1w` (calendar months
@@ -28,22 +31,30 @@ const UNIT_MS: Readonly<Record<TimeIntervalUnit, number>> = {
 const WEEK_ORIGIN_MS = 4 * UNIT_MS.d;
 
 export type IntervalSpec =
-  { kind: 'time'; ms: number } | { kind: 'tick'; count: number } | { kind: 'range'; ticks: number };
+  | { kind: 'time'; ms: number }
+  | { kind: 'tick'; count: number }
+  | { kind: 'range'; ticks: number }
+  | { kind: 'momentum'; ticks: number };
 
 /** Parses an interval, or throws `UNSUPPORTED_INTERVAL`. */
 export function parseInterval(interval: unknown): IntervalSpec {
   const match =
     typeof interval === 'string'
-      ? (/^([1-9]\d{0,3})([smhdw])$/.exec(interval) ?? /^([1-9]\d{0,5})([tr])$/.exec(interval))
+      ? (/^([1-9]\d{0,3})([smhdw])$/.exec(interval) ?? /^([1-9]\d{0,5})(t|r|mr)$/.exec(interval))
       : null;
   if (!match)
-    throw new ChartError('UNSUPPORTED_INTERVAL', 'use a count and unit such as 1m, 4h, 1d, 500t or 10r', {
-      path: 'interval',
-      details: { interval },
-    });
+    throw new ChartError(
+      'UNSUPPORTED_INTERVAL',
+      'use a count and unit such as 1m, 4h, 1d, 500t, 10r or 10mr',
+      {
+        path: 'interval',
+        details: { interval },
+      },
+    );
   const count = Number(match[1]);
   if (match[2] === 't') return { kind: 'tick', count };
   if (match[2] === 'r') return { kind: 'range', ticks: count };
+  if (match[2] === 'mr') return { kind: 'momentum', ticks: count };
   return { kind: 'time', ms: count * UNIT_MS[match[2] as TimeIntervalUnit] };
 }
 
@@ -70,6 +81,7 @@ export function intervalLabel(interval: Interval): string {
   const spec = parseInterval(interval);
   if (spec.kind === 'tick') return `${spec.count} ticks`;
   if (spec.kind === 'range') return `${spec.ticks} range`;
+  if (spec.kind === 'momentum') return `${spec.ticks} momentum`;
   return interval;
 }
 

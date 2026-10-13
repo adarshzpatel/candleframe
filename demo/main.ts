@@ -1,4 +1,5 @@
 import {
+  createPaperBroker,
   createChartWidget,
   createSimulatedFeed,
   createBinanceFeed,
@@ -68,6 +69,8 @@ const chart = createChartWidget(host, {
   orderBook: true,
   autoscaleOnPan: true,
   storageKey: 'demo',
+  // Paper trading against the chart's own prices: tick Trading in the order panel.
+  trading: { broker: createPaperBroker({ accounts: ['Paper'] }) },
   layoutStore: {
     load(key) {
       // Keep layouts saved by the previous demo available after the UI migration.

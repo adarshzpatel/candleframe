@@ -1,4 +1,5 @@
 import type { Drawing, DrawingInput, DrawingPatch } from './drawing-types.ts';
+import type { FlowSignalOptions } from './flow-signals.ts';
 
 export interface Candle {
   timeMs: number;
@@ -151,13 +152,16 @@ export interface IndicatorPlugin {
   /**
    * `price` overlays the candles (default). `separate` gets its own pane below.
    * `profile` draws on the price plot from the visible bars without a series: rows
-   * against the price axis (`profile`) or trade bubbles (`bubbles`).
+   * against the price axis (`profile`), trade bubbles (`bubbles`) or absorption and
+   * aggression markers (`flowSignals`).
    */
   readonly pane?: IndicatorPane;
   /** With `pane: 'profile'`: rows against the price axis. */
   readonly profile?: ProfileOptions;
   /** With `pane: 'profile'`: bubbles for the candles' `largeTrades`. */
   readonly bubbles?: BubbleOptions;
+  /** With `pane: 'profile'`: absorption and aggression markers on the bars. */
+  readonly flowSignals?: FlowSignalOptions;
   /** Fixed pane range, such as RSI's 0 to 100. Otherwise the pane fits the visible values. */
   readonly range?: { readonly min: number; readonly max: number };
   /** Guide values drawn across the pane, such as RSI 30 and 70. */

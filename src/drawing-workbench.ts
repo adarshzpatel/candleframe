@@ -12,6 +12,10 @@ import type {
 
 import { createDrawingTextEditor } from './drawing-text-editor.ts';
 import { uiIcon as svg } from './ui-icons.ts';
+import { defineSelect, type CfSelectElement } from './select.ts';
+
+/** Line widths offered in the drawing toolbar, in pixels. */
+const LINE_WIDTHS = [1, 2, 3, 5, 8];
 
 export interface DrawingWorkbenchElements {
   root: HTMLElement;
@@ -26,6 +30,7 @@ export function createDrawingWorkbench(
   { root, rail, panel, report }: DrawingWorkbenchElements,
 ) {
   const owner = root.ownerDocument;
+  defineSelect(owner.defaultView?.customElements);
   const tree = root.getRootNode() as ShadowRoot | Document;
   const activeElement = () => tree.activeElement;
   const catalog = chart.drawingTools();
@@ -178,7 +183,7 @@ export function createDrawingWorkbench(
   redo.addEventListener('click', () => chart.execute({ type: 'history.redo' }), { signal: abort.signal });
   const strip = owner.createElement('div');
   strip.className = 'drawing-strip';
-  strip.innerHTML = `<span class="drawing-active-tool">Cursor</span><label title="Stroke color"><span class="sr-only">Drawing color</span><input type="color" aria-label="Drawing color" value="#a9c4ff"></label><select aria-label="Drawing line width"><option value="1">1 px</option><option value="2" selected>2 px</option><option value="3">3 px</option><option value="5">5 px</option><option value="8">8 px</option></select><select aria-label="Drawing line style"><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option></select><span class="drawing-strip-divider"></span><select aria-label="Drawing magnet"><option value="off">Magnet off</option><option value="weak">Weak magnet</option><option value="strong">Strong magnet</option></select><button aria-label="Stay in drawing mode" aria-pressed="false" data-tooltip="Keep drawing">${svg('keep', 18)}</button><span class="drawing-strip-divider"></span><button class="drawing-settings-button" aria-label="Drawing settings" aria-expanded="false" aria-controls="drawing-settings" data-tooltip="Settings">${svg('settings', 18)}</button><button class="drawing-lock-button" aria-label="Lock drawing" aria-pressed="false" data-tooltip="Lock">${svg('unlock', 18)}</button><button class="drawing-delete-button" aria-label="Delete drawing" data-tooltip="Delete">${svg('trash', 18)}</button>`;
+  strip.innerHTML = `<span class="drawing-active-tool">Cursor</span><label title="Stroke color"><span class="sr-only">Drawing color</span><input type="color" aria-label="Drawing color" value="#a9c4ff"></label><cf-select aria-label="Drawing line width" search="off"><option value="1">1 px</option><option value="2" selected>2 px</option><option value="3">3 px</option><option value="5">5 px</option><option value="8">8 px</option></cf-select><cf-select aria-label="Drawing line style" search="off"><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option></cf-select><span class="drawing-strip-divider"></span><cf-select aria-label="Drawing magnet" search="off"><option value="off">Magnet off</option><option value="weak">Weak magnet</option><option value="strong">Strong magnet</option></cf-select><button aria-label="Stay in drawing mode" aria-pressed="false" data-tooltip="Keep drawing">${svg('keep', 18)}</button><span class="drawing-strip-divider"></span><button class="drawing-settings-button" aria-label="Drawing settings" aria-expanded="false" aria-controls="drawing-settings" data-tooltip="Settings">${svg('settings', 18)}</button><button class="drawing-lock-button" aria-label="Lock drawing" aria-pressed="false" data-tooltip="Lock">${svg('unlock', 18)}</button><button class="drawing-delete-button" aria-label="Delete drawing" data-tooltip="Delete">${svg('trash', 18)}</button>`;
   panel.append(strip);
   const textEditor = createDrawingTextEditor(chart, panel, report);
   const positionEditor = createPositionEditor(chart, panel);
@@ -312,25 +317,24 @@ export function createDrawingWorkbench(
       signal: abort.signal,
     });
   strip
-    .querySelector<HTMLSelectElement>('[aria-label="Drawing line width"]')!
+    .querySelector<CfSelectElement>('[aria-label="Drawing line width"]')!
     .addEventListener(
       'change',
-      event => editStyle({ width: Number((event.target as HTMLSelectElement).value) }),
+      event => editStyle({ width: Number((event.target as CfSelectElement).value) }),
       { signal: abort.signal },
     );
   strip
-    .querySelector<HTMLSelectElement>('[aria-label="Drawing line style"]')!
+    .querySelector<CfSelectElement>('[aria-label="Drawing line style"]')!
     .addEventListener(
       'change',
-      event =>
-        editStyle({ lineStyle: (event.target as HTMLSelectElement).value as DrawingStyle['lineStyle'] }),
+      event => editStyle({ lineStyle: (event.target as CfSelectElement).value as DrawingStyle['lineStyle'] }),
       { signal: abort.signal },
     );
-  strip.querySelector<HTMLSelectElement>('[aria-label="Drawing magnet"]')!.addEventListener(
+  strip.querySelector<CfSelectElement>('[aria-label="Drawing magnet"]')!.addEventListener(
     'change',
     event =>
       chart.setDrawingOptions({
-        magnet: (event.target as HTMLSelectElement).value as 'off' | 'weak' | 'strong',
+        magnet: (event.target as CfSelectElement).value as 'off' | 'weak' | 'strong',
       }),
     { signal: abort.signal },
   );
@@ -593,24 +597,22 @@ export function createDrawingWorkbench(
     cursor.classList.toggle('active', value.tool === 'cursor');
     cursor.setAttribute('aria-pressed', String(value.tool === 'cursor'));
     const textOnly = ['text', 'price-label'].includes(value.selected?.type ?? value.tool);
-    strip.querySelector<HTMLSelectElement>('[aria-label="Drawing line width"]')!.hidden = textOnly;
-    strip.querySelector<HTMLSelectElement>('[aria-label="Drawing line style"]')!.hidden = textOnly;
+    strip.querySelector<CfSelectElement>('[aria-label="Drawing line width"]')!.hidden = textOnly;
+    strip.querySelector<CfSelectElement>('[aria-label="Drawing line style"]')!.hidden = textOnly;
     const style = value.selected?.style ?? value.options.style;
     const hex = style.color.slice(1);
     strip.querySelector<HTMLInputElement>('input')!.value =
       hex.length <= 4 ? `#${[...hex.slice(0, 3)].map(c => c + c).join('')}` : `#${hex.slice(0, 6)}`;
-    const widthSelect = strip.querySelector<HTMLSelectElement>('[aria-label="Drawing line width"]')!;
-    if (![...widthSelect.options].some(option => Number(option.value) === style.width)) {
-      widthSelect.querySelector('[data-custom]')?.remove();
-      const option = root.ownerDocument.createElement('option');
-      option.dataset.custom = '';
-      option.value = String(style.width);
-      option.textContent = `${style.width} px`;
-      widthSelect.append(option);
-    }
+    const widthSelect = strip.querySelector<CfSelectElement>('[aria-label="Drawing line width"]')!;
+    // A width outside the presets gets its own entry.
+    if (!widthSelect.items.some(item => Number(item.value) === style.width))
+      widthSelect.setItems([
+        ...LINE_WIDTHS.map(width => ({ value: String(width), label: `${width} px` })),
+        { value: String(style.width), label: `${style.width} px` },
+      ]);
     widthSelect.value = String(style.width);
-    strip.querySelector<HTMLSelectElement>('[aria-label="Drawing line style"]')!.value = style.lineStyle;
-    strip.querySelector<HTMLSelectElement>('[aria-label="Drawing magnet"]')!.value = value.options.magnet;
+    strip.querySelector<CfSelectElement>('[aria-label="Drawing line style"]')!.value = style.lineStyle;
+    strip.querySelector<CfSelectElement>('[aria-label="Drawing magnet"]')!.value = value.options.magnet;
     strip
       .querySelector('[aria-label="Stay in drawing mode"]')!
       .setAttribute('aria-pressed', String(value.options.stayInDrawingMode));
