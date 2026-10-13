@@ -38,7 +38,7 @@ import type {
   DrawingStyle,
   DrawingToolDefinition,
 } from './drawing-types.ts';
-import { dragTimeScale, panTimeScale, priceAxisMath } from './scales.ts';
+import { dragTimeScale, panTimeScale, PRICE_WHEEL_HEIGHT, priceAxisMath } from './scales.ts';
 import { WebGL2Renderer } from './webgl-renderer.ts';
 import type { ChartRenderer, RendererStats } from './webgl-renderer.ts';
 import type {
@@ -926,7 +926,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       if (event.target === priceAxis) {
         runtime.execute({
           type: 'priceScale.set',
-          ...axis().drag(targetGeometry.minPrice, targetGeometry.maxPrice, delta, geometry.plotHeight),
+          ...axis().drag(targetGeometry.minPrice, targetGeometry.maxPrice, delta, PRICE_WHEEL_HEIGHT),
         });
       } else
         zoom(

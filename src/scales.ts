@@ -11,6 +11,14 @@ export function dragTimeScale(
   return { fromMs: toMs - span, toMs };
 }
 
+/**
+ * How fast the price axis zooms: dragging the full axis height scales the range by
+ * e^PRICE_ZOOM_RATE (about 3.3x). The wheel uses `PRICE_WHEEL_HEIGHT` as the height.
+ */
+export const PRICE_ZOOM_RATE = 1.2;
+/** Wheel pixels that zoom as far as one full-height drag; a 100px notch is about 1.1x. */
+export const PRICE_WHEEL_HEIGHT = 1200;
+
 /** Drag up to widen price spacing around the initial range's midpoint. */
 export function dragPriceScale(
   minPrice: number,
@@ -20,7 +28,7 @@ export function dragPriceScale(
   tickSize: number,
 ) {
   const center = minPrice + (maxPrice - minPrice) / 2;
-  const factor = Math.exp(Math.max(-8, Math.min(8, (deltaY / Math.max(1, height)) * 3)));
+  const factor = Math.exp(Math.max(-8, Math.min(8, (deltaY / Math.max(1, height)) * PRICE_ZOOM_RATE)));
   const span = Math.max(tickSize * 2, Math.min((center - tickSize) * 2, (maxPrice - minPrice) * factor));
   return { minPrice: Math.max(tickSize, center - span / 2), maxPrice: center + span / 2 };
 }
@@ -89,7 +97,7 @@ export function priceAxisMath(log: boolean, tickSize: number): PriceAxisMath {
       const lo = Math.log(min),
         hi = Math.log(max),
         center = (lo + hi) / 2;
-      const factor = Math.exp(Math.max(-8, Math.min(8, (dy / Math.max(1, h)) * 3)));
+      const factor = Math.exp(Math.max(-8, Math.min(8, (dy / Math.max(1, h)) * PRICE_ZOOM_RATE)));
       const span = Math.max(1e-6, Math.min(40, (hi - lo) * factor));
       const next = Math.max(floor, center - span / 2);
       return { minPrice: Math.exp(next), maxPrice: Math.exp(next + span) };
