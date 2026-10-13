@@ -9,7 +9,7 @@ export interface ChartSync {
   crosshair: boolean;
   /** Scrolling aligns the right edge in time; each chart keeps its own zoom. */
   time: boolean;
-  /** Every chart shows the same time range, within its 20 to 2,200 bar limit. Implies `time`. */
+  /** Every chart shows the same time range, within its 3 to 2,200 bar limit. Implies `time`. */
   dateRange: boolean;
 }
 export type GroupChart = Pick<ChartApi, 'subscribe' | 'execute' | 'setCrosshair' | 'subscribeCrosshair'>;

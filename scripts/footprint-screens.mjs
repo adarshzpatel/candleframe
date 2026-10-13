@@ -78,10 +78,31 @@ try {
   await sleep(250);
   for (const label of ['Imbalances (3:1)', 'Point of control', 'Delta and volume'])
     await dialog.getByLabel(label).uncheck();
+  // Read before the deep zoom turns the toggles back on.
+  const toggled = await page.evaluate(() => window.candleframe.exportDocument().footprint);
   await dialog.getByRole('button', { name: 'Bid × Ask', exact: true }).click();
   await close();
   await page.screenshot({ path: `${out}/4-bid-ask-plain.png` });
-  const plain = await page.evaluate(() => window.candleframe.exportDocument().footprint);
+  // Deep zoom: four bars wide and about $40 tall, so single buckets get their own rows.
+  await page.evaluate(() => {
+    const chart = window.candleframe;
+    chart.execute({
+      type: 'chartType.set',
+      chartType: 'footprint',
+      footprint: { imbalance: true, poc: true, summary: true },
+    });
+    const { feed, latestCandle } = chart.inspect();
+    const end = latestCandle.timeMs + feed.intervalMs;
+    chart.execute({ type: 'viewport.set', fromMs: end - 4 * feed.intervalMs, toMs: end });
+    chart.execute({
+      type: 'priceScale.set',
+      minPrice: latestCandle.close - 20,
+      maxPrice: latestCandle.close + 20,
+    });
+  });
+  await sleep(400);
+  await page.screenshot({ path: `${out}/5-deep-zoom.png` });
+  const plain = toggled;
   if (plain.imbalance || plain.poc || plain.summary)
     problems.push(`toggles did not apply: ${JSON.stringify(plain)}`);
 } catch (error) {

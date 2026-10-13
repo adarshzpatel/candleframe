@@ -142,7 +142,7 @@ function validateDescriptor(d: FeedDescriptor): FeedDescriptor {
   validateInstrument(d.instrument);
   return structuredClone(d);
 }
-export const MIN_VIEWPORT_BARS = 8;
+export const MIN_VIEWPORT_BARS = 3;
 export const MAX_VIEWPORT_BARS = 2200;
 function validateViewport(value: unknown, scale: Pick<TimeScale, 'bars'>): ChartDocument['viewport'] {
   const v = value as ChartDocument['viewport'] | undefined;
@@ -152,7 +152,7 @@ function validateViewport(value: unknown, scale: Pick<TimeScale, 'bars'>): Chart
     !(bars >= MIN_VIEWPORT_BARS - 1e-6 && bars <= MAX_VIEWPORT_BARS + 1e-6) ||
     typeof v.following !== 'boolean'
   )
-    throw new ChartError('INVALID_VIEWPORT', 'span must be 8 to 2200 bars', {
+    throw new ChartError('INVALID_VIEWPORT', 'span must be 3 to 2200 bars', {
       path: 'viewport',
       details: { bars, minBars: MIN_VIEWPORT_BARS, maxBars: MAX_VIEWPORT_BARS },
     });

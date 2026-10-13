@@ -96,7 +96,7 @@ The presets are `1`, `2h`, `2v`, `1+2`, `2x2`, `3x2` and `4x2`. Each chart owns 
 | Interval | An interval change applies to every chart. | Off |
 | Crosshair | Hovering one chart draws a time line on the others; their summaries show that bar. | On |
 | Time | Panning or zooming one chart moves the others to the same right edge. Each keeps its zoom. | On |
-| Date range | Every chart shows the same time range, within its 8 to 2,200 bar limit. | Off |
+| Date range | Every chart shows the same time range, within its 3 to 2,200 bar limit. | Off |
 
 Synced navigation adds no undo steps. While a chart follows live data, each new bar moves its view, but other charts stay where they are; only returning to live or leaving it is linked. Turning an option on brings the other charts to the active one.
 
