@@ -244,3 +244,10 @@ test('tick and range feeds must declare gaps', () => {
   const { feed } = tradeBarFeed('10r', [], false);
   assert.throws(() => new ChartRuntime(feed), { code: 'INVALID_FEED' });
 });
+
+test('momentum range intervals parse and label', async () => {
+  const { parseInterval, intervalLabel } = await import('../src/intervals.ts');
+  assert.deepEqual(parseInterval('10mr'), { kind: 'momentum', ticks: 10 });
+  assert.equal(intervalLabel('10mr'), '10 momentum');
+  assert.equal(intervalToMs('10mr'), 1);
+});

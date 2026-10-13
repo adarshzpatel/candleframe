@@ -18,6 +18,7 @@ import { createThemeEditor } from './theme-editor.ts';
 import { createChart } from './chart.ts';
 import { createChartGroup } from './chart-group.ts';
 import { createChartSwitch } from './chart-switch.ts';
+import { attachTrading, type TradingOptions } from './trading.ts';
 import type { ChartSwitch } from './chart-switch.ts';
 import { createGeometry } from './geometry.ts';
 import type { ChartApi, ChartOptions } from './chart.ts';
@@ -27,8 +28,14 @@ import { uiIcon as icon } from './ui-icons.ts';
 import { widgetStyles } from './widget-style.ts';
 import { createIndicatorPanel, indicatorPanelStyles } from './indicator-panel.ts';
 import { stateTimeScale } from './geometry.ts';
-import { intervalLabel } from './intervals.ts';
-import { resolveMarketFeed, validateMarketSources } from './widget-market.ts';
+import { intervalLabel, parseInterval } from './intervals.ts';
+import { defineSelect, type CfSelectElement, type SelectItem } from './select.ts';
+import {
+  parseIntervalInput,
+  resolveMarketFeed,
+  supportsInterval,
+  validateMarketSources,
+} from './widget-market.ts';
 import type { WidgetMarketSource } from './widget-market.ts';
 import {
   cleanLayoutName,
@@ -85,6 +92,11 @@ export interface ChartWidgetOptions extends ChartOptions {
    * charts copy the active chart's market. A saved layout replaces this once it loads.
    */
   layout?: { preset?: LayoutPreset; sync?: Partial<WidgetSync> };
+  /**
+   * Trading through a broker adapter: an order panel, order and position lines, drag
+   * to place and move orders, and a right-click order menu. See `attachTrading`.
+   */
+  trading?: Omit<TradingOptions, 'host' | 'storageKey'>;
 }
 /** The widget acts on its active chart, like its toolbar. */
 export interface ChartWidgetApi extends ChartApi {
@@ -117,7 +129,12 @@ const cellMarkup = `<div class="chart-toolbar" part="chart-summary"><div class="
 const assetNames: Record<string, string> = { BTC: 'Bitcoin', ETH: 'Ethereum', SOL: 'Solana' };
 
 /** A complete, instance-isolated workbench. Only the host element's size is required. */
+const INTERVAL_GROUPS = { time: 'Time', tick: 'Ticks', range: 'Range', momentum: 'Momentum' } as const;
+const INTERVAL_EXAMPLES = { time: '3m', tick: '700t', range: '15r', momentum: '12mr' } as const;
+
 export function createChartWidget(container: HTMLElement, options: ChartWidgetOptions): ChartWidgetApi {
+  // The widget's pickers are <cf-select> elements.
+  defineSelect(container.ownerDocument.defaultView?.customElements);
   const markets = options.markets ?? [];
   validateMarketSources(markets);
   if (options.layoutStore && !options.storageKey?.trim()) throw new ChartError('WIDGET_STORAGE_KEY_REQUIRED');
@@ -130,6 +147,21 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
   const doc = container.ownerDocument,
     mount = doc.createElement('div');
   const themeKey = options.storageKey ? JSON.stringify([options.storageKey, 'appearance']) : null;
+  // Intervals the user typed, per market source, newest first.
+  const customKey = options.storageKey ? JSON.stringify([options.storageKey, 'custom-intervals']) : null;
+  let customIntervals: Record<string, Interval[]> = {};
+  try {
+    if (customKey) customIntervals = JSON.parse(doc.defaultView?.localStorage.getItem(customKey) ?? '{}');
+  } catch {}
+  function rememberCustomInterval(sourceId: string, interval: Interval) {
+    customIntervals[sourceId] = [
+      interval,
+      ...(customIntervals[sourceId] ?? []).filter(i => i !== interval),
+    ].slice(0, 12);
+    try {
+      if (customKey) doc.defaultView?.localStorage.setItem(customKey, JSON.stringify(customIntervals));
+    } catch {}
+  }
   let initialTheme = resolveTheme(options.theme);
   if (!options.theme && themeKey) {
     try {
@@ -150,14 +182,14 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
   root.className = 'widget';
   root.setAttribute('aria-label', 'Chart widget');
   root.innerHTML = `<header class="widget-header">
-    <div class="market-controls"><span class="asset-mark" id="asset-mark" aria-hidden="true">B</span><select id="symbol" class="symbol-picker" aria-label="Symbol"></select><span class="toolbar-divider"></span><select id="interval" class="interval-picker" aria-label="Candle interval"></select><span class="toolbar-divider"></span><button id="chart-type" class="icon-button" aria-label="Chart type" aria-haspopup="dialog" data-tooltip="Chart type">${icon('candles')}</button></div>
+    <div class="market-controls"><span class="asset-mark" id="asset-mark" aria-hidden="true">B</span><cf-select id="symbol" class="symbol-picker" aria-label="Symbol"></cf-select><span class="toolbar-divider"></span><cf-select id="interval" class="interval-picker" aria-label="Candle interval" search="off"></cf-select><span class="toolbar-divider"></span><button id="chart-type" class="icon-button" aria-label="Chart type" aria-haspopup="dialog" data-tooltip="Chart type">${icon('candles')}</button></div>
     <div class="analysis-controls"><button data-layer="indicator" aria-label="Toggle indicators" aria-pressed="true" data-tooltip="Indicators">${icon('indicators')}<span>Indicators</span></button><button id="indicator-menu" class="icon-button" aria-label="Add or edit indicators" aria-haspopup="dialog" data-tooltip="Add or edit indicators"><b aria-hidden="true" class="add-mark">+</b></button><button data-layer="volume" aria-label="Toggle volume" aria-pressed="true" data-tooltip="Volume">${icon('volume')}<span>Volume</span></button></div>
     <div class="widget-actions"><button id="book-toggle" aria-label="Toggle order book" aria-pressed="false" data-tooltip="Order book">${icon('book')}<span>Order book</span></button><span class="toolbar-divider"></span><button id="pause" class="icon-button" aria-label="Pause feed" data-tooltip="Pause feed">${icon('pause')}</button><button id="layout" class="icon-button" aria-label="Chart layout" aria-haspopup="dialog" data-tooltip="Layout">${icon('layout')}</button><button id="save" class="save-button" aria-label="Save layout" data-tooltip="Save layout">${icon('save', 18)}<span>Save</span></button><button id="restore" class="icon-button" aria-label="Restore layout" data-tooltip="Restore layout">${icon('restore')}</button><button id="theme" class="icon-button" aria-label="Chart appearance" data-tooltip="Appearance">${icon('palette')}</button><button id="export" class="icon-button" aria-label="Export PNG" data-tooltip="Export image">${icon('camera')}</button></div>
   </header>
   <div class="widget-body"><aside class="tool-rail" aria-label="Drawing tools"><button id="cursor" class="rail-button active" aria-label="Cursor tool" data-tooltip="Cursor">${icon('cursor')}</button><span class="rail-separator"></span><button id="trend" class="rail-button">${icon('trendline')}</button><span class="rail-separator"></span><button id="undo" class="rail-button" aria-label="Undo last edit" data-tooltip="Undo · ⌘ / Ctrl Z">${icon('undo')}</button><button id="clear" class="rail-button" aria-label="Clear drawings" data-tooltip="Clear drawings">${icon('trash')}</button><button id="fit" class="rail-button" aria-label="Fit chart to live data" data-tooltip="Fit chart">${icon('fit')}</button><button id="help" class="rail-button rail-bottom" aria-label="Chart controls and shortcuts" data-tooltip="Help & shortcuts">${icon('help')}</button></aside>
   <section class="chart-panel" aria-label="Charts"><div class="cell-tabs" role="tablist" aria-label="Charts"></div><div class="chart-grid" data-preset="1"></div></section>
   <aside class="book-panel" aria-label="Live order book" hidden><div class="panel-title"><h2>Order book</h2><div><span id="book-state" class="book-badge"></span><button id="book-close" class="icon-button" aria-label="Close order book">${icon('close', 16)}</button></div></div><div class="book-subtitle"><span id="book-coverage"></span><span id="book-tick"></span></div><div class="book-columns"><span>Price <small id="book-quote"></small></span><span>Size <small id="book-base"></small></span><span>Total</span></div><div id="asks" class="book-side asks"></div><div class="spread-row"><strong id="book-price">—</strong><span>Spread <b id="spread">—</b></span></div><div id="bids" class="book-side bids"></div><p class="book-note" id="book-note"></p></aside></div>
-  <footer class="widget-footer"><div class="range-buttons" aria-label="Visible candle count"><button data-bars="60">60</button><button data-bars="180">180</button><button data-bars="360">360</button><button data-bars="all">All</button></div><span class="footer-divider"></span><select id="source" class="source-picker" aria-label="Data source"></select><span class="feed-state" id="feed-state"></span><button class="follow-button" id="follow">Following live</button><button class="autoscale-button" id="autoscale" aria-pressed="true" aria-label="Autoscale price" data-tooltip="Fit price to visible candles">Auto</button><button class="autoscale-button" id="log-scale" aria-pressed="false" aria-label="Logarithmic price scale" data-tooltip="Log scale: equal heights for equal percentage moves">Log</button><button id="inspect" class="icon-button" aria-label="Inspect state" data-tooltip="Inspect chart state">${icon('code', 16)}</button><span class="wordmark">CandleFrame<span> / </span></span></footer>
+  <footer class="widget-footer"><div class="range-buttons" aria-label="Visible candle count"><button data-bars="60">60</button><button data-bars="180">180</button><button data-bars="360">360</button><button data-bars="all">All</button></div><span class="footer-divider"></span><cf-select id="source" class="source-picker" aria-label="Data source"></cf-select><span class="feed-state" id="feed-state"></span><button class="follow-button" id="follow">Following live</button><button class="autoscale-button" id="autoscale" aria-pressed="true" aria-label="Autoscale price" data-tooltip="Fit price to visible candles">Auto</button><button class="autoscale-button" id="log-scale" aria-pressed="false" aria-label="Logarithmic price scale" data-tooltip="Log scale: equal heights for equal percentage moves">Log</button><button id="inspect" class="icon-button" aria-label="Inspect state" data-tooltip="Inspect chart state">${icon('code', 16)}</button><span class="wordmark">CandleFrame<span> / </span></span></footer>
   <div class="widget-tooltip" role="tooltip" hidden></div><div class="widget-toast" role="status" hidden></div><section class="widget-dialog" role="dialog" aria-modal="true" aria-label="Chart panel" hidden><header class="dialog-heading"><h2></h2><button class="icon-button" aria-label="Close dialog">${icon('close')}</button></header><div class="dialog-content"></div></section>`;
   shadow.append(style, root);
   container.append(mount);
@@ -549,7 +581,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
       source &&
       market &&
       source.symbols.includes(market.symbol) &&
-      source.intervals.includes(market.interval)
+      supportsInterval(source, market.interval)
     )
       return resolveMarketFeed(source, market);
     // The host's feed may not be in the catalog; start from the catalog's first market.
@@ -778,7 +810,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
       if (layout.sync.interval) target.interval = from.interval;
       const catalog = markets.find(s => s.id === target.source);
       if (!catalog?.symbols.includes(target.symbol)) continue;
-      if (!catalog.intervals.includes(target.interval)) {
+      if (!supportsInterval(catalog, target.interval)) {
         if (layout.sync.interval) continue;
         target.interval = catalog.intervals[0];
       }
@@ -1009,23 +1041,13 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     bookResize.observe($('#asks'));
     bookResize.observe($('#bids'));
     bookResize.observe(askRows[0]);
-    function choices(selector: string, values: readonly { value: string; label: string }[], current: string) {
-      const select = $<HTMLSelectElement>(selector);
-      select.replaceChildren();
-      for (const value of values) {
-        const option = doc.createElement('option');
-        option.value = value.value;
-        option.textContent = value.label;
-        select.append(option);
-      }
-      if (!values.some(v => v.value === current)) {
-        const option = doc.createElement('option');
-        option.value = current;
-        option.textContent = current;
-        select.append(option);
-      }
-      select.value = current;
-      select.disabled = select.options.length < 2;
+    function choices(selector: string, values: readonly SelectItem[], current: string) {
+      const select = $<CfSelectElement>(selector);
+      const items = values.some(v => v.value === current)
+        ? values
+        : [...values, { value: current, label: current }];
+      select.setItems(items, current);
+      select.disabled = items.length < 2;
     }
     function reflectMarket(state: RuntimeState) {
       const source = markets.find(s => s.id === state.feed.id);
@@ -1039,11 +1061,36 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
         (source?.symbols ?? []).map(value => ({ value, label: value.replace('/', ' / ') })),
         state.feed.instrument.symbol,
       );
+      const listed = source?.intervals ?? [];
+      const custom = source
+        ? (customIntervals[source.id] ?? []).filter(i => supportsInterval(source, i))
+        : [];
       choices(
         '#interval',
-        (source?.intervals ?? []).map(value => ({ value, label: intervalLabel(value) })),
+        [...listed, ...custom.filter(i => !listed.includes(i))].map(value => ({
+          value,
+          label: intervalLabel(value),
+          // Time, tick, range and momentum bars each get a heading.
+          group: INTERVAL_GROUPS[parseInterval(value).kind],
+          ...(listed.includes(value) ? {} : { hint: 'Custom' }),
+        })),
         state.feed.interval,
       );
+      // Sources that build any length take typed intervals such as 3m or 700t.
+      const picker = $<CfSelectElement>('#interval');
+      const kinds = source?.customIntervals ?? [];
+      picker.custom = kinds.length
+        ? text => {
+            const interval = parseIntervalInput(text);
+            if (!interval || !source || !supportsInterval(source, interval)) return null;
+            return { value: interval, label: intervalLabel(interval), hint: 'Custom' };
+          }
+        : null;
+      picker.setAttribute(
+        'search-placeholder',
+        kinds.length ? `Type ${kinds.map(k => INTERVAL_EXAMPLES[k]).join(', ')}` : 'Search',
+      );
+      if (kinds.length) picker.disabled = false;
     }
     // The toolbar follows the active chart; `lastState` resets when it changes.
     unsubscribe = chart.subscribe(state => {
@@ -1126,15 +1173,17 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     });
     function changeMarket() {
       attempt(() => {
-        const source = markets.find(s => s.id === $<HTMLSelectElement>('#source').value);
+        const source = markets.find(s => s.id === $<CfSelectElement>('#source').value);
         if (!source || !lastState) throw new ChartError('MARKET_SOURCE_UNAVAILABLE');
-        const oldSymbol = $<HTMLSelectElement>('#symbol').value,
-          oldInterval = $<HTMLSelectElement>('#interval').value as Interval;
+        const oldSymbol = $<CfSelectElement>('#symbol').value,
+          oldInterval = $<CfSelectElement>('#interval').value as Interval;
+        if (!source.intervals.includes(oldInterval) && supportsInterval(source, oldInterval))
+          rememberCustomInterval(source.id, oldInterval);
         const symbol = source.symbols.includes(oldSymbol)
           ? oldSymbol
           : (source.symbols.find(s => s.split('/')[0] === lastState!.feed.instrument.base) ??
             source.symbols[0]);
-        const interval = source.intervals.includes(oldInterval) ? oldInterval : source.intervals[0];
+        const interval = supportsInterval(source, oldInterval) ? oldInterval : source.intervals[0];
         try {
           setCellMarket(active, { source: source.id, symbol, interval });
         } finally {
@@ -1615,7 +1664,8 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     if (layout.preset !== '1') applyPreset(layout.preset);
     else renderGrid();
     void loadWorkspaces();
-    return {
+    let trading: ReturnType<typeof attachTrading> | null = null;
+    const api: ChartWidgetApi = {
       ...chart,
       charts: () => cells.map(cell => cell.chart),
       getActiveChart: () => cells.indexOf(active),
@@ -1641,6 +1691,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
         if (disposed) return;
         flushAll();
         disposed = true;
+        trading?.dispose();
         abort.abort();
         clearTimeout(toastTimer);
         clearTimeout(workspaceTimer);
@@ -1659,6 +1710,13 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
         mount.remove();
       },
     };
+    if (options.trading)
+      trading = attachTrading(api, {
+        ...options.trading,
+        host: container,
+        ...(options.storageKey ? { storageKey: options.storageKey } : {}),
+      });
+    return api;
   } catch (error) {
     disposed = true;
     abort.abort();

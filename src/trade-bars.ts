@@ -62,6 +62,8 @@ export class TradeBarBuilder {
   readonly tickSize: number;
   private readonly decimals: number;
   private readonly bars: BarState[] = [];
+  /** Momentum bars the current trade completed. */
+  private closed: BarState[] = [];
   private readonly largeTradeMin: number;
 
   constructor(rule: BarRule, tickSize: number, options: TradeBarOptions = {}) {
@@ -82,7 +84,8 @@ export class TradeBarBuilder {
    * older than the first time bar returns null; tick and range bars take trades in
    * arrival order.
    */
-  add(trade: Trade): { candle: Candle; opened: boolean } | null {
+  add(trade: Trade): { candle: Candle; opened: boolean; changed: Candle[] } | null {
+    this.closed = [];
     const target = this.target(trade);
     if (!target) return null;
     const { bar, opened } = target;
@@ -116,7 +119,8 @@ export class TradeBarBuilder {
       deltaRange: [bar.deltaLow, bar.deltaHigh],
       ...(largeTrades?.length ? { largeTrades } : {}),
     };
-    return { candle: bar.candle, opened };
+    // Momentum bars this trade completed, with their final close, then the bar it is in.
+    return { candle: bar.candle, opened, changed: [...this.closed.map(b => b.candle), bar.candle] };
   }
 
   /** Merges a fill into the bar's current print and returns the bar's large prints. */
@@ -182,6 +186,22 @@ export class TradeBarBuilder {
     if (rule.kind === 'tick') {
       if (last.trades < rule.count) return { bar: last, opened: false };
       return { bar: this.open(timeMs, trade.price), opened: true };
+    }
+    if (rule.kind === 'momentum') {
+      // Close at exactly open ± range and open the next bar there, as often as the move
+      // covers; the trade lands in the last bar opened.
+      const range = rule.ticks * this.tickSize;
+      let bar = last;
+      let opened = false;
+      while (Math.round(Math.abs(trade.price - bar.candle.open) / this.tickSize) >= rule.ticks) {
+        const c = bar.candle;
+        const close = Number((c.open + Math.sign(trade.price - c.open) * range).toFixed(this.decimals));
+        bar.candle = { ...c, close, high: Math.max(c.high, close), low: Math.min(c.low, close) };
+        this.closed.push(bar);
+        bar = this.open(timeMs, close);
+        opened = true;
+      }
+      return { bar, opened };
     }
     const high = Math.max(last.candle.high, trade.price);
     const low = Math.min(last.candle.low, trade.price);

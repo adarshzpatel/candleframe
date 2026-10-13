@@ -48,6 +48,9 @@ export function createChartSwitch(initial: ChartApi, all: () => readonly ChartAp
     // Lines and markers belong to one market; hosts with a grid set them per chart via `charts()`.
     setPriceLines: lines => active.setPriceLines(lines),
     setMarkers: markers => active.setMarkers(markers),
+    subscribePriceLineDrag: listener => link(chart => chart.subscribePriceLineDrag(listener)),
+    subscribePriceLineAction: listener => link(chart => chart.subscribePriceLineAction(listener)),
+    priceAt: (x, y) => active.priceAt(x, y),
     dispose: () => {},
   };
   return {

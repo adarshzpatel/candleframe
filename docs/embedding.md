@@ -118,6 +118,35 @@ group.dispose(); // Unlinks; the charts stay mounted.
 
 `chart.setCrosshair(timeMs)` and `chart.subscribeCrosshair(listener)` are the hooks the group uses, for hosts that link charts their own way.
 
+## Trading
+
+Pass a broker adapter and the widget gets an order panel, order and position lines, and order entry on the chart:
+
+```ts
+import { createChartWidget, createPaperBroker } from 'candleframe';
+
+const chart = createChartWidget(host, {
+  feed,
+  trading: { broker: createPaperBroker(), confirm: true },
+});
+```
+
+A broker adapter implements `BrokerAdapter` (`src/trading-types.ts`). State comes in through `subscribe(listener)`: accounts, working orders, open positions, fills, whether it is connected and whether it accepts orders. Orders go out through `placeOrder`, `modifyOrder` and `cancelOrder`, each resolving to `{ ok, orderId?, error? }`. Symbols are the chart's instrument symbols; mapping one to a tradable contract is the adapter's job. `pointValue(symbol)` turns price moves into money for P&L; without it P&L reads in points. `onMarketPrice` is optional and receives each chart's last price, which simulated brokers fill against.
+
+`createPaperBroker()` is a complete in-memory broker: market orders fill at the last price, limits when price reaches them, stops when it trades through. Use it for demos and tests.
+
+What the user gets:
+
+- An order panel, draggable by its header: account, the **Trading** switch, the position and its P&L, quantity, market and limit buttons, **Cancel all** and **Flatten all**. Nothing is sent until Trading is on; the switch persists for the tab's session and starts off in a new tab.
+- Lines on every chart of the position's symbol. Working orders read **TP** (a limit that closes the position, green) and **SL** (a stop that closes it, red) with the P&L at their price, or BUY/SELL LIMIT/STOP. The position line shows its P&L. Each tag is `[label][quantity][×]`; fills show as B and S badges.
+- Drag the position line out to place a TP or SL for the whole position: beyond the market in its favor a limit, against it a stop. Drag an order line to move it. × cancels an order, or flattens the position at market.
+- Right-click the plot for orders at that price, and drag **Buy LMT** or **Sell LMT** from the panel onto the chart. A buy above the market rests as a stop, a sell below it as a stop.
+- `confirm` (default true) shows a ticket before every order; Enter places it, Escape cancels.
+
+TPs, SLs and flatten are sent with `reduceOnly: true`; adapters should refuse them when they would open or add to a position. The layer owns the charts' price lines and markers while attached.
+
+`attachTrading(chartOrWidget, { broker, host })` adds the same to a bare chart, with `host` as the element the chart fills.
+
 ## Drawings and themes
 
 Drawing settings appear in a floating bar when a drawing tool or object is selected. The layers button in the chart header opens the object list. Tool categories and individual drawing tools use a shared SVG icon set, with keyboard labels and tooltips.

@@ -86,7 +86,24 @@ const sand: ChartTheme = {
   mode: 'light',
   palette: { ...builtInPalettes.sand },
 };
-const rawThemes = { evergreen, graphite, midnight, paper, sand };
+/**
+ * Black, white and grays. Candles are white up and gray down; green and red stay for
+ * P&L, delta and order flow, and blue marks the accent.
+ */
+const monochrome: ChartTheme = {
+  id: 'monochrome',
+  name: 'Monochrome',
+  mode: 'dark',
+  palette: { ...builtInPalettes.monochrome },
+  chart: {
+    candleUp: '@textStrong',
+    candleDown: '@borderStrong',
+    // Wicks match their bodies, instead of the default green and red.
+    wickUp: '@textStrong',
+    wickDown: '@borderStrong',
+  },
+};
+const rawThemes = { evergreen, graphite, midnight, monochrome, paper, sand };
 export type ThemeId = keyof typeof rawThemes;
 export type ThemeInput = ThemeId | ChartTheme;
 const paletteKeys = Object.keys(evergreen.palette) as (keyof ThemePalette)[];

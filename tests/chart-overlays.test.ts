@@ -38,3 +38,34 @@ test('big trades is a registered indicator that draws bubbles, not a series', as
   assert.equal(plugin.pane, 'profile');
   assert.throws(() => bigTrades(0), { code: 'INVALID_INPUT' });
 });
+
+test('only draggable lines are grabbed, nearest first, within the plot', async () => {
+  const { hitPriceLine } = await import('../src/chart-overlays.ts');
+  // y = 1000 - price, plot from x 0 to 500.
+  const g = { left: 0, plotWidth: 500, y: (price: number) => 1000 - price } as never;
+  const lines = [
+    { price: 400, id: 'entry', drag: 'copy' as const },
+    { price: 404, id: 'stop', drag: 'move' as const },
+    { price: 402 },
+  ];
+  assert.equal(hitPriceLine(lines, g, 100, 1000 - 401)?.id, 'entry');
+  assert.equal(hitPriceLine(lines, g, 100, 1000 - 403.5)?.id, 'stop');
+  assert.equal(hitPriceLine(lines, g, 100, 1000 - 420), null);
+  assert.equal(hitPriceLine(lines, g, 600, 1000 - 400), null);
+});
+
+test('a draggable line needs an id and a known mode', () => {
+  assert.throws(() => copyPriceLines([{ price: 1, drag: 'move' }]), { code: 'INVALID_INPUT' });
+  assert.throws(() => copyPriceLines([{ price: 1, id: 'a', drag: 'fling' as never }]), {
+    code: 'INVALID_INPUT',
+  });
+  assert.equal(copyPriceLines([{ price: 1, id: 'a', drag: 'copy' }])[0]!.drag, 'copy');
+});
+
+test('a click inside a drawn × box is found, and a closable line needs an id', async () => {
+  const { hitCloseBox } = await import('../src/chart-overlays.ts');
+  const boxes = [{ id: 'order:1', x: 100, y: 50, width: 20, height: 20 }];
+  assert.equal(hitCloseBox(boxes, 110, 60)?.id, 'order:1');
+  assert.equal(hitCloseBox(boxes, 95, 60), null);
+  assert.throws(() => copyPriceLines([{ price: 1, closable: true }]), { code: 'INVALID_INPUT' });
+});

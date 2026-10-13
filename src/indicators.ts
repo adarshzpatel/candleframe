@@ -304,6 +304,49 @@ export function bigTrades(minSize = 20, maxRadius = 22): IndicatorPlugin {
   };
 }
 
+/**
+ * Marks aggression (one side's market orders moved price) and absorption (they did not,
+ * because resting orders took them) on bars with unusually high volume and a lopsided
+ * delta. Reads `buyVolume`, and `footprint` to place absorption at its price.
+ */
+export function absorptionAggression(
+  lookback = 20,
+  volumeMultiple = 1.5,
+  minDeltaPercent = 20,
+  absorptionDeltaPercent = 10,
+  zoneBars = 120,
+): IndicatorPlugin {
+  if (!(Number.isInteger(lookback) && lookback >= 5 && lookback <= 500))
+    throw new ChartError('INVALID_INPUT', 'lookback must be 5 to 500 bars');
+  if (!(volumeMultiple >= 1 && volumeMultiple <= 10))
+    throw new ChartError('INVALID_INPUT', 'volume multiple must be 1 to 10');
+  if (![minDeltaPercent, absorptionDeltaPercent].every(p => p >= 1 && p <= 100))
+    throw new ChartError('INVALID_INPUT', 'delta thresholds must be 1 to 100%');
+  if (!(Number.isInteger(zoneBars) && zoneBars >= 0 && zoneBars <= 2000))
+    throw new ChartError('INVALID_INPUT', 'zone bars must be 0 to 2000');
+  return {
+    id: 'flow-signals',
+    name: 'Absorption & aggression',
+    kind: 'flow-signals',
+    inputs: {
+      lookback,
+      volumeMultiple,
+      minDelta: minDeltaPercent,
+      absorptionDelta: absorptionDeltaPercent,
+      zoneBars,
+    },
+    pane: 'profile',
+    color: MINT,
+    flowSignals: {
+      lookback,
+      volumeMultiple,
+      minDelta: minDeltaPercent / 100,
+      absorptionDelta: absorptionDeltaPercent / 100,
+      zoneBars,
+    },
+  };
+}
+
 const period = (fallback: number, min = 1, max = 500): IndicatorInputSpec => ({
   label: 'Period',
   default: fallback,
@@ -404,6 +447,29 @@ export const builtInIndicators: readonly IndicatorDefinition[] = [
       maxRadius: { label: 'Bubble px', default: 22, min: 6, max: 60 },
     },
     create: (inputs, id) => ({ ...bigTrades(inputs.minSize, inputs.maxRadius), id }),
+  },
+  {
+    kind: 'flow-signals',
+    name: 'Absorption & aggression',
+    description: 'High-volume bars where lopsided delta moved price, or failed to.',
+    pane: 'profile',
+    inputs: {
+      lookback: { label: 'Lookback', default: 20, min: 5, max: 500 },
+      volumeMultiple: { label: 'Volume ×', default: 1.5, min: 1, max: 10, integer: false },
+      minDelta: { label: 'Aggression delta %', default: 20, min: 1, max: 100 },
+      absorptionDelta: { label: 'Absorption delta %', default: 10, min: 1, max: 100 },
+      zoneBars: { label: 'Zone bars', default: 120, min: 0, max: 2000 },
+    },
+    create: (inputs, id) => ({
+      ...absorptionAggression(
+        inputs.lookback,
+        inputs.volumeMultiple,
+        inputs.minDelta,
+        inputs.absorptionDelta,
+        inputs.zoneBars,
+      ),
+      id,
+    }),
   },
 ];
 
