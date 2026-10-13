@@ -182,8 +182,11 @@ export function createSimulatedFeed(input: number | SimulatedFeedOptions = 42): 
   const priceScale = preset.price / 68_000;
   const quantityScale = 1 / priceScale;
   const rounded = (price: number) => Number(price.toFixed(preset.precision));
-  // Footprint buckets widen with the interval: 1 book step at 1m, 4 at 15m, 38 at 1d.
-  const bucket = preset.step * Math.ceil(Math.sqrt(intervalMs / MINUTE));
+  // Footprint buckets are a fifth of a book step at 1m and widen with the interval:
+  // 4 fifths at 15m, 38 at 1d. Charts merge them into taller rows when zoomed out.
+  const bucket = Number(
+    ((preset.step / 5) * Math.ceil(Math.sqrt(intervalMs / MINUTE))).toFixed(preset.precision),
+  );
   const instrument: Instrument = {
     symbol,
     name: preset.name,

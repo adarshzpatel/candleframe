@@ -125,7 +125,7 @@ function drawBar(
     rowHeight = h;
     const volume = row.buy + row.sell,
       delta = row.buy - row.sell;
-    const size = Math.min(11, Math.floor(h * 0.75));
+    const size = Math.min(14, Math.floor(h * 0.75));
     const text = h >= 9 && size >= 7;
     const font = (bold: boolean) =>
       `${bold ? Math.min(900, Number(theme.typography.uiWeight) + 200) || 600 : theme.typography.uiWeight} ${size}px ${theme.typography.numberFamily}`;
@@ -243,7 +243,7 @@ function barFormat(
   const row = bar.rows[0];
   if (!row) return precise;
   const h = g.y(row.price) - g.y(row.price + rowSize);
-  const size = Math.min(11, Math.floor(h * 0.75));
+  const size = Math.min(14, Math.floor(h * 0.75));
   ctx.font = `${Math.min(900, Number(theme.typography.uiWeight) + 200) || 600} ${size}px ${theme.typography.numberFamily}`;
   const room = options.mode === 'bidAsk' ? width / 2 - 4 : options.mode === 'delta' ? width - 4 : width - 6;
   // Signed delta labels are widest at the largest magnitude; the sign counts too.

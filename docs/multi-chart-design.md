@@ -8,7 +8,7 @@ Status: implemented, unreleased. Usage is in [embedding](embedding.md#chart-grid
 - A saved layout was one `ChartDocument` per market, keyed `[storageKey, source, symbol, interval]`, with debounced autosave.
 - Each chart owns a WebGL2 context and a feed adapter. Browsers allow about 16 WebGL contexts per page, so a grid holds at most 8 charts.
 - Navigation commands (`viewport.*`, `priceScale.*`) already skip undo history. They do bump the document revision, so synced charts autosave their view like a user pan would.
-- A viewport spans 8 to 2,200 bars. Date range sync across intervals must clamp.
+- A viewport spans 3 to 2,200 bars. Date range sync across intervals must clamp.
 - A chart that follows live data moves its viewport on every new bar. Those moves must not reach other charts.
 
 ## Decisions

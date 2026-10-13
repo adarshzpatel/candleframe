@@ -55,10 +55,10 @@ test('date range sync copies the range and clamps it to the bar limits of each i
   const minute = linkedChart('1m', MINUTE),
     hour = linkedChart('1h', 60 * MINUTE);
   createChartGroup([minute.chart, hour.chart], { dateRange: true });
-  minute.runtime.execute({ type: 'viewport.set', fromMs: 1000 * MINUTE, toMs: 1240 * MINUTE });
-  // 240 minutes is 4 hourly bars, below the 8-bar minimum.
-  assert.equal(hour.viewport().toMs, 1240 * MINUTE);
-  assert.equal(hour.viewport().toMs - hour.viewport().fromMs, 8 * 60 * MINUTE);
+  minute.runtime.execute({ type: 'viewport.set', fromMs: 1000 * MINUTE, toMs: 1120 * MINUTE });
+  // 120 minutes is 2 hourly bars, below the 3-bar minimum.
+  assert.equal(hour.viewport().toMs, 1120 * MINUTE);
+  assert.equal(hour.viewport().toMs - hour.viewport().fromMs, 3 * 60 * MINUTE);
   hour.runtime.execute({ type: 'viewport.set', fromMs: 100 * 60 * MINUTE, toMs: 2000 * 60 * MINUTE });
   // 1,900 hours is 114,000 minute bars; the minute chart keeps the 2,200-bar maximum.
   assert.equal(minute.viewport().toMs, 2000 * 60 * MINUTE);

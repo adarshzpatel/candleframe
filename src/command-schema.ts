@@ -85,7 +85,7 @@ const commands = {
   ),
   'viewport.set': command(
     'viewport.set',
-    'Show a time range, 8 to 2,200 bars wide. Stops following live data.',
+    'Show a time range, 3 to 2,200 bars wide. Stops following live data.',
     { fromMs: finite, toMs: finite, priceScale },
     ['fromMs', 'toMs'],
   ),
