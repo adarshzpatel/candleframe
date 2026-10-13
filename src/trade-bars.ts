@@ -1,5 +1,5 @@
 import type { IntervalSpec } from './intervals.ts';
-import type { Candle, FootprintLevel } from './types.ts';
+import type { Candle, FootprintLevel, LargeTrade } from './types.ts';
 
 /**
  * How trades are grouped into bars, as `parseInterval` returns it. `time` bars start on
@@ -14,6 +14,27 @@ export interface Trade {
   price: number;
   size: number;
   side: 'buy' | 'sell';
+  /**
+   * The aggressive order, when the feed knows it. Fills of one order become one large
+   * print; without ids, fills with the same side and time are merged instead.
+   */
+  orderId?: string | null;
+}
+
+export interface TradeBarOptions {
+  /**
+   * Keep merged prints of at least this size in each candle's `largeTrades`, for the big
+   * trades indicator. Default 0: none are kept.
+   */
+  largeTradeMin?: number;
+}
+
+interface Print {
+  key: string;
+  side: 1 | -1;
+  size: number;
+  notional: number;
+  timeMs: number;
 }
 
 interface BarState {
@@ -24,6 +45,10 @@ interface BarState {
   delta: number;
   deltaLow: number;
   deltaHigh: number;
+  /** Finished prints at or over the threshold. */
+  large: LargeTrade[];
+  /** The print still collecting fills. */
+  print: Print | null;
 }
 
 /**
@@ -37,11 +62,13 @@ export class TradeBarBuilder {
   readonly tickSize: number;
   private readonly decimals: number;
   private readonly bars: BarState[] = [];
+  private readonly largeTradeMin: number;
 
-  constructor(rule: BarRule, tickSize: number) {
+  constructor(rule: BarRule, tickSize: number, options: TradeBarOptions = {}) {
     if (!(tickSize > 0)) throw new RangeError('tickSize must be positive');
     this.rule = rule;
     this.tickSize = tickSize;
+    this.largeTradeMin = options.largeTradeMin ?? 0;
     this.decimals = Math.min(12, (String(tickSize).split('.')[1]?.length ?? 0) + 2);
   }
 
@@ -67,6 +94,7 @@ export class TradeBarBuilder {
     bar.delta += trade.side === 'buy' ? trade.size : -trade.size;
     bar.deltaLow = Math.min(bar.deltaLow, bar.delta);
     bar.deltaHigh = Math.max(bar.deltaHigh, bar.delta);
+    const largeTrades = this.largeTradeMin > 0 ? this.collect(bar, trade) : undefined;
     const c = bar.candle;
     const latest = bar === this.bars.at(-1);
     bar.candle = {
@@ -86,8 +114,30 @@ export class TradeBarBuilder {
           sell,
         ]),
       deltaRange: [bar.deltaLow, bar.deltaHigh],
+      ...(largeTrades?.length ? { largeTrades } : {}),
     };
     return { candle: bar.candle, opened };
+  }
+
+  /** Merges a fill into the bar's current print and returns the bar's large prints. */
+  private collect(bar: BarState, trade: Trade): LargeTrade[] {
+    const side = trade.side === 'buy' ? 1 : -1;
+    const key = trade.orderId ? `id:${trade.orderId}` : `t:${trade.timeMs}:${side}`;
+    const print = bar.print;
+    if (print && print.key === key && print.side === side) {
+      print.size += trade.size;
+      print.notional += trade.price * trade.size;
+    } else {
+      if (print && print.size >= this.largeTradeMin) bar.large.push(this.toLarge(print));
+      bar.print = { key, side, size: trade.size, notional: trade.price * trade.size, timeMs: trade.timeMs };
+    }
+    const current = bar.print!;
+    return current.size >= this.largeTradeMin ? [...bar.large, this.toLarge(current)] : bar.large;
+  }
+
+  private toLarge(print: Print): LargeTrade {
+    const price = Math.round(print.notional / print.size / this.tickSize) * this.tickSize;
+    return [Number(price.toFixed(this.decimals)), print.size, print.side, print.timeMs];
   }
 
   private open(timeMs: number, price: number): BarState {
@@ -107,6 +157,8 @@ export class TradeBarBuilder {
       delta: 0,
       deltaLow: 0,
       deltaHigh: 0,
+      large: [],
+      print: null,
     };
     this.bars.push(bar);
     return bar;

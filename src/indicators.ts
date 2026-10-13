@@ -284,6 +284,26 @@ export function priceDelta(rowHeight = 5, width = 0.1): IndicatorPlugin {
   };
 }
 
+/**
+ * Bubbles for large aggressive prints, read from the candles' `largeTrades`: green for
+ * buyers, red for sellers, area proportional to size. Feeds without `largeTrades` show none.
+ */
+export function bigTrades(minSize = 20, maxRadius = 22): IndicatorPlugin {
+  if (!(minSize >= 1 && minSize <= 1_000_000))
+    throw new ChartError('INVALID_INPUT', 'minimum size must be 1 or more');
+  if (!(maxRadius >= 6 && maxRadius <= 60))
+    throw new ChartError('INVALID_INPUT', 'bubble size must be 6 to 60 px');
+  return {
+    id: 'big-trades',
+    name: 'Big trades',
+    kind: 'big-trades',
+    inputs: { minSize, maxRadius },
+    pane: 'profile',
+    color: MINT,
+    bubbles: { minSize, maxRadius },
+  };
+}
+
 const period = (fallback: number, min = 1, max = 500): IndicatorInputSpec => ({
   label: 'Period',
   default: fallback,
@@ -373,6 +393,17 @@ export const builtInIndicators: readonly IndicatorDefinition[] = [
       width: { label: 'Width %', default: 10, min: 5, max: 50 },
     },
     create: (inputs, id) => ({ ...priceDelta(inputs.rowHeight, inputs.width / 100), id }),
+  },
+  {
+    kind: 'big-trades',
+    name: 'Big trades',
+    description: 'Bubbles for large aggressive prints, sized by volume.',
+    pane: 'profile',
+    inputs: {
+      minSize: { label: 'Min size', default: 20, min: 1, max: 1_000_000 },
+      maxRadius: { label: 'Bubble px', default: 22, min: 6, max: 60 },
+    },
+    create: (inputs, id) => ({ ...bigTrades(inputs.minSize, inputs.maxRadius), id }),
   },
 ];
 
