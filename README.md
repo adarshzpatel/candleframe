@@ -28,7 +28,8 @@ The build creates the static demo in `dist/` and ES modules with TypeScript decl
 - Double-click an axis to reset that scale. Focus an axis and use arrow keys to resize or Home to reset. Scroll over the plot to zoom time without scrolling the page. Touch drags stay inside the chart. Use `+` / `-` when the plot is focused.
 - Plot drags ease toward the pointer and glide briefly on release. Zoom, axis resizing, automatic price changes and Fit animate their ranges. A new grab takes control at the displayed position. Reduced-motion preferences disable these effects.
 - Toggle volume and indicators. Use **+** to add SMA, EMA, Bollinger Bands, RSI or MACD; oscillators get their own panes. Order-flow indicators: **CVD** draws cumulative volume delta as candles in its own pane; **Volume profile** (POC and value area) and **Price delta** aggregate the visible bars against the price axis. They read optional `buyVolume`, `footprint` and `deltaRange` candle fields. The simulation provides all three; Binance provides `buyVolume`, so CVD is exact there and the profiles spread each bar evenly over its range. **Log** switches the price axis to a log scale. Choose from 30 drawing tools in the left toolbar: lines, channels, Fibonacci tools, shapes, annotations, freehand, measurements and position plans. Select and move drawings, edit handles, style, lock, hide, duplicate and reorder them in Objects. Undo/redo preserves market data and scales. See the [drawing suite guide](docs/drawing-suite.md).
-- Save and restore a layout for the selected source, symbol and interval. Export opens a PNG preview and download link.
+- Layouts autosave per source, symbol and interval and load again on reload or a market switch. Export opens a PNG preview and download link.
+- **Layout** in the header splits the view into up to 8 charts (side by side, stacked, 1 + 2, 2 × 2, 3 × 2, 4 × 2). Click a chart or press Alt + 1 to 8 to choose the one the toolbar controls. Checkboxes sync symbol, interval, crosshair, time and date range across charts. Save named layouts and switch between them; the open one comes back after a reload.
 - Toggle the integrated order book. Stale depth is dimmed independently of the candle stream.
 - Open **Inspect state** for the same semantic state available to an embedding app or agent.
 
@@ -99,7 +100,7 @@ Evergreen is the default theme. The Appearance picker also includes Graphite, Mi
 
 ## Current scope
 
-The PoC implements candles, volume, five indicators with separate panes, log and linear price scales, session gaps, history paging, a 30-tool drawing suite with undo/redo, order-book reconstruction, independent stream health, market switching, axis scaling, layout persistence, structured commands and GPU restoration. WebGL2 draws geometry; Canvas2D draws text and overlays; HTML supplies accessible controls and a candle table.
+The PoC implements candles, volume, five indicators with separate panes, log and linear price scales, session gaps, history paging, a 30-tool drawing suite with undo/redo, order-book reconstruction, independent stream health, market switching, multi-chart grids with sync, axis scaling, layout persistence and named layouts, structured commands and GPU restoration. WebGL2 draws geometry; Canvas2D draws text and overlays; HTML supplies accessible controls and a candle table.
 
 Interfaces remain experimental. Scripting, broker execution and full TradingView feature parity are not implemented. Rendering and calculations run on the main thread. No comparative performance claim has been established.
 
@@ -109,6 +110,7 @@ CandleFrame is released under the [MIT license](LICENSE). Bundled fonts use the 
 
 - [Drawing suite and extension API](docs/drawing-suite.md)
 - [Self-contained widget integration](docs/embedding.md)
+- [Multi-chart layouts design](docs/multi-chart-design.md)
 - [Drawing design decisions](docs/drawing-suite-design.md)
 - [Driving a chart from an agent](docs/agents.md): batches, preview, query, schemas and the MCP server
 - [Implementation and verification](docs/poc.md)

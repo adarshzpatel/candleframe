@@ -121,6 +121,11 @@ export function zoneOffsets(timeZone: string): (timeMs: number) => number {
 export interface TimeTickOptions {
   candles: readonly Candle[];
   intervalMs: number;
+  /**
+   * Typical time per bar, for tick and range bars whose `intervalMs` is only a nominal
+   * slot. Label steps are chosen from it. Defaults to `intervalMs`.
+   */
+  barMs?: number;
   offset: (timeMs: number) => number;
   /** Labels a tick; `rank` says which unit it starts (see TICK_RANK). */
   label: (timeMs: number, rank: number) => string;
@@ -136,7 +141,8 @@ export interface TimeTickOptions {
 export function timeTicks(g: ChartGeometry, options: TimeTickOptions): AxisTick[] {
   const { candles, intervalMs, offset, label, spacing } = options;
   if (!(g.barSpacing > 0) || !Number.isFinite(g.barSpacing)) return [];
-  const pxPerMs = g.barSpacing / intervalMs;
+  const barMs = options.barMs !== undefined && options.barMs > intervalMs ? options.barMs : intervalMs;
+  const pxPerMs = g.barSpacing / barMs;
   const step = STEPS.find(s => stepMs(s) >= intervalMs && stepMs(s) * pxPerMs >= spacing) ?? STEPS.at(-1)!;
   const scale = g.timeScale;
   const first = Math.floor(scale.logical(g.fromMs)) - 1,

@@ -6,10 +6,20 @@ import type { TimeScale } from './time-scale.ts';
 import type { IndicatorDefinition } from './indicators.ts';
 import { createTimeFormats } from './time-format.ts';
 import { priceTicks, timeTicks, valueTicks, zoneOffsets, TICK_RANK } from './axis-ticks.ts';
+import { isTimeInterval } from './intervals.ts';
+import { copyMarkers, copyPriceLines, renderMarkers, renderPriceLines } from './chart-overlays.ts';
+import type { ChartMarker, PriceLine } from './chart-overlays.ts';
 import type { AxisTick } from './axis-ticks.ts';
 import type { ChartGeometry } from './geometry.ts';
 import { ChartRuntime } from './runtime.ts';
-import type { CommandResult, DataQuery, DataResult, ExecuteOptions, PreviewResult } from './runtime.ts';
+import type {
+  CommandResult,
+  DataQuery,
+  DataResult,
+  ExecuteOptions,
+  PreviewResult,
+  RestoreOptions,
+} from './runtime.ts';
 import { PanMotion } from './pan-motion.ts';
 import { ScaleMotion } from './scale-motion.ts';
 import { CandleMotion } from './candle-motion.ts';
@@ -85,8 +95,15 @@ export interface ChartApi {
   query(request?: DataQuery): DataResult;
   inspect(): ReturnType<ChartRuntime['inspect']>;
   exportDocument(): ChartDocument;
-  restoreDocument(document: unknown, expectedRevision?: number): void;
+  restoreDocument(document: unknown, expectedRevision?: number, options?: RestoreOptions): void;
   subscribe(listener: (state: RuntimeState) => void): () => void;
+  /**
+   * Shows a vertical time line, such as the crosshair of a linked chart. `null` hides it.
+   * The local pointer takes precedence; `onHover` reports the bar under the line.
+   */
+  setCrosshair(timeMs: number | null): void;
+  /** Reports the hovered bar's open time while the pointer is over this plot, then `null`. */
+  subscribeCrosshair(listener: (timeMs: number | null) => void): () => void;
   setTool(tool: string): void;
   selectDrawing(id: string | null): void;
   drawingState(): DrawingInteractionState;
@@ -97,6 +114,13 @@ export interface ChartApi {
   capture(): string;
   /** Requests candles before the first loaded bar. The chart also does this when panning near it. */
   loadOlderHistory(): boolean;
+  /**
+   * Replaces the host's price lines, such as working orders or a position's entry.
+   * View state only: not saved, not undoable and not editable in the chart.
+   */
+  setPriceLines(lines: readonly PriceLine[]): void;
+  /** Replaces the host's markers, such as fills or large trades. View state only. */
+  setMarkers(markers: readonly ChartMarker[]): void;
   dispose(): void;
 }
 
@@ -208,6 +232,10 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
   let renderError: string | null = null;
   let pointer: { x: number; y: number } | null = null;
   let lastHover: Candle | null | undefined;
+  // Time line mirrored from another chart; hidden while this chart has the pointer.
+  let syncedTime: number | null = null,
+    lastCrosshair: number | null = null;
+  const crosshairListeners = new Set<(timeMs: number | null) => void>();
   let drag: {
     kind: 'pan' | 'time' | 'price';
     pointerId: number;
@@ -455,15 +483,38 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     scaleMotion = new ScaleMotion(geometry);
   }
 
-  function publishHover(bar: Candle | null): void {
+  /** `local` is false for a bar shown because of `setCrosshair`; only local hovers reach crosshair listeners. */
+  function publishHover(bar: Candle | null, local = true): void {
     if (bar !== lastHover) {
       lastHover = bar;
       options.onHover?.(bar);
     }
+    const time = local && bar ? bar.timeMs : null;
+    if (time !== lastCrosshair) {
+      lastCrosshair = time;
+      for (const listener of crosshairListeners) listener(time);
+    }
+  }
+  /** The loaded bar containing `timeMs`, if any. */
+  function barAt(timeMs: number): Candle | null {
+    const bars = state.candles;
+    let lo = 0,
+      hi = bars.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >>> 1;
+      if (bars[mid].timeMs <= timeMs) lo = mid;
+      else hi = mid - 1;
+    }
+    const bar = bars[lo];
+    // Tick and range bars have no fixed length: a bar lasts until the next one starts.
+    const end = isTimeInterval(state.feed.interval)
+      ? bar?.timeMs + state.feed.intervalMs
+      : (bars[lo + 1]?.timeMs ?? Infinity);
+    return bar && bar.timeMs <= timeMs && timeMs < end ? bar : null;
   }
   function updateHover(): void {
+    if (!options.onHover && !crosshairListeners.size) return;
     if (
-      options.onHover &&
       pointer &&
       state.candles.length &&
       pointer.x >= geometry.left &&
@@ -484,7 +535,8 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       }
       const best = lo > 0 && time - bars[lo - 1].timeMs <= bars[lo].timeMs - time ? bars[lo - 1] : bars[lo];
       publishHover(best);
-    } else publishHover(null);
+    } else if (!pointer && syncedTime !== null) publishHover(barAt(syncedTime), false);
+    else publishHover(null);
   }
 
   function labelWidth(ctx: CanvasRenderingContext2D, text: string): number {
@@ -518,6 +570,8 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     context.clearRect(0, 0, width, height);
   }
   const profiles: ProfileCache = new Map();
+  let priceLines: PriceLine[] = [];
+  let markers: ChartMarker[] = [];
   function drawOverlay(latest = state.candles.at(-1)): void {
     if (!ctx) return;
     clearOverlay(overlay, ctx);
@@ -576,6 +630,8 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
         g.top + theme.typography.axisSize * 1.4,
       );
     }
+    renderMarkers(ctx, markers, state.candles, state.feed.intervalMs, g, theme);
+    renderPriceLines(ctx, priceLines, g, theme, price => formatPrice.format(price));
     if (latest) {
       const y = g.y(latest.close);
       if (y >= g.top && y <= g.top + g.plotHeight) {
@@ -618,6 +674,14 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
   };
   let zoneOffset = zoneOffsets(timeZone);
   /** Round-value price marks and calendar-aligned time marks that move with the data. */
+  /** Average time per bar across the bars in view, for tick and range bars. */
+  function visibleBarMs(g: ChartGeometry): number | undefined {
+    const bars = state.candles;
+    const from = Math.max(0, Math.floor(g.timeScale.logical(g.fromMs)));
+    const to = Math.min(bars.length - 1, Math.ceil(g.timeScale.logical(g.toMs)));
+    return to > from ? (bars[to].timeMs - bars[from].timeMs) / (to - from) : undefined;
+  }
+
   function axisTicks(g: ChartGeometry) {
     const size = theme.typography.axisSize;
     ctx!.font = `${size}px ${theme.typography.numberFamily}`;
@@ -628,6 +692,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       time: timeTicks(g, {
         candles: state.candles,
         intervalMs: state.feed.intervalMs,
+        barMs: isTimeInterval(state.feed.interval) ? undefined : visibleBarMs(g),
         offset: zoneOffset,
         label: (time, rank) => timeFormats.tick(time, rank),
         spacing: Math.max(56, widest + theme.chart.axisLabelPadding * 3),
@@ -761,7 +826,32 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
         text,
         background,
       );
+    } else if (!pointer && syncedTime !== null) drawSyncedTime(ctx, g, syncedTime);
+  }
+  function drawSyncedTime(ctx: CanvasRenderingContext2D, g: ChartGeometry, timeMs: number): void {
+    const bar = barAt(timeMs);
+    const x = bar ? g.x(bar.timeMs + state.feed.intervalMs / 2) : g.x(timeMs);
+    if (!(x >= g.left && x <= g.left + g.plotWidth)) return;
+    if (theme.chart.crosshairWidth > 0) {
+      ctx.strokeStyle = themeColorCSS(theme, theme.chart.crosshairColor, theme.chart.crosshairOpacity);
+      ctx.lineWidth = theme.chart.crosshairWidth;
+      ctx.setLineDash([...theme.chart.crosshairDash]);
+      ctx.beginPath();
+      ctx.moveTo(x, g.top);
+      ctx.lineTo(x, g.bottom);
+      ctx.stroke();
+      ctx.setLineDash([]);
     }
+    const time = timeFormats.full(bar?.timeMs ?? timeMs),
+      w = labelWidth(ctx, time);
+    label(
+      ctx,
+      time,
+      Math.max(g.left, Math.min(g.left + g.plotWidth - w, x - w / 2)),
+      height - theme.chart.timeAxisHeight / 2,
+      themeColor(theme, theme.chart.crosshairLabelText),
+      themeColor(theme, theme.chart.crosshairLabelBackground),
+    );
   }
 
   let olderRequest = false;
@@ -1345,12 +1435,30 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     query: request => runtime.query(request),
     inspect: () => runtime.inspect(),
     exportDocument: () => runtime.exportDocument(),
-    restoreDocument: (value, revision) => {
+    restoreDocument: (value, revision, restoreOptions) => {
       cancelPan();
       cancelDrawing();
-      runtime.restoreDocument(value, revision);
+      runtime.restoreDocument(value, revision, restoreOptions);
     },
     subscribe: listener => runtime.subscribe(listener),
+    setPriceLines(lines) {
+      priceLines = copyPriceLines(lines);
+      invalidate('overlay');
+    },
+    setMarkers(next) {
+      markers = copyMarkers(next);
+      invalidate('overlay');
+    },
+    setCrosshair(timeMs) {
+      const next = timeMs === null || !Number.isFinite(timeMs) ? null : timeMs;
+      if (next === syncedTime) return;
+      syncedTime = next;
+      invalidate('cursor');
+    },
+    subscribeCrosshair(listener) {
+      crosshairListeners.add(listener);
+      return () => void crosshairListeners.delete(listener);
+    },
     setTool(value) {
       cancelPan();
       cancelDrawing();
@@ -1395,6 +1503,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       abort.abort();
       resize.disconnect();
       unsubscribe();
+      crosshairListeners.clear();
       runtime.dispose();
       renderer.dispose();
       root.remove();

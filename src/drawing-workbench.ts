@@ -1,6 +1,7 @@
 import { createPositionEditor } from './position-editor.ts';
 import { isPosition, positionMetrics } from './position-drawing.ts';
 import type { ChartApi } from './chart.ts';
+import { activeChart } from './chart-switch.ts';
 import type { RuntimeState } from './types.ts';
 import type {
   Drawing,
@@ -34,10 +35,9 @@ export function createDrawingWorkbench(
   flyout.className = 'drawing-flyout';
   flyout.hidden = true;
   flyout.setAttribute('aria-label', 'Choose drawing tool');
-  flyout.innerHTML = `<div class="drawing-panel-heading"><strong id="drawing-group-title">Drawing tools</strong><button aria-label="Close drawing tools">${svg('close', 18)}</button></div><input type="search" placeholder="Search drawing tools" aria-label="Search drawing tools"><div class="drawing-tool-list"></div>`;
+  flyout.innerHTML = `<div class="drawing-tool-list" role="menu"></div>`;
   root.append(flyout);
-  const search = flyout.querySelector<HTMLInputElement>('input')!,
-    toolList = flyout.querySelector<HTMLElement>('.drawing-tool-list')!;
+  const toolList = flyout.querySelector<HTMLElement>('.drawing-tool-list')!;
   let openGroup = groups[0],
     lastDrawings: readonly Drawing[] | undefined,
     lastHistory = '',
@@ -59,42 +59,53 @@ export function createDrawingWorkbench(
       chart.setTool(tool.type);
       closeTools();
       report(`${tool.label}: ${tool.hint}`);
-      panel.querySelector<HTMLElement>('.cf-chart')?.focus({ preventScroll: true });
+      activeChart(panel)?.focus({ preventScroll: true });
     });
   }
   function positionTools(button: HTMLElement) {
     const bounds = root.getBoundingClientRect(),
       anchor = button.getBoundingClientRect();
     flyout.style.maxHeight = `${Math.max(0, root.clientHeight - 16)}px`;
-    flyout.style.left = `${Math.max(8, Math.min(anchor.right - bounds.left - root.clientLeft + 4, root.clientWidth - flyout.offsetWidth - 8))}px`;
-    flyout.style.top = `${Math.max(8, Math.min(anchor.top - bounds.top - root.clientTop, root.clientHeight - flyout.offsetHeight - 8))}px`;
+    // Beside the rail, with the first row level with the button.
+    flyout.style.left = `${Math.max(8, Math.min(anchor.right - bounds.left - root.clientLeft + 6, root.clientWidth - flyout.offsetWidth - 8))}px`;
+    flyout.style.top = `${Math.max(8, Math.min(anchor.top - bounds.top - root.clientTop - 4, root.clientHeight - flyout.offsetHeight - 8))}px`;
   }
   function listTools() {
-    const query = search.value.toLowerCase().trim();
     toolList.replaceChildren();
-    const tools = catalog.filter(t =>
-      query ? `${t.label} ${t.group}`.toLowerCase().includes(query) : t.group === openGroup,
-    );
-    for (const t of tools) {
+    for (const t of catalog.filter(t => t.group === openGroup)) {
       const b = owner.createElement('button');
       b.className = 'drawing-tool-item';
-      b.setAttribute('aria-label', `Draw ${t.label.toLowerCase()}`);
-      b.setAttribute('aria-pressed', String(selection.tool === t.type));
-      b.innerHTML = `${svg(t.type)}<span></span><small></small>`;
+      b.setAttribute('role', 'menuitemradio');
+      b.setAttribute('aria-checked', String(selection.tool === t.type));
+      b.innerHTML = `${svg(t.type, 18)}<span></span>`;
       b.querySelector('span')!.textContent = t.label;
-      b.querySelector('small')!.textContent = t.create
-        ? '1 click'
-        : t.points === 'freehand'
-          ? 'drag'
-          : t.points === 'path'
-            ? 'path'
-            : `${t.points} pt`;
       b.title = t.hint;
       b.addEventListener('click', () => choose(t), { signal: abort.signal });
       toolList.append(b);
     }
-    if (!tools.length) toolList.textContent = 'No matching tools.';
   }
+  const items = () => [...toolList.querySelectorAll<HTMLButtonElement>('.drawing-tool-item')];
+  toolList.addEventListener(
+    'keydown',
+    event => {
+      const list = items(),
+        index = list.indexOf(activeElement() as HTMLButtonElement);
+      const next =
+        event.key === 'ArrowDown'
+          ? list[(index + 1) % list.length]
+          : event.key === 'ArrowUp'
+            ? list[(index - 1 + list.length) % list.length]
+            : event.key === 'Home'
+              ? list[0]
+              : event.key === 'End'
+                ? list.at(-1)
+                : undefined;
+      if (!next) return;
+      event.preventDefault();
+      next.focus({ preventScroll: true });
+    },
+    { signal: abort.signal },
+  );
   const groupHolder = owner.createElement('div');
   groupHolder.className = 'drawing-rail-groups';
   for (const group of groups) {
@@ -112,13 +123,14 @@ export function createDrawingWorkbench(
         closeTools();
         if (wasOpen) return;
         openGroup = group;
-        search.value = '';
-        flyout.querySelector('strong')!.textContent = group;
+        flyout.setAttribute('aria-label', `${group} tools`);
         flyout.hidden = false;
         b.setAttribute('aria-expanded', 'true');
         listTools();
         positionTools(b);
-        search.focus({ preventScroll: true });
+        (items().find(item => item.getAttribute('aria-checked') === 'true') ?? items()[0])?.focus({
+          preventScroll: true,
+        });
       },
       { signal: abort.signal },
     );
@@ -127,16 +139,6 @@ export function createDrawingWorkbench(
   }
   flyout.id = 'drawing-tool-picker';
   rail.querySelector('#trend')?.replaceWith(groupHolder);
-  search.addEventListener(
-    'input',
-    () => {
-      listTools();
-      const button = buttons.get(openGroup);
-      if (button) positionTools(button);
-    },
-    { signal: abort.signal },
-  );
-  flyout.querySelector('button')!.addEventListener('click', closeTools, { signal: abort.signal });
   root.addEventListener(
     'pointerdown',
     event => {
@@ -150,6 +152,10 @@ export function createDrawingWorkbench(
       if (event.key === 'Escape' && !flyout.hidden) {
         closeTools();
         buttons.get(openGroup)?.focus({ preventScroll: true });
+      }
+      if (event.key === 'Escape' && !settings.hidden) {
+        toggleSettings(false);
+        settingsButton.focus({ preventScroll: true });
       }
     },
     { signal: abort.signal },
@@ -172,7 +178,7 @@ export function createDrawingWorkbench(
   redo.addEventListener('click', () => chart.execute({ type: 'history.redo' }), { signal: abort.signal });
   const strip = owner.createElement('div');
   strip.className = 'drawing-strip';
-  strip.innerHTML = `<span class="drawing-active-tool">Cursor</span><label title="Stroke color"><span class="sr-only">Drawing color</span><input type="color" aria-label="Drawing color" value="#a9c4ff"></label><select aria-label="Drawing line width"><option value="1">1 px</option><option value="2" selected>2 px</option><option value="3">3 px</option><option value="5">5 px</option><option value="8">8 px</option></select><select aria-label="Drawing line style"><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option></select><span class="drawing-strip-divider"></span><select aria-label="Drawing magnet"><option value="off">Magnet off</option><option value="weak">Weak magnet</option><option value="strong">Strong magnet</option></select><button aria-label="Stay in drawing mode" aria-pressed="false" data-tooltip="Keep drawing">${svg('keep', 18)}</button>`;
+  strip.innerHTML = `<span class="drawing-active-tool">Cursor</span><label title="Stroke color"><span class="sr-only">Drawing color</span><input type="color" aria-label="Drawing color" value="#a9c4ff"></label><select aria-label="Drawing line width"><option value="1">1 px</option><option value="2" selected>2 px</option><option value="3">3 px</option><option value="5">5 px</option><option value="8">8 px</option></select><select aria-label="Drawing line style"><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option></select><span class="drawing-strip-divider"></span><select aria-label="Drawing magnet"><option value="off">Magnet off</option><option value="weak">Weak magnet</option><option value="strong">Strong magnet</option></select><button aria-label="Stay in drawing mode" aria-pressed="false" data-tooltip="Keep drawing">${svg('keep', 18)}</button><span class="drawing-strip-divider"></span><button class="drawing-settings-button" aria-label="Drawing settings" aria-expanded="false" aria-controls="drawing-settings" data-tooltip="Settings">${svg('settings', 18)}</button><button class="drawing-lock-button" aria-label="Lock drawing" aria-pressed="false" data-tooltip="Lock">${svg('unlock', 18)}</button><button class="drawing-delete-button" aria-label="Delete drawing" data-tooltip="Delete">${svg('trash', 18)}</button>`;
   panel.append(strip);
   const textEditor = createDrawingTextEditor(chart, panel, report);
   const positionEditor = createPositionEditor(chart, panel);
@@ -184,6 +190,7 @@ export function createDrawingWorkbench(
   function editPosition(drawing: Drawing) {
     closeTools();
     toggleObjects(false);
+    toggleSettings(false);
     positionEditor.open(drawing);
   }
   editPositionButton.addEventListener(
@@ -201,6 +208,7 @@ export function createDrawingWorkbench(
   function editText(drawing: Drawing) {
     closeTools();
     toggleObjects(false);
+    toggleSettings(false);
     textEditor.open(drawing);
   }
   editTextButton.addEventListener(
@@ -221,27 +229,76 @@ export function createDrawingWorkbench(
   objects.className = 'drawing-object-panel';
   objects.hidden = true;
   objects.setAttribute('aria-label', 'Drawing objects and properties');
-  objects.innerHTML = `<div class="drawing-panel-heading"><strong>Drawings</strong><button aria-label="Close drawing objects">${svg('close', 18)}</button></div><div class="drawing-global-actions"><button id="drawing-hide-all" aria-pressed="false">Hide all</button><button id="drawing-lock-all" aria-pressed="false">Lock all</button></div><div class="drawing-object-list"></div><div class="drawing-properties"><div class="drawing-property-title">New drawing defaults</div><div class="drawing-selected-actions"><button data-action="duplicate">Duplicate</button><button data-action="front">To front</button><button data-action="back">To back</button><button data-action="lock">Lock</button><button data-action="hide">Hide</button><button data-action="delete">Delete</button></div><label>Text<textarea aria-label="Drawing text" maxlength="2000" rows="2"></textarea></label><div class="drawing-property-row"><label>Fill opacity<input aria-label="Drawing fill opacity" type="number" min="0" max="1" step="0.05"></label><label>Font size<input aria-label="Drawing font size" type="number" min="10" max="32" step="1"></label></div><label class="drawing-levels-field">Levels, comma separated<input aria-label="Fibonacci levels" placeholder="0, 0.236, 0.382, 0.5, 0.618, 1"></label><div class="drawing-anchor-fields"></div><p class="drawing-shortcuts">Delete removes selection. ⌘/Ctrl+C, V and D copy, paste and duplicate. Enter finishes a path. Escape cancels.</p></div>`;
+  objects.innerHTML = `<div class="drawing-panel-heading"><strong>Drawings</strong><span class="drawing-heading-actions"><button id="drawing-hide-all" aria-pressed="false" aria-label="Hide all drawings" title="Hide all">${svg('eye', 16)}</button><button id="drawing-lock-all" aria-pressed="false" aria-label="Lock all drawings" title="Lock all">${svg('unlock', 16)}</button><button class="drawing-close" aria-label="Close drawing objects">${svg('close', 16)}</button></span></div><div class="drawing-object-list"></div>`;
+  const settings = owner.createElement('section');
+  settings.className = 'drawing-settings';
+  settings.id = 'drawing-settings';
+  settings.hidden = true;
+  settings.setAttribute('aria-label', 'Drawing settings');
+  settings.innerHTML = `<div class="drawing-panel-heading"><strong class="drawing-property-title">Defaults</strong><button class="drawing-close" aria-label="Close drawing settings">${svg('close', 16)}</button></div><div class="drawing-properties"><label>Text<textarea aria-label="Drawing text" maxlength="2000" rows="2"></textarea></label><div class="drawing-property-row"><label>Fill opacity<input aria-label="Drawing fill opacity" type="number" min="0" max="1" step="0.05"></label><label>Font size<input aria-label="Drawing font size" type="number" min="10" max="32" step="1"></label></div><label class="drawing-levels-field">Levels<input aria-label="Fibonacci levels" placeholder="0, 0.236, 0.382, 0.5, 0.618, 1"></label><div class="drawing-anchor-fields"></div><div class="drawing-selected-actions"><button data-action="duplicate">Duplicate</button><button data-action="front">Bring to front</button><button data-action="back">Send to back</button></div></div>`;
+  panel.append(settings);
   panel.append(objects);
   function positionObjects() {
+    // In a grid, open beside the active chart, whose summary holds the toggle.
     const bounds = panel.getBoundingClientRect(),
-      anchor = panel.querySelector('.chart-toolbar')!.getBoundingClientRect();
+      anchor = (
+        objectToggle.closest('.chart-toolbar') ?? panel.querySelector('.chart-toolbar')!
+      ).getBoundingClientRect();
     const top = Math.max(8, anchor.bottom - bounds.top - panel.clientTop + 8);
     objects.style.top = `${top}px`;
+    objects.style.right = `${Math.max(10, bounds.right - anchor.right)}px`;
     objects.style.maxHeight = `${Math.max(0, panel.clientHeight - top - 8)}px`;
   }
   function toggleObjects(open: boolean) {
     objects.hidden = !open;
     objectToggle.setAttribute('aria-expanded', String(open));
     if (open) {
-      renderProperties();
+      toggleSettings(false);
       positionObjects();
     }
   }
+  const settingsButton = strip.querySelector<HTMLButtonElement>('.drawing-settings-button')!;
+  function positionSettings() {
+    const bounds = panel.getBoundingClientRect(),
+      anchor = strip.getBoundingClientRect();
+    const bottom = bounds.bottom - anchor.top + 6;
+    settings.style.bottom = `${bottom}px`;
+    settings.style.maxHeight = `${Math.max(0, panel.clientHeight - bottom - 8)}px`;
+  }
+  function toggleSettings(open: boolean) {
+    settings.hidden = !open;
+    settingsButton.setAttribute('aria-expanded', String(open));
+    if (open) {
+      toggleObjects(false);
+      renderProperties();
+      positionSettings();
+    }
+  }
   objectToggle.addEventListener('click', () => toggleObjects(objects.hidden), { signal: abort.signal });
+  settingsButton.addEventListener('click', () => toggleSettings(settings.hidden), { signal: abort.signal });
   objects
-    .querySelector('.drawing-panel-heading button')!
+    .querySelector('.drawing-close')!
     .addEventListener('click', () => toggleObjects(false), { signal: abort.signal });
+  settings
+    .querySelector('.drawing-close')!
+    .addEventListener('click', () => toggleSettings(false), { signal: abort.signal });
+  strip.querySelector('.drawing-lock-button')!.addEventListener(
+    'click',
+    () =>
+      attempt(() => {
+        const d = selection.selected;
+        if (d) chart.execute({ type: 'drawing.update', id: d.id, patch: { locked: !d.locked } });
+      }),
+    { signal: abort.signal },
+  );
+  strip.querySelector('.drawing-delete-button')!.addEventListener(
+    'click',
+    () =>
+      attempt(() => {
+        if (selection.selected) chart.execute({ type: 'drawing.remove', id: selection.selected.id });
+      }),
+    { signal: abort.signal },
+  );
   function editStyle(patch: Partial<DrawingStyle>) {
     attempt(() =>
       selection.selected
@@ -297,7 +354,7 @@ export function createDrawingWorkbench(
     },
     { signal: abort.signal },
   );
-  objects.querySelector<HTMLTextAreaElement>('textarea')!.addEventListener(
+  settings.querySelector<HTMLTextAreaElement>('textarea')!.addEventListener(
     'change',
     event =>
       attempt(() => {
@@ -308,21 +365,21 @@ export function createDrawingWorkbench(
       }),
     { signal: abort.signal },
   );
-  objects
+  settings
     .querySelector<HTMLInputElement>('[aria-label="Drawing fill opacity"]')!
     .addEventListener(
       'change',
       event => editStyle({ fillOpacity: Number((event.target as HTMLInputElement).value) }),
       { signal: abort.signal },
     );
-  objects
+  settings
     .querySelector<HTMLInputElement>('[aria-label="Drawing font size"]')!
     .addEventListener(
       'change',
       event => editStyle({ fontSize: Number((event.target as HTMLInputElement).value) }),
       { signal: abort.signal },
     );
-  objects.querySelector<HTMLInputElement>('[aria-label="Fibonacci levels"]')!.addEventListener(
+  settings.querySelector<HTMLInputElement>('[aria-label="Fibonacci levels"]')!.addEventListener(
     'change',
     event =>
       attempt(() => {
@@ -339,7 +396,7 @@ export function createDrawingWorkbench(
       }),
     { signal: abort.signal },
   );
-  objects.querySelectorAll<HTMLButtonElement>('[data-action]').forEach(button =>
+  settings.querySelectorAll<HTMLButtonElement>('[data-action]').forEach(button =>
     button.addEventListener(
       'click',
       () =>
@@ -362,15 +419,6 @@ export function createDrawingWorkbench(
             case 'back':
               chart.execute({ type: 'drawing.order', id: d.id, where: button.dataset.action });
               break;
-            case 'lock':
-              chart.execute({ type: 'drawing.update', id: d.id, patch: { locked: !d.locked } });
-              break;
-            case 'hide':
-              chart.execute({ type: 'drawing.update', id: d.id, patch: { visible: !d.visible } });
-              break;
-            case 'delete':
-              chart.execute({ type: 'drawing.remove', id: d.id });
-              break;
           }
         }),
       { signal: abort.signal },
@@ -379,29 +427,26 @@ export function createDrawingWorkbench(
   function renderProperties() {
     const d = selection.selected,
       style = d?.style ?? selection.options.style;
-    objects.querySelector('.drawing-property-title')!.textContent = d
-      ? (catalog.find(t => t.type === d.type)?.label ?? d.type)
-      : 'New drawing defaults';
-    objects.querySelectorAll<HTMLButtonElement>('[data-action]').forEach(button => {
-      button.disabled = !d;
-      if (button.dataset.action === 'lock') button.textContent = d?.locked ? 'Unlock' : 'Lock';
-      if (button.dataset.action === 'hide') button.textContent = d && !d.visible ? 'Show' : 'Hide';
-    });
-    const text = objects.querySelector<HTMLTextAreaElement>('textarea')!;
+    const tool = catalog.find(t => t.type === (d?.type ?? selection.tool));
+    settings.querySelector('.drawing-property-title')!.textContent = d
+      ? (tool?.label ?? d.type)
+      : `${tool?.label ?? 'Drawing'} defaults`;
+    settings.querySelector<HTMLElement>('.drawing-selected-actions')!.hidden = !d;
+    const text = settings.querySelector<HTMLTextAreaElement>('textarea')!;
     if (activeElement() !== text) text.value = d?.text ?? selection.options.text;
-    objects.querySelector<HTMLInputElement>('[aria-label="Drawing fill opacity"]')!.value = String(
+    settings.querySelector<HTMLInputElement>('[aria-label="Drawing fill opacity"]')!.value = String(
       style.fillOpacity,
     );
-    objects.querySelector<HTMLInputElement>('[aria-label="Drawing font size"]')!.value = String(
+    settings.querySelector<HTMLInputElement>('[aria-label="Drawing font size"]')!.value = String(
       style.fontSize,
     );
-    objects.querySelector<HTMLElement>('.drawing-levels-field')!.hidden = !d?.type.startsWith('fib-');
-    objects.querySelector<HTMLInputElement>('[aria-label="Fibonacci levels"]')!.value =
+    settings.querySelector<HTMLElement>('.drawing-levels-field')!.hidden = !d?.type.startsWith('fib-');
+    settings.querySelector<HTMLInputElement>('[aria-label="Fibonacci levels"]')!.value =
       d?.levels.join(', ') ?? '';
-    const anchors = objects.querySelector('.drawing-anchor-fields')!;
+    const anchors = settings.querySelector('.drawing-anchor-fields')!;
     anchors.replaceChildren();
     const position = isPosition(d);
-    objects.querySelector('textarea')!.closest('label')!.hidden = position;
+    settings.querySelector('textarea')!.closest('label')!.hidden = position;
     if (d && position) {
       const metrics = positionMetrics(d),
         summary = owner.createElement('p');
@@ -429,10 +474,10 @@ export function createDrawingWorkbench(
           title.textContent = name;
           const datetime = owner.createElement('input');
           datetime.type = 'datetime-local';
-          datetime.step = '0.001';
+          datetime.step = '1';
           datetime.setAttribute('aria-label', `${name} time UTC`);
           datetime.title = 'UTC';
-          datetime.value = new Date(anchor.timeMs).toISOString().slice(0, 23);
+          datetime.value = new Date(anchor.timeMs).toISOString().slice(0, 19);
           datetime.disabled = d.locked;
           const price = owner.createElement('input');
           price.type = 'number';
@@ -459,19 +504,23 @@ export function createDrawingWorkbench(
     list.replaceChildren();
     const drawings = lastDrawings ?? [];
     objectToggle.querySelector('span')!.textContent = String(drawings.length);
-    objects.querySelector('#drawing-hide-all')!.textContent = selection.options.hidden
-      ? 'Show all'
-      : 'Hide all';
-    objects
-      .querySelector('#drawing-hide-all')!
-      .setAttribute('aria-pressed', String(selection.options.hidden));
-    const locked = !!drawings.length && drawings.every(d => d.locked);
-    objects.querySelector('#drawing-lock-all')!.textContent = locked ? 'Unlock all' : 'Lock all';
-    objects.querySelector('#drawing-lock-all')!.setAttribute('aria-pressed', String(locked));
+    const hideAll = objects.querySelector<HTMLButtonElement>('#drawing-hide-all')!,
+      lockAll = objects.querySelector<HTMLButtonElement>('#drawing-lock-all')!;
+    const hidden = selection.options.hidden,
+      locked = !!drawings.length && drawings.every(d => d.locked);
+    hideAll.innerHTML = svg(hidden ? 'eye-off' : 'eye', 16);
+    hideAll.title = hidden ? 'Show all' : 'Hide all';
+    hideAll.setAttribute('aria-label', hidden ? 'Show all drawings' : 'Hide all drawings');
+    hideAll.setAttribute('aria-pressed', String(hidden));
+    lockAll.innerHTML = svg(locked ? 'lock' : 'unlock', 16);
+    lockAll.title = locked ? 'Unlock all' : 'Lock all';
+    lockAll.setAttribute('aria-label', locked ? 'Unlock all drawings' : 'Lock all drawings');
+    lockAll.setAttribute('aria-pressed', String(locked));
+    hideAll.disabled = lockAll.disabled = !drawings.length;
     if (!drawings.length) {
       const p = owner.createElement('p');
       p.className = 'drawing-empty';
-      p.textContent = 'No drawings yet. Choose a tool from the left toolbar.';
+      p.textContent = 'No drawings';
       list.append(p);
     }
     for (const [index, d] of [...drawings].reverse().entries()) {
@@ -481,11 +530,13 @@ export function createDrawingWorkbench(
         number = drawings.length - index;
       const pick = owner.createElement('button');
       pick.className = 'drawing-object-name';
-      pick.textContent = `${label} ${number}`;
+      pick.innerHTML = svg(d.type, 16);
+      pick.append(`${label} ${number}`);
       pick.style.setProperty('--drawing-color', d.style.color);
       pick.setAttribute('aria-label', `Select ${label.toLowerCase()} ${number}`);
       pick.addEventListener('click', () => chart.selectDrawing(d.id), { signal: abort.signal });
       const hide = owner.createElement('button');
+      hide.className = `drawing-row-action${d.visible ? '' : ' on'}`;
       hide.innerHTML = svg(d.visible ? 'eye' : 'eye-off', 16);
       hide.title = d.visible ? 'Hide' : 'Show';
       hide.setAttribute('aria-label', `${d.visible ? 'Hide' : 'Show'} ${label.toLowerCase()} ${number}`);
@@ -495,6 +546,7 @@ export function createDrawingWorkbench(
         { signal: abort.signal },
       );
       const lock = owner.createElement('button');
+      lock.className = `drawing-row-action${d.locked ? ' on' : ''}`;
       lock.innerHTML = svg(d.locked ? 'lock' : 'unlock', 16);
       lock.title = d.locked ? 'Unlock' : 'Lock';
       lock.setAttribute('aria-label', `${d.locked ? 'Unlock' : 'Lock'} ${label.toLowerCase()} ${number}`);
@@ -503,7 +555,19 @@ export function createDrawingWorkbench(
         () => chart.execute({ type: 'drawing.update', id: d.id, patch: { locked: !d.locked } }),
         { signal: abort.signal },
       );
-      row.append(pick, hide, lock);
+      const remove = owner.createElement('button');
+      remove.className = 'drawing-row-action';
+      remove.innerHTML = svg('trash', 16);
+      remove.title = 'Delete';
+      remove.setAttribute('aria-label', `Delete ${label.toLowerCase()} ${number}`);
+      remove.addEventListener(
+        'click',
+        () => attempt(() => chart.execute({ type: 'drawing.remove', id: d.id })),
+        {
+          signal: abort.signal,
+        },
+      );
+      row.append(pick, hide, lock, remove);
       list.append(row);
     }
   }
@@ -550,8 +614,18 @@ export function createDrawingWorkbench(
     strip
       .querySelector('[aria-label="Stay in drawing mode"]')!
       .setAttribute('aria-pressed', String(value.options.stayInDrawingMode));
+    const lockButton = strip.querySelector<HTMLButtonElement>('.drawing-lock-button')!;
+    lockButton.hidden = strip.querySelector<HTMLElement>('.drawing-delete-button')!.hidden = !value.selected;
+    lockButton.innerHTML = svg(value.selected?.locked ? 'lock' : 'unlock', 18);
+    lockButton.setAttribute('aria-pressed', String(!!value.selected?.locked));
+    lockButton.setAttribute('aria-label', value.selected?.locked ? 'Unlock drawing' : 'Lock drawing');
+    lockButton.dataset.tooltip = value.selected?.locked ? 'Unlock' : 'Lock';
+    if (strip.hidden) toggleSettings(false);
     renderObjects();
-    if (!objects.hidden) renderProperties();
+    if (!settings.hidden) {
+      renderProperties();
+      positionSettings();
+    }
   }
   function update(state: RuntimeState) {
     const history = JSON.stringify(state.history);
@@ -569,6 +643,7 @@ export function createDrawingWorkbench(
     const button = buttons.get(openGroup);
     if (!flyout.hidden && button) positionTools(button);
     if (!objects.hidden) positionObjects();
+    if (!settings.hidden) positionSettings();
   });
   resize.observe(root);
   resize.observe(panel);
@@ -592,6 +667,7 @@ export function createDrawingWorkbench(
       strip.remove();
       objectToggle.remove();
       objects.remove();
+      settings.remove();
       groupHolder.remove();
       redo.remove();
     },

@@ -1,4 +1,5 @@
 import type { ChartApi } from './chart.ts';
+import { activeChart } from './chart-switch.ts';
 import type { Drawing } from './drawing-types.ts';
 import { isPosition, positionDirection, positionMetrics } from './position-drawing.ts';
 import { uiIcon } from './ui-icons.ts';
@@ -39,7 +40,7 @@ export function createPositionEditor(chart: ChartApi, panel: HTMLElement) {
     session = null;
     element.hidden = true;
     if (restoreFocus && previous && element.contains(tree.activeElement))
-      (previous.focus?.isConnected ? previous.focus : panel.querySelector<HTMLElement>('.cf-chart'))?.focus({
+      (previous.focus?.isConnected ? previous.focus : activeChart(panel))?.focus({
         preventScroll: true,
       });
   }

@@ -78,6 +78,7 @@ const chart = createChartWidget(host, {
       return saved === null ? null : JSON.parse(saved);
     },
     save: (key, value) => localStorage.setItem(key, JSON.stringify(value)),
+    remove: key => localStorage.removeItem(key),
   },
 });
 declare global {

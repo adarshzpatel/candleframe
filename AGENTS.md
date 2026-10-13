@@ -38,6 +38,7 @@ Use Node 24. The build includes type checking and emits the demo and plain JavaS
 | Bundled widget typography and font licenses | `src/widget-fonts.ts`, `src/fonts/`, `scripts/copy-fonts.mjs` |
 | Widget and drawing SVG icons | `src/ui-icons.ts` |
 | Self-contained UI, scoped styles and market catalog | `src/widget.ts`, `src/widget-style.ts`, `src/widget-market.ts` |
+| Chart grids, sync and saved layouts | `src/widget-layout.ts`, `src/chart-group.ts`, `src/chart-switch.ts`, `scripts/multi-chart.mjs` |
 | Reproducible market fixture | `src/simulated-feed.ts` |
 | Widget integration examples | `demo/main.ts`, `examples/embed.html` |
 | Headless agent example | `examples/headless.ts` |

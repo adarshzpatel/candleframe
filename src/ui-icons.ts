@@ -55,6 +55,9 @@ const paths: Record<string, string> = {
   restore: '<path d="M3 10V5h5M4 6a9 9 0 1 1-1 10m9-9v5l3 2"/>',
   camera: '<path d="M8 6 10 3h4l2 3h5v14H3V6h5Z"/><circle cx="12" cy="13" r="4"/>',
   close: '<path d="m6 6 12 12M6 18 18 6"/>',
+  settings:
+    '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
   layers: '<path d="m3 8 9-5 9 5-9 5-9-5Zm0 5 9 5 9-5M3 18l9 5 9-5" transform="translate(0 -1)"/>',
   eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
   'eye-off':
@@ -65,6 +68,8 @@ const paths: Record<string, string> = {
   chevron: '<path d="m8 10 4 4 4-4"/>',
   code: '<path d="m8 7-5 5 5 5m8-10 5 5-5 5m-3-13-2 20"/>',
   arrowRight: '<path d="M4 12h16m-6-6 6 6-6 6"/>',
+  layout: '<rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M12 4v16M3 12h9"/>',
+  edit: '<path d="M4 20h4L19 9l-4-4L4 16v4Zm9-13 4 4"/>',
 };
 const groups: Record<string, string> = {
   Lines: 'trendline',

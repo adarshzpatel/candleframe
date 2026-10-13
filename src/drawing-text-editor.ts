@@ -1,4 +1,5 @@
 import type { ChartApi } from './chart.ts';
+import { activeChart } from './chart-switch.ts';
 import type { Drawing, DrawingStyle } from './drawing-types.ts';
 import { uiIcon } from './ui-icons.ts';
 
@@ -30,9 +31,7 @@ export function createDrawingTextEditor(
     session = null;
     editor.hidden = true;
     if (restoreFocus && previous && editor.contains(tree.activeElement)) {
-      const target = previous.focus?.isConnected
-        ? previous.focus
-        : panel.querySelector<HTMLElement>('.cf-chart');
+      const target = previous.focus?.isConnected ? previous.focus : activeChart(panel);
       target?.focus({ preventScroll: true });
     }
   }

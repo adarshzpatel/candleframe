@@ -177,3 +177,70 @@ test('time labels drop the clock for daily bars and honor the time zone', () => 
   assert.equal(createTimeFormats(MINUTE).zone, 'UTC');
   assert.throws(() => createTimeFormats(MINUTE, 'Mars/Olympus'), { code: 'INVALID_TIME_ZONE' });
 });
+
+test('tick and range intervals parse alongside time intervals', async () => {
+  const { parseInterval, isTimeInterval, intervalLabel, TRADE_BAR_SLOT_MS } =
+    await import('../src/intervals.ts');
+  assert.deepEqual(parseInterval('500t'), { kind: 'tick', count: 500 });
+  assert.deepEqual(parseInterval('10r'), { kind: 'range', ticks: 10 });
+  assert.deepEqual(parseInterval('5m'), { kind: 'time', ms: 5 * MINUTE });
+  assert.equal(intervalToMs('500t'), TRADE_BAR_SLOT_MS);
+  assert.ok(isInterval('2000t') && isInterval('8r'));
+  assert.ok(!isTimeInterval('500t') && isTimeInterval('1h'));
+  for (const bad of ['0t', '1234567t', '10R', 't', '5x']) assert.ok(!isInterval(bad), bad);
+  assert.equal(intervalLabel('500t'), '500 ticks');
+  assert.equal(intervalLabel('10r'), '10 range');
+  assert.equal(intervalLabel('15m'), '15m');
+});
+
+function tradeBarFeed(interval: Interval, history: Candle[], gaps = true) {
+  let emit!: (event: FeedEvent) => void;
+  const feed: FeedAdapter = {
+    descriptor: {
+      ...gappedFeed([]).feed.descriptor,
+      id: 'trades',
+      interval,
+      intervalMs: intervalToMs(interval),
+      gaps,
+    },
+    connect(callback) {
+      emit = callback;
+      callback({ type: 'candles.history', candles: history });
+      return { setPaused() {}, requestSnapshot() {}, dispose() {} };
+    },
+  };
+  return { feed, emit: (event: FeedEvent) => emit(event) };
+}
+
+test('tick bars a millisecond apart load and update on a gapped axis', () => {
+  const t0 = Date.UTC(2026, 9, 13, 14, 30);
+  // Busy then quiet: bars 1 ms apart, then seconds apart.
+  const times = [0, 1, 2, 3, 900, 4_000, 4_001, 12_000].map(d => t0 + d);
+  const bars = times.map((timeMs, i) => ({
+    timeMs,
+    open: 100 + i,
+    high: 101 + i,
+    low: 99 + i,
+    close: 100 + i,
+    volume: 10,
+  }));
+  const { feed, emit } = tradeBarFeed('500t', bars);
+  const runtime = new ChartRuntime(feed);
+  runtime.start();
+  assert.equal(runtime.inspect().candleCount, bars.length);
+  const scale = runtime.timeScale();
+  assert.equal(scale.logical(times[3]), 3);
+  assert.equal(scale.logical(times[7]), 7);
+  const next = { timeMs: times[7] + 1, open: 120, high: 120, low: 120, close: 120, volume: 1 };
+  emit({ type: 'candle', candle: next });
+  emit({ type: 'candle', candle: { ...next, high: 121, close: 121, volume: 2 } });
+  const state = runtime.inspect();
+  assert.equal(state.candleCount, bars.length + 1);
+  assert.equal(state.streams.candles.status, 'live');
+  runtime.dispose();
+});
+
+test('tick and range feeds must declare gaps', () => {
+  const { feed } = tradeBarFeed('10r', [], false);
+  assert.throws(() => new ChartRuntime(feed), { code: 'INVALID_FEED' });
+});
