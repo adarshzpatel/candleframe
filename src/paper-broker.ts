@@ -112,7 +112,8 @@ export function createPaperBroker(options: PaperBrokerOptions = {}): PaperBroker
       if (!accounts.includes(request.account)) return refuse(`No account ${request.account}.`);
       if (!(Number.isFinite(request.quantity) && request.quantity > 0))
         return refuse('Quantity must be above 0.');
-      if (options.maxQuantity && request.quantity > options.maxQuantity)
+      // The cap guards new risk; reduce-only orders are limited by the position below.
+      if (options.maxQuantity && !request.reduceOnly && request.quantity > options.maxQuantity)
         return refuse(`Quantity must be at most ${options.maxQuantity}.`);
       const held = positions.get(`${request.account}|${request.symbol}`)?.quantity ?? 0;
       if (request.reduceOnly) {

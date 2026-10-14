@@ -196,7 +196,8 @@ export function attachTrading(api: Charts, options: TradingOptions): TradingLaye
     const last = lastPrice(chart);
     if (!held || last === null) return;
     const exit = exitAt(held, last, price);
-    const quantity = Math.min(exit.quantity, state.maxQuantity ?? Infinity);
+    // Reduce-only: the whole position, whatever the per-order cap for new risk.
+    const quantity = exit.quantity;
     await place(
       { account: account!, symbol, side: exit.side, quantity, type: exit.type, price, reduceOnly: true },
       exit.kind,
@@ -206,10 +207,7 @@ export function attachTrading(api: Charts, options: TradingOptions): TradingLaye
           `Account ${account}`,
           `P&L at this price: ${money(pnlAt(held, price, pointValue(symbol) ?? 1), symbol)}`,
         ],
-        warnings:
-          quantity < exit.quantity
-            ? [`Only ${quantity} of ${exit.quantity}: the broker caps orders at ${state.maxQuantity}.`]
-            : [],
+        warnings: [],
         confirmLabel: `Place ${exit.kind}`,
       },
     );
@@ -263,8 +261,6 @@ export function attachTrading(api: Charts, options: TradingOptions): TradingLaye
     const held = position(symbol);
     if (!held) return;
     const quantity = Math.abs(held.quantity);
-    if (quantity > (state.maxQuantity ?? Infinity))
-      return notify(layer, `Flatten ${quantity}: over the broker's ${state.maxQuantity}-unit cap.`, true);
     const side = held.quantity > 0 ? 'sell' : 'buy';
     await place({ account: account!, symbol, side, quantity, type: 'market', reduceOnly: true }, 'Flatten', {
       what: `Flatten: ${side.toUpperCase()} ${quantity} ${symbol} MARKET`,
@@ -334,6 +330,7 @@ export function attachTrading(api: Charts, options: TradingOptions): TradingLaye
     const symbol = chart.inspect().symbol;
     if (!account) return { lines: [], markers: [], status: null };
     const trading = canTrade();
+    const canClose = state.connected && state.tradingEnabled;
     const held = position(symbol);
     const pv = pointValue(symbol);
     const lines: PriceLine[] = ordersFor(symbol).map(order => {
@@ -346,7 +343,8 @@ export function attachTrading(api: Charts, options: TradingOptions): TradingLaye
         quantity: String(order.quantity),
         style: 'dashed',
         id: `order:${order.id}`,
-        closable: trading,
+        // × shows whenever the broker takes orders; with Trading off it explains instead.
+        closable: canClose,
         ...(movable ? { drag: 'move' as const } : {}),
       };
     });
@@ -361,7 +359,8 @@ export function attachTrading(api: Charts, options: TradingOptions): TradingLaye
         quantity: `${held.quantity > 0 ? '' : '−'}${Math.abs(held.quantity)}`,
         width: 2,
         id: 'position',
-        closable: trading,
+        // × shows whenever the broker takes orders; with Trading off it explains instead.
+        closable: canClose,
         ...(trading ? { drag: 'copy' as const } : {}),
       });
       status = `${held.quantity > 0 ? 'Long' : 'Short'} ${Math.abs(held.quantity)} @ ${fmt(chart, held.averagePrice)}${pnl === null ? '' : ` · ${money(pnl, symbol)}`}`;
@@ -438,7 +437,10 @@ export function attachTrading(api: Charts, options: TradingOptions): TradingLaye
     return describeOrder(order, position(symbol), event.price, pointValue(symbol), broker.currency).label;
   });
   const unsubscribeAction = api.subscribePriceLineAction(event => {
-    if (!canTrade()) return;
+    if (!canTrade()) {
+      notify(layer, 'Turn on Trading in the order panel to cancel orders or flatten.');
+      return;
+    }
     const symbol = activeChart().inspect().symbol;
     if (event.id === 'position') void guard(() => flatten(symbol));
     else {

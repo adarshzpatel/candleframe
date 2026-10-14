@@ -50,7 +50,10 @@ export interface BrokerState {
   connected: boolean;
   /** Whether the adapter accepts orders at all. When false the UI is read only. */
   tradingEnabled: boolean;
-  /** Largest quantity the adapter accepts per order, if it limits it. */
+  /**
+   * Largest quantity per order that opens or adds to a position, if the adapter limits
+   * it. Reduce-only orders (TPs, SLs, flatten) are limited by the position instead.
+   */
   maxQuantity?: number;
   accounts: readonly string[];
   orders: readonly BrokerOrder[];
