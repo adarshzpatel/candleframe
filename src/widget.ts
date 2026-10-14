@@ -26,7 +26,12 @@ import { createDrawingWorkbench } from './drawing-workbench.ts';
 import { drawingWorkbenchStyles } from './drawing-workbench-style.ts';
 import { uiIcon as icon } from './ui-icons.ts';
 import { widgetStyles } from './widget-style.ts';
-import { createIndicatorPanel, indicatorPanelStyles } from './indicator-panel.ts';
+import {
+  createIndicatorPanel,
+  createIndicatorSettings,
+  indicatorPanelStyles,
+  renderIndicatorLegend,
+} from './indicator-panel.ts';
 import { stateTimeScale } from './geometry.ts';
 import { intervalLabel, parseInterval } from './intervals.ts';
 import { defineSelect, type CfSelectElement, type SelectItem } from './select.ts';
@@ -183,7 +188,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
   root.setAttribute('aria-label', 'Chart widget');
   root.innerHTML = `<header class="widget-header">
     <div class="market-controls"><span class="asset-mark" id="asset-mark" aria-hidden="true">B</span><cf-select id="symbol" class="symbol-picker" aria-label="Symbol"></cf-select><span class="toolbar-divider"></span><cf-select id="interval" class="interval-picker" aria-label="Candle interval" search="off"></cf-select><span class="toolbar-divider"></span><button id="chart-type" class="icon-button" aria-label="Chart type" aria-haspopup="dialog" data-tooltip="Chart type">${icon('candles')}</button></div>
-    <div class="analysis-controls"><button data-layer="indicator" aria-label="Toggle indicators" aria-pressed="true" data-tooltip="Indicators">${icon('indicators')}<span>Indicators</span></button><button id="indicator-menu" class="icon-button" aria-label="Add or edit indicators" aria-haspopup="dialog" data-tooltip="Add or edit indicators"><b aria-hidden="true" class="add-mark">+</b></button><button data-layer="volume" aria-label="Toggle volume" aria-pressed="true" data-tooltip="Volume">${icon('volume')}<span>Volume</span></button></div>
+    <div class="analysis-controls"><button id="indicator-menu" aria-haspopup="dialog" data-tooltip="Add indicators">${icon('indicators')}<span>Indicators</span></button><button data-layer="volume" aria-label="Toggle volume" aria-pressed="true" data-tooltip="Volume">${icon('volume')}<span>Volume</span></button></div>
     <div class="widget-actions"><button id="book-toggle" aria-label="Toggle order book" aria-pressed="false" data-tooltip="Order book">${icon('book')}<span>Order book</span></button><span class="toolbar-divider"></span><button id="pause" class="icon-button" aria-label="Pause feed" data-tooltip="Pause feed">${icon('pause')}</button><button id="layout" class="icon-button" aria-label="Chart layout" aria-haspopup="dialog" data-tooltip="Layout">${icon('layout')}</button><button id="save" class="save-button" aria-label="Save layout" data-tooltip="Save layout">${icon('save', 18)}<span>Save</span></button><button id="restore" class="icon-button" aria-label="Restore layout" data-tooltip="Restore layout">${icon('restore')}</button><button id="theme" class="icon-button" aria-label="Chart appearance" data-tooltip="Appearance">${icon('palette')}</button><button id="export" class="icon-button" aria-label="Export PNG" data-tooltip="Export image">${icon('camera')}</button></div>
   </header>
   <div class="widget-body"><aside class="tool-rail" aria-label="Drawing tools"><button id="cursor" class="rail-button active" aria-label="Cursor tool" data-tooltip="Cursor">${icon('cursor')}</button><span class="rail-separator"></span><button id="trend" class="rail-button">${icon('trendline')}</button><span class="rail-separator"></span><button id="undo" class="rail-button" aria-label="Undo last edit" data-tooltip="Undo · ⌘ / Ctrl Z">${icon('undo')}</button><button id="clear" class="rail-button" aria-label="Clear drawings" data-tooltip="Clear drawings">${icon('trash')}</button><button id="fit" class="rail-button" aria-label="Fit chart to live data" data-tooltip="Fit chart">${icon('fit')}</button><button id="help" class="rail-button rail-bottom" aria-label="Chart controls and shortcuts" data-tooltip="Help & shortcuts">${icon('help')}</button></aside>
@@ -201,7 +206,6 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
   const abort = new AbortController();
   let disposed = false,
     toastTimer: ReturnType<typeof setTimeout> | undefined;
-  let indicatorPanel: ReturnType<typeof createIndicatorPanel> | undefined;
   /** Bars shown when switching a wide view to footprints. */
   const FOOTPRINT_VIEW_BARS = 14;
   // Ranges count bars, not milliseconds, so session gaps do not shrink them.
@@ -250,6 +254,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     popup.classList.toggle('theme-dialog', title === 'Appearance');
     popup.classList.toggle('indicator-dialog', title === 'Indicators');
     popup.classList.toggle('layout-dialog', title === 'Layout');
+    popup.classList.toggle('settings-dialog', content.classList.contains('indicator-settings'));
     if (title !== 'Layout') renderLayoutMenu = undefined;
     if (title !== 'Chart type') renderChartTypeMenu = undefined;
     popup.querySelector('h2')!.textContent = title;
@@ -410,29 +415,51 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     if (state.feed.intervalMs !== previous?.feed.intervalMs)
       cell.timeFormats = createTimeFormats(state.feed.intervalMs, options.timeZone);
     const q = (selector: string) => cell.element.querySelector<HTMLElement>(selector)!;
-    const overlays = state.indicators.filter(i => i.visible && i.plugin.pane !== 'separate');
-    q('.legend-indicator').hidden = !state.document.layers.indicator || !overlays.length;
-    // One swatch per overlay, in the color its series is drawn with.
+    // Every indicator gets a legend row; its buttons are the only way to hide, edit or remove it.
     const theme = cell.chart.getTheme();
-    const legend = overlays
-      .map(({ plugin }) => {
-        const [r, g, b] =
-          plugin.pane === 'profile' ? colorRGBA(theme.palette.textMuted) : indicatorColor(theme, plugin);
-        return `${plugin.name}|${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)}`;
-      })
-      .join(';');
+    const layerOn = state.document.layers.indicator;
+    const plugins = new Map(state.indicators.map(i => [i.plugin.id, i.plugin]));
+    const items = state.document.indicators.map(entry => {
+      const plugin = plugins.get(entry.id);
+      const [r, g, b] =
+        !plugin || plugin.pane === 'profile'
+          ? colorRGBA(theme.palette.textMuted)
+          : indicatorColor(theme, plugin);
+      return {
+        id: entry.id,
+        name: plugin?.name ?? entry.kind,
+        color: `rgb(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)})`,
+        shown: layerOn && entry.visible,
+      };
+    });
     const host = q('.legend-indicator');
+    host.hidden = !items.length;
+    const legend = JSON.stringify(items);
     if (host.dataset.items !== legend) {
       host.dataset.items = legend;
-      host.replaceChildren(
-        ...overlays.map(({ plugin }, k) => {
-          const item = doc.createElement('span');
-          const swatch = doc.createElement('i');
-          swatch.style.background = `rgb(${legend.split(';')[k].split('|')[1]})`;
-          item.append(swatch, plugin.name);
-          return item;
-        }),
-      );
+      const chart = cell.chart;
+      // Rebuilding drops focus; put it back on the same button, which may now say Show.
+      const focused = host.contains(shadow.activeElement)
+        ? [...host.querySelectorAll('button')].indexOf(shadow.activeElement as HTMLButtonElement)
+        : -1;
+      renderIndicatorLegend(host, doc, items, {
+        toggle: id =>
+          attempt(() => {
+            const entry = chart.inspect().document.indicators.find(i => i.id === id);
+            if (!entry) return;
+            // With the layer off every indicator reads as hidden; showing one turns the layer back on.
+            if (!chart.inspect().document.layers.indicator) {
+              chart.execute({ type: 'layer.set', layer: 'indicator', visible: true });
+              if (!entry.visible) chart.execute({ type: 'indicator.update', id, visible: true });
+            } else chart.execute({ type: 'indicator.update', id, visible: !entry.visible });
+          }),
+        settings: id => {
+          const name = items.find(item => item.id === id)?.name ?? 'Indicator';
+          openPanel(`${name} settings`, createIndicatorSettings(chart, doc, id, report));
+        },
+        remove: id => attempt(() => chart.execute({ type: 'indicator.remove', id })),
+      });
+      if (focused >= 0) host.querySelectorAll('button')[focused]?.focus({ preventScroll: true });
     }
     q('.legend-volume').hidden = !state.document.layers.volume;
     if (
@@ -1128,14 +1155,6 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
       const log = String(!!state.document.priceScale.log);
       if ($('#log-scale').getAttribute('aria-pressed') !== log)
         $('#log-scale').setAttribute('aria-pressed', log);
-      if (
-        indicatorPanel &&
-        !popup.hidden &&
-        popupContent.contains(indicatorPanel.element) &&
-        previous?.document.indicators !== state.document.indicators &&
-        JSON.stringify(previous?.document.indicators) !== JSON.stringify(state.document.indicators)
-      )
-        indicatorPanel.render();
       const span = stateTimeScale(state).bars(state.document.viewport.fromMs, state.document.viewport.toMs);
       const allFrom = state.candles.length ? allRange(state).fromMs : 0;
       for (const button of root.querySelectorAll<HTMLButtonElement>('[data-bars]')) {
@@ -1216,8 +1235,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
         { signal: abort.signal },
       );
     on('#indicator-menu', () => {
-      indicatorPanel = createIndicatorPanel(chart, doc, report);
-      openPanel('Indicators', indicatorPanel.element);
+      openPanel('Indicators', createIndicatorPanel(chart, doc, report).element);
     });
     on('#log-scale', () =>
       chart.execute({ type: 'priceScale.log', enabled: !lastState?.document.priceScale.log }),
