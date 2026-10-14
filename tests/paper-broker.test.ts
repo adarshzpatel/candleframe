@@ -103,3 +103,22 @@ test('orders can be moved and cancelled, and quantities are capped', async () =>
     /at most 5/,
   );
 });
+
+test('the quantity cap limits new risk, not orders that close the position', async () => {
+  const broker = createPaperBroker({ maxQuantity: 2 });
+  let state!: BrokerState;
+  broker.subscribe(s => (state = s));
+  broker.onMarketPrice('MNQ', 100, 1);
+  await broker.placeOrder({ account: 'Paper', symbol: 'MNQ', side: 'buy', quantity: 2, type: 'market' });
+  await broker.placeOrder({ account: 'Paper', symbol: 'MNQ', side: 'buy', quantity: 1, type: 'market' });
+  const close = await broker.placeOrder({
+    account: 'Paper',
+    symbol: 'MNQ',
+    side: 'sell',
+    quantity: 3,
+    type: 'market',
+    reduceOnly: true,
+  });
+  assert.equal(close.ok, true);
+  assert.deepEqual(state.positions, []);
+});

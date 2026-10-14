@@ -11,35 +11,41 @@ export const TRADING_STYLE = `
 .layer { position: absolute; inset: 0; pointer-events: none; font: 12px/1.3 var(--tr-font); color: var(--tr-text); font-variant-numeric: tabular-nums; }
 .layer > * { pointer-events: auto; }
 .panel {
-  position: absolute; z-index: 9; width: 228px; user-select: none;
-  background: var(--tr-surface); border: 1px solid var(--tr-border); border-radius: 6px;
+  position: absolute; z-index: 9; width: 244px; user-select: none;
+  background: var(--tr-surface); border: 1px solid var(--tr-border); border-radius: 8px;
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.4);
 }
 .panel[hidden] { display: none; }
-.panel header { display: flex; align-items: center; gap: 6px; padding: 6px 8px; cursor: grab; border-bottom: 1px solid var(--tr-border); color: var(--tr-muted); }
+.panel header { display: flex; align-items: center; gap: 6px; padding: 8px 10px; cursor: grab; color: var(--tr-muted); }
 .panel header strong { color: var(--tr-strong); }
-.panel header .collapse { margin-left: auto; background: none; border: 0; color: inherit; cursor: pointer; font: inherit; padding: 0 2px; }
-.panel .body { display: grid; gap: 7px; padding: 8px; }
+.panel header .collapse { margin-left: auto; width: 20px; height: 20px; background: none; border: 0; border-radius: 4px; color: inherit; cursor: pointer; font: inherit; }
+.panel header .collapse:hover { background: var(--tr-raised); }
 .panel .body[hidden] { display: none; }
-.panel .row { display: grid; grid-template-columns: 52px 1fr; align-items: center; gap: 6px; }
+.panel section { display: grid; gap: 8px; padding: 10px; border-top: 1px solid var(--tr-border); }
+.panel .field { display: grid; gap: 4px; }
+.panel .label { font-size: 11px; color: var(--tr-muted); }
 .panel .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.panel .status { color: var(--tr-muted); min-height: 15px; }
+.panel .status { display: flex; justify-content: space-between; gap: 8px; min-height: 16px; color: var(--tr-text); }
+.panel .status .pnl { font-weight: 600; }
+.panel .status .pnl.up { color: var(--tr-positive); }
+.panel .status .pnl.down { color: var(--tr-negative); }
 .panel cf-select { display: block; max-width: none; }
-.panel cf-select::part(trigger) { padding: 4px 6px; background: var(--tr-background); border-color: var(--tr-border); color: var(--tr-strong); }
+.panel cf-select::part(trigger) { height: 30px; padding: 0 8px; background: var(--tr-background); border-color: var(--tr-border); color: var(--tr-strong); }
 .panel input {
-  width: 100%; box-sizing: border-box; padding: 4px 6px; border-radius: 4px; font: inherit;
+  width: 100%; height: 30px; box-sizing: border-box; padding: 0 8px; border-radius: 4px; font: inherit;
   border: 1px solid var(--tr-border); background: var(--tr-background); color: var(--tr-strong);
 }
-.panel .switch { display: flex; align-items: center; gap: 6px; }
+.panel .switches { color: var(--tr-text); }
+.panel .switch { display: flex; align-items: center; gap: 6px; cursor: pointer; }
 .panel .switch:has(.arm:checked) { color: var(--tr-warning); font-weight: 600; }
-.panel .switch input { width: auto; }
-.panel .price { display: grid; grid-template-columns: 1fr auto; gap: 4px; }
+.panel .switch input { width: 14px; height: 14px; margin: 0; accent-color: var(--tr-strong); }
+.panel .price { display: grid; grid-template-columns: 1fr auto; gap: 6px; }
 .panel button { font: inherit; cursor: pointer; border-radius: 4px; }
-.panel button.small { padding: 0 8px; border: 1px solid var(--tr-border); background: var(--tr-raised); color: inherit; }
-.panel button.buy, .panel button.sell { padding: 7px 0; border: 0; font-weight: 600; color: var(--tr-on-color); }
+.panel button.small { height: 30px; padding: 0 10px; border: 1px solid var(--tr-border); background: var(--tr-raised); color: inherit; }
+.panel button.buy, .panel button.sell { height: 32px; border: 0; font-weight: 600; color: var(--tr-on-color); }
 .panel button.buy { background: var(--tr-positive); }
 .panel button.sell { background: var(--tr-negative); }
-.panel button.outline { padding: 6px 0; font-weight: 600; background: transparent; color: var(--tr-strong); border: 1px solid var(--tr-border); }
+.panel button.outline { height: 30px; font-weight: 600; background: transparent; color: var(--tr-strong); border: 1px solid var(--tr-border); }
 .panel button.outline.danger { border-color: var(--tr-negative); color: var(--tr-negative); }
 .panel button:disabled, .panel .orders[aria-disabled='true'] { opacity: 0.4; cursor: not-allowed; }
 .ticket, .notice, .menu {
@@ -247,17 +253,25 @@ export function createOrderPanel(
     <header><strong>Order</strong><span class="where"></span>
       <button class="collapse" type="button" aria-label="Collapse order panel">–</button></header>
     <div class="body">
-      <label class="row"><span>Account</span><cf-select class="account" aria-label="Account"></cf-select></label>
-      <div class="pair switches"><label class="switch"><input class="arm" type="checkbox"> Trading</label>
-        <label class="switch fills"><input class="show-fills" type="checkbox"> Show fills</label></div>
-      <div class="status"></div>
+      <section>
+        <label class="field"><span class="label">Account</span><cf-select class="account" aria-label="Account"></cf-select></label>
+        <div class="pair switches"><label class="switch"><input class="arm" type="checkbox"> Trading</label>
+          <label class="switch fills"><input class="show-fills" type="checkbox"> Show fills</label></div>
+        <div class="status" role="status"><span class="position"></span><span class="pnl"></span></div>
+      </section>
       <div class="orders">
-        <label class="row"><span>Qty</span><input class="qty" type="number" min="1" step="1" value="1" inputmode="numeric"></label>
-        <div class="pair"><button class="buy market" type="button">Buy MKT</button><button class="sell market" type="button">Sell MKT</button></div>
-        <label class="row"><span>Limit</span><span class="price"><input class="limit" type="number" inputmode="decimal" aria-label="Limit price">
-          <button class="small last" type="button" title="Use last price">Last</button></span></label>
-        <div class="pair"><button class="buy limit-order" type="button">Buy LMT</button><button class="sell limit-order" type="button">Sell LMT</button></div>
-        <div class="pair"><button class="outline cancel-all" type="button">Cancel all</button><button class="outline danger flatten-all" type="button">Flatten all</button></div>
+        <section>
+          <label class="field"><span class="label">Quantity</span><input class="qty" type="number" min="1" step="1" value="1" inputmode="numeric"></label>
+          <div class="field"><span class="label">Market</span>
+            <div class="pair"><button class="buy market" type="button">Buy MKT</button><button class="sell market" type="button">Sell MKT</button></div></div>
+          <div class="field"><label class="label" for="cf-limit">Limit price</label>
+            <span class="price"><input class="limit" id="cf-limit" type="number" inputmode="decimal">
+              <button class="small last" type="button" title="Use last price">Last</button></span>
+            <div class="pair"><button class="buy limit-order" type="button">Buy LMT</button><button class="sell limit-order" type="button">Sell LMT</button></div></div>
+        </section>
+        <section>
+          <div class="pair"><button class="outline cancel-all" type="button">Cancel all</button><button class="outline danger flatten-all" type="button">Flatten all</button></div>
+        </section>
       </div>
     </div>`;
   layer.append(panel);
@@ -392,7 +406,12 @@ export function createOrderPanel(
       arm.checked = next.armed;
       fills.checked = next.showFills;
       arm.disabled = !next.available;
-      status.textContent = next.status;
+      // "Short 6 @ 30736.89 · +$931.64": the P&L goes right, colored by sign.
+      const [position, pnl = ''] = next.status.split(' · ');
+      status.querySelector('.position')!.textContent = position!;
+      const pnlText = status.querySelector('.pnl')!;
+      pnlText.textContent = pnl;
+      pnlText.className = `pnl${pnl.startsWith('+') ? ' up' : /^[-−]/.test(pnl) ? ' down' : ''}`;
       where.textContent = next.symbol ?? '';
       orders.setAttribute('aria-disabled', String(!ready()));
       for (const button of orders.querySelectorAll('button')) button.disabled = !ready();
