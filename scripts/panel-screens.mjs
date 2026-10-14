@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Screenshots the widget's floating panels: tool flyout, drawing objects and indicators.
+// Screenshots the widget's floating panels: tool flyout, drawing objects, indicators
+// and the legend's per-indicator controls.
 //
 //   node scripts/panel-screens.mjs                                   # starts Vite on 5196
 //   node scripts/panel-screens.mjs --url http://127.0.0.1:5173/ --out artifacts/panels
@@ -115,7 +116,23 @@ try {
     await searchBox.fill('vol');
     await sleep(150);
     await shot('6-indicators-search', '.widget-dialog');
+    await searchBox.fill('');
   }
+  // Add one so the legend has a row, then use its hover controls.
+  await host.locator('.indicator-add').first().click();
+  await escape();
+  const row = host.locator('.legend-item').first();
+  await row.hover();
+  await sleep(150);
+  await shot('7-legend-hover', '.chart-legend');
+  await row.locator('button[aria-label$=settings]').click();
+  await sleep(250);
+  await shot('8-indicator-settings', '.widget-dialog');
+  await escape();
+  await row.hover();
+  await row.locator('button[aria-label^=Hide]').click();
+  await sleep(150);
+  await shot('9-legend-hidden', '.chart-legend');
 } catch (error) {
   problems.push(`step failed: ${error.message}`);
 } finally {
