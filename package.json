@@ -64,6 +64,7 @@
     "mcp": "node --experimental-strip-types examples/mcp-server.ts",
     "bench": "node --experimental-strip-types scripts/bench.ts",
     "check:package": "node scripts/check-package.mjs",
+    "regime:lag": "node --experimental-strip-types scripts/regime-lag.ts",
     "palette": "node scripts/palette.mjs",
     "palette:check": "node scripts/palette.mjs --check"
   },

@@ -30,6 +30,7 @@ const VIOLET: RGBA = [0.75, 0.6, 1, 0.95];
 const TEAL: RGBA = [0.35, 0.8, 0.78, 0.9];
 const GREY: RGBA = [0.6, 0.64, 0.7, 0.55];
 const MINT: RGBA = [0.45, 0.86, 0.68, 0.95];
+const RED: RGBA = [0.96, 0.42, 0.45, 0.95];
 
 /** Exponential moving average seeded with the SMA of the first `period` values. NaN inputs reset it. */
 function emaSeries(source: readonly number[], period: number, from = 0, previous: readonly number[] = []) {
@@ -200,6 +201,247 @@ export function macd(fast = 12, slow = 26, signal = 9): IndicatorPlugin {
       { id: 'histogram', name: 'Histogram', color: GREY, style: 'histogram' },
     ],
     calculateOutputs: candles => all(candles),
+  };
+}
+
+/** Wilder average true range; NaN until `period` true ranges exist. */
+function atrSeries(candles: readonly Candle[], period: number) {
+  const values: number[] = new Array(candles.length).fill(Number.NaN);
+  let sum = 0;
+  for (let i = 1; i < candles.length; i++) {
+    const { high, low } = candles[i],
+      prior = candles[i - 1].close;
+    const range = Math.max(high - low, Math.abs(high - prior), Math.abs(low - prior));
+    if (i <= period) {
+      sum += range / period;
+      if (i === period) values[i] = sum;
+    } else values[i] = sum = (sum * (period - 1) + range) / period;
+  }
+  return values;
+}
+
+export type Regime = 'compression' | 'rotation' | 'long' | 'short';
+const REGIMES: readonly Regime[] = ['compression', 'rotation', 'long', 'short'];
+
+/**
+ * Classifies each bar. Readings, with `quick` = half of `period`:
+ * - volatility ratio: EMA of true range over `quick` bars divided by Wilder ATR over
+ *   `slowPeriod`
+ * - quick and steady efficiency: net close change divided by the sum of bar-to-bar close
+ *   changes, over `quick` and over `period` bars, 0 to 1
+ * - breakout: a close half a quick ATR beyond the high or low of the prior `period` bars,
+ *   on a bar at least as wide as the quick ATR, with quick efficiency at half of `entry`
+ *
+ * In order: a breakout starts expansion. A volatility ratio at or below `squeeze` is
+ * compression (held until it clears `squeeze` by 15%). Expansion holds while steady
+ * efficiency stays at `hold` in its direction and price stays on its side of the range
+ * midpoint. Quick efficiency at `entry` starts expansion, long or short by the net change.
+ * Everything else is rotation. Every regime lasts at least two bars. Bars before the
+ * readings exist are null.
+ */
+export function classifyRegimes(
+  candles: readonly Candle[],
+  period = 20,
+  slowPeriod = 100,
+  entry = 0.65,
+  hold = 0.35,
+  squeeze = 0.8,
+): (Regime | null)[] {
+  const quick = Math.max(2, Math.round(period / 2));
+  const ranges = candles.map((bar, i) =>
+    i === 0
+      ? Number.NaN
+      : Math.max(
+          bar.high - bar.low,
+          Math.abs(bar.high - candles[i - 1].close),
+          Math.abs(bar.low - candles[i - 1].close),
+        ),
+  );
+  const fast = emaSeries(ranges, quick),
+    slow = atrSeries(candles, slowPeriod);
+  const moves = candles.map((bar, i) => (i === 0 ? 0 : Math.abs(bar.close - candles[i - 1].close)));
+  const efficiency = (i: number, n: number, path: number) =>
+    path > 0 ? Math.abs(candles[i].close - candles[i - n].close) / path : 0;
+  const result: (Regime | null)[] = new Array(candles.length).fill(null);
+  let quickPath = 0,
+    steadyPath = 0,
+    current: Regime | null = null,
+    held = 0;
+  for (let i = 1; i < candles.length; i++) {
+    quickPath += moves[i] - (i > quick ? moves[i - quick] : 0);
+    steadyPath += moves[i] - (i > period ? moves[i - period] : 0);
+    if (i < period || !Number.isFinite(fast[i - 1]) || !Number.isFinite(slow[i])) continue;
+    let high = -Infinity,
+      low = Infinity;
+    for (let j = i - period; j < i; j++) {
+      high = Math.max(high, candles[j].high);
+      low = Math.min(low, candles[j].low);
+    }
+    const close = candles[i].close,
+      atr = fast[i - 1];
+    const quickNet = close - candles[i - quick].close,
+      steadyNet = close - candles[i - period].close;
+    const quickEfficiency = efficiency(i, quick, quickPath),
+      steadyEfficiency = efficiency(i, period, steadyPath);
+    const volatility = slow[i] > 0 ? fast[i] / slow[i] : 1;
+    const thrust = ranges[i] >= atr && quickEfficiency >= entry / 2;
+    let next: Regime;
+    if (thrust && close > high + atr / 2) next = 'long';
+    else if (thrust && close < low - atr / 2) next = 'short';
+    else if (volatility <= (current === 'compression' ? squeeze * 1.15 : squeeze)) next = 'compression';
+    else if (
+      (current === 'long' && steadyEfficiency >= hold && steadyNet > 0 && close > (high + low) / 2) ||
+      (current === 'short' && steadyEfficiency >= hold && steadyNet < 0 && close < (high + low) / 2)
+    )
+      next = current;
+    else if (quickEfficiency >= entry) next = quickNet >= 0 ? 'long' : 'short';
+    else next = 'rotation';
+    if (current === null || (next !== current && held >= 2)) {
+      current = next;
+      held = 0;
+    }
+    held++;
+    result[i] = current;
+  }
+  return result;
+}
+
+function checkRegime(
+  period: number,
+  slowPeriod: number,
+  entryPercent: number,
+  holdPercent: number,
+  squeezePercent: number,
+) {
+  if (!(Number.isInteger(period) && period >= 2 && period <= 500))
+    throw new ChartError('INVALID_INPUT', 'period must be 2 to 500 bars');
+  if (!(Number.isInteger(slowPeriod) && slowPeriod > period && slowPeriod <= 2000))
+    throw new ChartError('INVALID_INPUT', 'slow period must be above period and at most 2000');
+  if (![entryPercent, holdPercent].every(p => p >= 1 && p <= 100))
+    throw new ChartError('INVALID_INPUT', 'efficiency thresholds must be 1 to 100%');
+  if (!(squeezePercent >= 10 && squeezePercent <= 100))
+    throw new ChartError('INVALID_INPUT', 'squeeze threshold must be 10 to 100%');
+}
+
+/**
+ * Market regime strip in its own pane: one full-height column per bar, colored by
+ * compression, rotation, long expansion or short expansion. See `classifyRegimes`.
+ */
+export function regime(
+  period = 20,
+  slowPeriod = 100,
+  entryPercent = 65,
+  holdPercent = 35,
+  squeezePercent = 80,
+): IndicatorPlugin {
+  checkRegime(period, slowPeriod, entryPercent, holdPercent, squeezePercent);
+  return {
+    id: `regime-${period}-${slowPeriod}`,
+    name: `Regime ${period} ${slowPeriod}`,
+    kind: 'regime',
+    inputs: { period, slowPeriod, entry: entryPercent, hold: holdPercent, squeeze: squeezePercent },
+    pane: 'separate',
+    range: { min: 0, max: 1 },
+    color: GREY,
+    outputs: [
+      { id: 'compression', name: 'Compression', color: AMBER, style: 'column' },
+      { id: 'rotation', name: 'Rotation', color: GREY, style: 'column' },
+      { id: 'long', name: 'Expansion long', color: MINT, style: 'column' },
+      { id: 'short', name: 'Expansion short', color: RED, style: 'column' },
+    ],
+    // ATR and the rolling path depend on every earlier bar, so the series is recomputed. It is O(n).
+    calculateOutputs(candles) {
+      const regimes = classifyRegimes(
+        candles,
+        period,
+        slowPeriod,
+        entryPercent / 100,
+        holdPercent / 100,
+        squeezePercent / 100,
+      );
+      return REGIMES.map(kind => regimes.map(r => (r === kind ? 1 : Number.NaN)));
+    },
+  };
+}
+
+const REGIME_COLORS: Readonly<Record<Regime, RGBA>> = {
+  compression: AMBER,
+  rotation: GREY,
+  long: MINT,
+  short: RED,
+};
+const REGIME_NAMES: Readonly<Record<Regime, string>> = {
+  compression: 'Compression',
+  rotation: 'Rotation',
+  long: 'Expansion long',
+  short: 'Expansion short',
+};
+
+/**
+ * Market regime as an envelope on the candles: an EMA of the close with edges `multiplier`
+ * ATRs away. Edges and fill take the regime's color. Each regime has its own upper and
+ * lower outputs, finite on its bars and on the bar before, so the edge lines join across
+ * changes. See `classifyRegimes`.
+ */
+export function regimeBand(
+  period = 20,
+  slowPeriod = 100,
+  entryPercent = 65,
+  holdPercent = 35,
+  squeezePercent = 80,
+  multiplier = 2,
+): IndicatorPlugin {
+  checkRegime(period, slowPeriod, entryPercent, holdPercent, squeezePercent);
+  if (!(multiplier > 0 && multiplier <= 10))
+    throw new ChartError('INVALID_INPUT', 'ATR multiplier must be 0 to 10');
+  return {
+    id: `regime-band-${period}-${slowPeriod}`,
+    name: `Regime band ${period} ${slowPeriod}`,
+    kind: 'regime-band',
+    inputs: {
+      period,
+      slowPeriod,
+      entry: entryPercent,
+      hold: holdPercent,
+      squeeze: squeezePercent,
+      multiplier,
+    },
+    color: GREY,
+    outputs: [
+      { id: 'basis', name: 'Basis', color: [GREY[0], GREY[1], GREY[2], 0.45] },
+      ...REGIMES.flatMap(kind => [
+        { id: `${kind}-upper`, name: `${REGIME_NAMES[kind]} upper`, color: REGIME_COLORS[kind] },
+        { id: `${kind}-lower`, name: `${REGIME_NAMES[kind]} lower`, color: REGIME_COLORS[kind] },
+      ]),
+    ],
+    fills: REGIMES.map((_, k) => ({ upper: 1 + 2 * k, lower: 2 + 2 * k, opacity: 0.1 })),
+    calculateOutputs(candles) {
+      const regimes = classifyRegimes(
+        candles,
+        period,
+        slowPeriod,
+        entryPercent / 100,
+        holdPercent / 100,
+        squeezePercent / 100,
+      );
+      const basis = emaSeries(
+        candles.map(c => c.close),
+        period,
+      );
+      const atr = atrSeries(candles, period);
+      const edges = REGIMES.flatMap(kind => {
+        const upper: number[] = new Array(candles.length).fill(Number.NaN),
+          lower = upper.slice();
+        for (let i = 0; i < candles.length; i++) {
+          if (regimes[i] !== kind && regimes[i + 1] !== kind) continue;
+          if (!Number.isFinite(basis[i]) || !Number.isFinite(atr[i])) continue;
+          upper[i] = basis[i] + multiplier * atr[i];
+          lower[i] = basis[i] - multiplier * atr[i];
+        }
+        return [upper, lower];
+      });
+      return [basis, ...edges];
+    },
   };
 }
 
@@ -402,6 +644,48 @@ export const builtInIndicators: readonly IndicatorDefinition[] = [
       signal: { label: 'Signal', default: 9, min: 1, max: 200 },
     },
     create: (inputs, id) => ({ ...macd(inputs.fast, inputs.slow, inputs.signal), id }),
+  },
+  {
+    kind: 'regime',
+    name: 'Market regime',
+    description: 'Colors each bar as compression, rotation, or expansion long or short.',
+    pane: 'separate',
+    inputs: {
+      period: period(20, 2),
+      slowPeriod: { label: 'Slow period', default: 100, min: 3, max: 2000 },
+      entry: { label: 'Entry efficiency %', default: 65, min: 1, max: 100 },
+      hold: { label: 'Hold efficiency %', default: 35, min: 1, max: 100 },
+      squeeze: { label: 'Squeeze vol %', default: 80, min: 10, max: 100 },
+    },
+    create: (inputs, id) => ({
+      ...regime(inputs.period, inputs.slowPeriod, inputs.entry, inputs.hold, inputs.squeeze),
+      id,
+    }),
+  },
+  {
+    kind: 'regime-band',
+    name: 'Market regime band',
+    description: 'ATR envelope on the candles, colored by compression, rotation or expansion.',
+    pane: 'price',
+    inputs: {
+      period: period(20, 2),
+      slowPeriod: { label: 'Slow period', default: 100, min: 3, max: 2000 },
+      entry: { label: 'Entry efficiency %', default: 65, min: 1, max: 100 },
+      hold: { label: 'Hold efficiency %', default: 35, min: 1, max: 100 },
+      squeeze: { label: 'Squeeze vol %', default: 80, min: 10, max: 100 },
+      multiplier: { label: 'ATR ×', default: 2, min: 0.5, max: 10, integer: false },
+    },
+    create: (inputs, id) => ({
+      ...regimeBand(
+        inputs.period,
+        inputs.slowPeriod,
+        inputs.entry,
+        inputs.hold,
+        inputs.squeeze,
+        inputs.multiplier,
+      ),
+      id,
+    }),
   },
   {
     kind: 'cvd',

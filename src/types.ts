@@ -140,8 +140,11 @@ export interface IndicatorOutput {
   readonly color: readonly [number, number, number, number];
   /** Use this theme slot instead of `color`; the alpha of `color` still applies. */
   readonly themeColor?: IndicatorColorSlot;
-  /** `histogram` draws bars from zero. Default `line`. */
-  readonly style?: 'line' | 'histogram';
+  /**
+   * `histogram` draws bars from zero, toned by sign. `column` draws bars from zero in the
+   * output's own color. Default `line`.
+   */
+  readonly style?: 'line' | 'histogram' | 'column';
 }
 export interface IndicatorPlugin {
   readonly id: string;
@@ -171,6 +174,11 @@ export interface IndicatorPlugin {
   readonly inputs?: Readonly<Record<string, number>>;
   /** `candles` draws four outputs (open, high, low, close) as candles in the pane. */
   readonly display?: 'candles';
+  /**
+   * Shade between pairs of outputs, under the candles, in the upper output's color at
+   * `opacity`. Like lines, a fill spans from one bar to the next where both have values.
+   */
+  readonly fills?: readonly { readonly upper: number; readonly lower: number; readonly opacity: number }[];
   /** Several series. With `outputs`, the runtime calls `calculateOutputs` instead of `calculate`. */
   readonly outputs?: readonly IndicatorOutput[];
   /** One value per candle; NaN means warmup or missing. Recompute from `changedIndex`. */
