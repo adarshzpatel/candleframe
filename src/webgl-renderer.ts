@@ -488,6 +488,39 @@ export class WebGL2Renderer implements ChartRenderer {
         Math.max(g.barSpacing, merge ? LOD_COLUMN : 0) * appearance.candleBodyRatio,
       ),
     );
+    // Price-pane fills sit under the candles. Each bar-to-bar step is two flat halves.
+    if (state.document.layers.indicator)
+      for (const { plugin, series, visible: shown } of state.indicators) {
+        if (!shown || !plugin.fills?.length || (plugin.pane ?? 'price') !== 'price') continue;
+        for (const fill of plugin.fills) {
+          const upper = series[fill.upper] ?? [],
+            lower = series[fill.lower] ?? [];
+          const [r, gr, b] = indicatorColor(theme, plugin, fill.upper);
+          const tone: Color = [r, gr, b, fill.opacity];
+          for (let i = Math.max(1, range.start); i < range.end; i++) {
+            if (![upper[i - 1], lower[i - 1], upper[i], lower[i]].every(Number.isFinite)) continue;
+            const from = g.x(bars[i - 1].timeMs + interval / 2),
+              to = g.x(bars[i].timeMs + interval / 2),
+              middle = (from + to) / 2;
+            for (const [x1, x2, k] of [
+              [from, middle, i - 1],
+              [middle, to, i],
+            ]) {
+              const top = g.y(upper[k]),
+                bottom = g.y(lower[k]);
+              this.line(
+                x1,
+                (top + bottom) / 2,
+                x2,
+                (top + bottom) / 2,
+                Math.abs(bottom - top),
+                tone,
+                priceClip,
+              );
+            }
+          }
+        }
+      }
     for (const bar of drawn) {
       const up = bar.close >= bar.open;
       const x = bar.x,
@@ -568,13 +601,18 @@ export class WebGL2Renderer implements ChartRenderer {
         outputs.forEach((output, k) => {
           const values = series[k] ?? [];
           const color = indicatorColor(theme, plugin, k);
-          if (output.style === 'histogram') {
+          if (output.style === 'histogram' || output.style === 'column') {
             const zero = Math.max(clip[0], Math.min(clip[1], y(0)));
             for (let i = range.start; i < range.end; i++) {
               if (!Number.isFinite(values[i])) continue;
               const x = g.x(bars[i].timeMs + interval / 2),
                 top = y(values[i]);
-              const tone = values[i] >= 0 ? colors.histogramUp : colors.histogramDown;
+              const tone =
+                output.style === 'column'
+                  ? color
+                  : values[i] >= 0
+                    ? colors.histogramUp
+                    : colors.histogramDown;
               this.line(
                 x - candleWidth / 2,
                 (top + zero) / 2,
