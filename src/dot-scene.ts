@@ -3,7 +3,7 @@ import { indicatorColor, type ResolvedChartTheme } from './themes.ts';
 import { visibleRange } from './time-scale.ts';
 import type { RuntimeState } from './types.ts';
 
-/** Dot radius in pixels, shrunk when bars are narrower than the dot. */
+/** Default dot radius in pixels. Dots shrink when bars are narrower than them. */
 const RADIUS = 3;
 
 /** Draws `dot` outputs of shown price indicators: a small circle at each finite value in view. */
@@ -24,7 +24,6 @@ export function renderIndicatorDots(
   const { start, end } = visibleRange(state.candles, g.fromMs, g.toMs, state.feed.intervalMs);
   if (end <= start) return;
   const half = state.feed.intervalMs / 2;
-  const radius = Math.max(1.5, Math.min(RADIUS, g.barSpacing / 2));
   ctx.save();
   ctx.beginPath();
   ctx.rect(g.left, g.top, g.plotWidth, g.plotHeight);
@@ -32,6 +31,7 @@ export function renderIndicatorDots(
   for (const { plugin, series } of layers)
     plugin.outputs!.forEach((output, k) => {
       if (output.style !== 'dot') return;
+      const radius = Math.max(1.5, Math.min(output.radius ?? RADIUS, g.barSpacing / 2));
       const [r, gr, b, a] = indicatorColor(theme, plugin, k);
       ctx.fillStyle = `rgb(${Math.round(r * 255)} ${Math.round(gr * 255)} ${Math.round(b * 255)} / ${a})`;
       ctx.beginPath();
