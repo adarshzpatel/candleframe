@@ -491,8 +491,8 @@ const TIDE_CANDLES: readonly RGBA[] = [
   [0.76, 0.5, 0.58, 1], // up bar in a bear trend
 ];
 const PIVOT_DOT: RGBA = [0.98, 0.64, 0.22, 0.9];
-const BULL_DOT: RGBA = [0.28, 0.5, 0.26, 1];
-const BEAR_DOT: RGBA = [0.62, 0.3, 0.1, 1];
+const BULL_DOT: RGBA = [0.38, 0.8, 0.42, 1];
+const BEAR_DOT: RGBA = [0.94, 0.36, 0.3, 1];
 
 /**
  * Swing highs and lows: a bar whose high is above the `size` bars before it and not below
@@ -565,10 +565,10 @@ export function tideline(
       { id: 'trend-above', name: 'Trend (close above)', color: MINT },
       { id: 'trend-below', name: 'Trend (close below)', color: AMBER },
       { id: 'candles', name: 'Candle color', color: GREY, style: 'candles', palette: TIDE_CANDLES },
-      { id: 'pivot-high', name: 'Swing high', color: PIVOT_DOT, style: 'dot' },
-      { id: 'pivot-low', name: 'Swing low', color: PIVOT_DOT, style: 'dot' },
-      { id: 'pullback-bull', name: 'Bull pullback', color: BULL_DOT, style: 'dot' },
-      { id: 'pullback-bear', name: 'Bear pullback', color: BEAR_DOT, style: 'dot' },
+      { id: 'pivot-high', name: 'Swing high', color: PIVOT_DOT, style: 'dot', radius: 2.5 },
+      { id: 'pivot-low', name: 'Swing low', color: PIVOT_DOT, style: 'dot', radius: 2.5 },
+      { id: 'pullback-bull', name: 'Bull pullback', color: BULL_DOT, style: 'dot', radius: 4 },
+      { id: 'pullback-bear', name: 'Bear pullback', color: BEAR_DOT, style: 'dot', radius: 4 },
     ],
     // The upper index sets the fill color, so each pair fills in its state's color whichever EMA is on top.
     fills: TREND_STATES.map((_, k) => ({ upper: 2 * k, lower: 2 * k + 1, opacity: 0.28 })),

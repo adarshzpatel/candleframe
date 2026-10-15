@@ -147,6 +147,8 @@ export interface IndicatorOutput {
    * the theme color. Default `line`.
    */
   readonly style?: 'line' | 'histogram' | 'column' | 'dot' | 'candles';
+  /** With `style: 'dot'`: radius in pixels. Default 3. */
+  readonly radius?: number;
   /** With `style: 'candles'`: the candle colors its values index. */
   readonly palette?: readonly (readonly [number, number, number, number])[];
 }
