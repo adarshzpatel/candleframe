@@ -146,3 +146,71 @@ export function buildProfile(
     sell: totalSell,
   };
 }
+
+const DAY_MS = 86_400_000;
+const dayFormats = new Map<string, Intl.DateTimeFormat>();
+
+/** Milliseconds `timeZone` is ahead of UTC at `timeMs`. */
+function zoneOffset(timeMs: number, timeZone: string): number {
+  let format = dayFormats.get(timeZone);
+  if (!format) {
+    format = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+    });
+    dayFormats.set(timeZone, format);
+  }
+  const part = Object.fromEntries(format.formatToParts(timeMs).map(p => [p.type, Number(p.value)]));
+  const local = Date.UTC(part.year, part.month - 1, part.day, part.hour, part.minute);
+  return local - Math.floor(timeMs / 60_000) * 60_000;
+}
+
+/**
+ * Index range `[start, end)` of the current trading session: the bars since the last gap
+ * longer than one interval. Markets that never pause roll over at midnight UTC.
+ */
+export function currentSession(
+  candles: readonly Candle[],
+  intervalMs: number,
+): { start: number; end: number } | null {
+  if (!candles.length) return null;
+  const end = candles.length;
+  let start = end - 1;
+  while (start > 0 && candles[start].timeMs - candles[start - 1].timeMs <= intervalMs * 1.5) start--;
+  // No gap in the loaded bars: a 24/7 market, so use the UTC day.
+  return start === 0 ? sessionRanges(candles, 1)[0] : { start, end };
+}
+
+/**
+ * Index ranges `[start, end)` of the last `count` calendar days in `timeZone` that have
+ * bars, oldest first. The last range is the current day.
+ */
+export function sessionRanges(
+  candles: readonly Candle[],
+  count: number,
+  timeZone = 'UTC',
+): { start: number; end: number }[] {
+  const ranges: { start: number; end: number }[] = [];
+  // Offsets change at most hourly, so look each hour up once.
+  const offsets = new Map<number, number>();
+  const day = (timeMs: number) => {
+    const hour = Math.floor(timeMs / 3_600_000);
+    let offset = offsets.get(hour);
+    if (offset === undefined) offsets.set(hour, (offset = zoneOffset(timeMs, timeZone)));
+    return Math.floor((timeMs + offset) / DAY_MS);
+  };
+  let end = candles.length;
+  while (end > 0 && ranges.length < count) {
+    const current = day(candles[end - 1].timeMs);
+    let start = end - 1;
+    while (start > 0 && day(candles[start - 1].timeMs) === current) start--;
+    ranges.unshift({ start, end });
+    end = start;
+  }
+  return ranges;
+}

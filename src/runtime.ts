@@ -1304,13 +1304,16 @@ export class ChartRuntime {
           (plugin?.outputs ?? [{ id: 'value' }]).map((output, i) => [output.id, series[i]?.at(-1) ?? null]),
         ),
       })),
-      indicatorKinds: this.indicatorRegistry.list().map(({ kind, name, description, pane, inputs }) => ({
-        kind,
-        name,
-        description,
-        pane,
-        inputs,
-      })),
+      indicatorKinds: this.indicatorRegistry
+        .list()
+        .map(({ kind, name, description, pane, inputs, hidden }) => ({
+          kind,
+          name,
+          description,
+          pane,
+          inputs,
+          hidden: !!hidden,
+        })),
       error: this.state().error,
     });
   }
