@@ -451,6 +451,89 @@ export function regimeBand(
   };
 }
 
+export type TrendState = 'bull' | 'bear' | 'neutral';
+const TREND_STATES: readonly TrendState[] = ['bull', 'bear', 'neutral'];
+const TREND_COLORS: Readonly<Record<TrendState, RGBA>> = { bull: MINT, bear: AMBER, neutral: GREY };
+const TREND_NAMES: Readonly<Record<TrendState, string>> = { bull: 'Bull', bear: 'Bear', neutral: 'Neutral' };
+
+/**
+ * Ribbon state per bar: bull while the fast EMA is above the slow one, bear while below,
+ * neutral while they sit within `neutral` ATRs (14-bar Wilder) of each other. Null until
+ * both EMAs and the ATR exist.
+ */
+export function classifyTrend(
+  candles: readonly Candle[],
+  fastPeriod = 8,
+  slowPeriod = 21,
+  neutral = 0.1,
+): (TrendState | null)[] {
+  const closes = candles.map(c => c.close);
+  const fast = emaSeries(closes, fastPeriod),
+    slow = emaSeries(closes, slowPeriod),
+    atr = atrSeries(candles, 14);
+  return candles.map((_, i) => {
+    if (![fast[i], slow[i], atr[i]].every(Number.isFinite)) return null;
+    const gap = fast[i] - slow[i];
+    return Math.abs(gap) <= neutral * atr[i] ? 'neutral' : gap > 0 ? 'bull' : 'bear';
+  });
+}
+
+/** Copies `values` where `keep` holds, and on the bar before, so line segments join across changes. */
+function segment(values: readonly number[], keep: (i: number) => boolean) {
+  return values.map((value, i) => (keep(i) || keep(i + 1) ? value : Number.NaN));
+}
+
+/**
+ * Tideline: a fast/slow EMA ribbon shaded bull, bear or neutral (see `classifyTrend`), and
+ * a long EMA that is green while the close is above it and orange while below.
+ */
+export function tideline(
+  fastPeriod = 8,
+  slowPeriod = 21,
+  trendPeriod = 200,
+  neutralPercent = 10,
+): IndicatorPlugin {
+  if (![fastPeriod, slowPeriod, trendPeriod].every(p => Number.isInteger(p) && p >= 1 && p <= 1000))
+    throw new ChartError('INVALID_PERIOD');
+  if (fastPeriod >= slowPeriod)
+    throw new ChartError('INVALID_INPUT', 'fast period must be below slow period');
+  if (!(neutralPercent >= 0 && neutralPercent <= 100))
+    throw new ChartError('INVALID_INPUT', 'neutral gap must be 0 to 100% of ATR');
+  const edge = (color: RGBA): RGBA => [color[0], color[1], color[2], 0.3];
+  return {
+    id: `tideline-${fastPeriod}-${slowPeriod}-${trendPeriod}`,
+    name: `Tideline ${fastPeriod} ${slowPeriod} ${trendPeriod}`,
+    kind: 'tideline',
+    inputs: { fast: fastPeriod, slow: slowPeriod, trend: trendPeriod, neutral: neutralPercent },
+    color: MINT,
+    outputs: [
+      ...TREND_STATES.flatMap(state => [
+        { id: `${state}-fast`, name: `${TREND_NAMES[state]} fast`, color: edge(TREND_COLORS[state]) },
+        { id: `${state}-slow`, name: `${TREND_NAMES[state]} slow`, color: edge(TREND_COLORS[state]) },
+      ]),
+      { id: 'trend-above', name: 'Trend (close above)', color: MINT },
+      { id: 'trend-below', name: 'Trend (close below)', color: AMBER },
+    ],
+    // The upper index sets the fill color, so each pair fills in its state's color whichever EMA is on top.
+    fills: TREND_STATES.map((_, k) => ({ upper: 2 * k, lower: 2 * k + 1, opacity: 0.28 })),
+    // EMA seeds and the ATR depend on every earlier bar, so the series is recomputed. It is O(n).
+    calculateOutputs(candles) {
+      const closes = candles.map(c => c.close);
+      const fast = emaSeries(closes, fastPeriod),
+        slow = emaSeries(closes, slowPeriod),
+        trend = emaSeries(closes, trendPeriod);
+      const states = classifyTrend(candles, fastPeriod, slowPeriod, neutralPercent / 100);
+      const ribbon = TREND_STATES.flatMap(state => {
+        const keep = (i: number) => states[i] === state;
+        return [segment(fast, keep), segment(slow, keep)];
+      });
+      const above = (i: number) => i < candles.length && candles[i].close >= trend[i];
+      const below = (i: number) => i < candles.length && candles[i].close < trend[i];
+      return [...ribbon, segment(trend, above), segment(trend, below)];
+    },
+  };
+}
+
 /**
  * Cumulative volume delta as candles: each bar opens at the running total and closes after
  * adding its taker buy minus sell volume. Wicks come from `deltaRange` when the feed has
@@ -730,6 +813,19 @@ export const builtInIndicators: readonly IndicatorDefinition[] = [
       ),
       id,
     }),
+  },
+  {
+    kind: 'tideline',
+    name: 'Tideline',
+    description: 'EMA ribbon shaded by trend, with a long EMA colored by which side price is on.',
+    pane: 'price',
+    inputs: {
+      fast: { label: 'Fast', default: 8, min: 1, max: 999 },
+      slow: { label: 'Slow', default: 21, min: 2, max: 1000 },
+      trend: { label: 'Trend', default: 200, min: 1, max: 1000 },
+      neutral: { label: 'Neutral gap % ATR', default: 10, min: 0, max: 100 },
+    },
+    create: (inputs, id) => ({ ...tideline(inputs.fast, inputs.slow, inputs.trend, inputs.neutral), id }),
   },
   {
     kind: 'cvd',

@@ -73,12 +73,20 @@ export {
   regime,
   regimeBand,
   classifyRegimes,
+  tideline,
+  classifyTrend,
   builtInIndicators,
   IndicatorRegistry,
 } from './indicators.ts';
 export { buildProfile, profileStep } from './profiles.ts';
 export type { PriceProfile, ProfileRow } from './profiles.ts';
-export type { IndicatorDefinition, IndicatorInputSpec, Regime, SeriesIndicator } from './indicators.ts';
+export type {
+  IndicatorDefinition,
+  IndicatorInputSpec,
+  Regime,
+  SeriesIndicator,
+  TrendState,
+} from './indicators.ts';
 export { OrderBook } from './order-book.ts';
 export { DrawingRegistry, builtInDrawingTools, DEFAULT_DRAWING_STYLE } from './drawing-tools.ts';
 export type * from './types.ts';
