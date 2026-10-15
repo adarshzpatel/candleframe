@@ -110,6 +110,8 @@ const UNCLIPPED: readonly [number, number] = [-1e9, 1e9];
 const INSTANCE_FLOATS = 11;
 /** Pixel width of a level-of-detail column. */
 const LOD_COLUMN = 2;
+/** Pixel width of a fill slice; the band's edge steps at most this far. */
+const FILL_SLICE = 2;
 const colorsFor = (theme: ResolvedChartTheme) => {
   const chart = theme.chart;
   const token = (value: string, opacity = 1) => colorRGBA(themeColor(theme, value), opacity);
@@ -511,7 +513,7 @@ export class WebGL2Renderer implements ChartRenderer {
         Math.max(g.barSpacing, merge ? LOD_COLUMN : 0) * appearance.candleBodyRatio,
       ),
     );
-    // Price-pane fills sit under the candles. Each bar-to-bar step is two flat halves.
+    // Price-pane fills sit under the candles. Each bar-to-bar step is cut into thin slices.
     if (state.document.layers.indicator)
       for (const { plugin, series, visible: shown } of state.indicators) {
         if (!shown || !plugin.fills?.length || (plugin.pane ?? 'price') !== 'price') continue;
@@ -523,18 +525,21 @@ export class WebGL2Renderer implements ChartRenderer {
           for (let i = Math.max(1, range.start); i < range.end; i++) {
             if (![upper[i - 1], lower[i - 1], upper[i], lower[i]].every(Number.isFinite)) continue;
             const from = g.x(bars[i - 1].timeMs + interval / 2),
-              to = g.x(bars[i].timeMs + interval / 2),
-              middle = (from + to) / 2;
-            for (const [x1, x2, k] of [
-              [from, middle, i - 1],
-              [middle, to, i],
-            ]) {
-              const top = g.y(upper[k]),
-                bottom = g.y(lower[k]);
+              to = g.x(bars[i].timeMs + interval / 2);
+            const top0 = g.y(upper[i - 1]),
+              bottom0 = g.y(lower[i - 1]),
+              top1 = g.y(upper[i]),
+              bottom1 = g.y(lower[i]);
+            // Vertical slices that follow the edge lines; hard-edged quads tile without seams.
+            const slices = Math.max(1, Math.ceil((to - from) / FILL_SLICE));
+            for (let j = 0; j < slices; j++) {
+              const t = (j + 0.5) / slices,
+                top = top0 + (top1 - top0) * t,
+                bottom = bottom0 + (bottom1 - bottom0) * t;
               this.line(
-                x1,
+                from + ((to - from) * j) / slices,
                 (top + bottom) / 2,
-                x2,
+                from + ((to - from) * (j + 1)) / slices,
                 (top + bottom) / 2,
                 Math.abs(bottom - top),
                 tone,
