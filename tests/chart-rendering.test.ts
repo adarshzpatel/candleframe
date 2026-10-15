@@ -650,7 +650,7 @@ test('renderer applies series tokens and heatmap uniforms while preserving expli
   // Without tick positions the renderer falls back to the theme's even grid.
   renderer.render({ ...frame, state, heatmap, theme, grid: undefined });
   const data = buffers.at(-1)!,
-    instances = Array.from({ length: data.length / 11 }, (_, i) => [...data.slice(i * 11, (i + 1) * 11)]);
+    instances = Array.from({ length: data.length / 12 }, (_, i) => [...data.slice(i * 12, (i + 1) * 12)]);
   assert.equal(
     instances.filter(row => row[4] === 2).length,
     9,

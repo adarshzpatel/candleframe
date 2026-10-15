@@ -54,7 +54,7 @@ function render(width: number) {
   const data = uploads.at(-1)!;
   // Wick instances: vertical lines spanning the full 80-120 range.
   const wicks: number[] = [];
-  for (let i = 0; i < data.length; i += 11)
+  for (let i = 0; i < data.length; i += 12)
     if (data[i] === data[i + 2] && Math.abs(geometry.y(120) - data[i + 1]) < 1e-3) wicks.push(data[i]);
   return { stats, geometry, wicks };
 }

@@ -37,6 +37,7 @@ layout(location=2) in vec2 finish;
 layout(location=3) in float thickness;
 layout(location=4) in vec4 color;
 layout(location=5) in vec2 clipY;
+layout(location=6) in float endThickness;
 uniform vec2 resolution;
 out vec4 vColor;
 out highp float vY;
@@ -44,7 +45,10 @@ flat out highp vec2 vClipY;
 void main() {
   vec2 d = finish - start;
   vec2 normal = vec2(-d.y, d.x) / max(length(d), 0.0001);
-  vec2 point = mix(start, finish, corner.x) + normal * (corner.y - 0.5) * thickness;
+  // A non-negative end thickness makes a trapezoid: vertical sides, height easing from thickness to it.
+  vec2 point = endThickness >= 0.
+    ? mix(start, finish, corner.x) + vec2(0., (corner.y - 0.5) * mix(thickness, endThickness, corner.x))
+    : mix(start, finish, corner.x) + normal * (corner.y - 0.5) * thickness;
   gl_Position = vec4(point / resolution * vec2(2., -2.) + vec2(-1., 1.), 0., 1.);
   vColor = color;
   vY = point.y;
@@ -107,11 +111,9 @@ void main() {
 
 type Color = readonly [number, number, number, number];
 const UNCLIPPED: readonly [number, number] = [-1e9, 1e9];
-const INSTANCE_FLOATS = 11;
+const INSTANCE_FLOATS = 12;
 /** Pixel width of a level-of-detail column. */
 const LOD_COLUMN = 2;
-/** Pixel width of a fill slice; the band's edge steps at most this far. */
-const FILL_SLICE = 2;
 const colorsFor = (theme: ResolvedChartTheme) => {
   const chart = theme.chart;
   const token = (value: string, opacity = 1) => colorRGBA(themeColor(theme, value), opacity);
@@ -272,6 +274,7 @@ export class WebGL2Renderer implements ChartRenderer {
       [3, 1, 4],
       [4, 4, 5],
       [5, 2, 9],
+      [6, 1, 11],
     ]) {
       gl.enableVertexAttribArray(location);
       gl.vertexAttribPointer(location, count, gl.FLOAT, false, INSTANCE_FLOATS * 4, offset * 4);
@@ -381,7 +384,34 @@ export class WebGL2Renderer implements ChartRenderer {
     v[i + 8] = color[3];
     v[i + 9] = clipY[0];
     v[i + 10] = clipY[1];
+    v[i + 11] = -1;
     this.used += INSTANCE_FLOATS;
+  }
+
+  /** A band from `x1` to `x2` whose top and bottom edges run straight between the given ends. */
+  private trapezoid(
+    x1: number,
+    top1: number,
+    bottom1: number,
+    x2: number,
+    top2: number,
+    bottom2: number,
+    color: Color,
+    clipY = UNCLIPPED,
+  ): void {
+    const h1 = bottom1 - top1,
+      h2 = bottom2 - top2;
+    if (h1 * h2 < 0) {
+      // The edges cross: two triangles meeting where they do.
+      const t = h1 / (h1 - h2),
+        x = x1 + (x2 - x1) * t,
+        y = top1 + (top2 - top1) * t;
+      this.trapezoid(x1, top1, bottom1, x, y, y, color, clipY);
+      this.trapezoid(x, y, y, x2, top2, bottom2, color, clipY);
+      return;
+    }
+    this.line(x1, (top1 + bottom1) / 2, x2, (top2 + bottom2) / 2, Math.abs(h1), color, clipY);
+    this.vertices[this.used - 1] = Math.abs(h2);
   }
 
   render({ state, geometry: g, heatmap, theme = chartThemes.evergreen, grid }: RenderFrame): RendererStats {
@@ -513,7 +543,7 @@ export class WebGL2Renderer implements ChartRenderer {
         Math.max(g.barSpacing, merge ? LOD_COLUMN : 0) * appearance.candleBodyRatio,
       ),
     );
-    // Price-pane fills sit under the candles. Each bar-to-bar step is cut into thin slices.
+    // Price-pane fills sit under the candles, one trapezoid per bar-to-bar step so MSAA smooths the sloped edges.
     if (state.document.layers.indicator)
       for (const { plugin, series, visible: shown } of state.indicators) {
         if (!shown || !plugin.fills?.length || (plugin.pane ?? 'price') !== 'price') continue;
@@ -526,26 +556,16 @@ export class WebGL2Renderer implements ChartRenderer {
             if (![upper[i - 1], lower[i - 1], upper[i], lower[i]].every(Number.isFinite)) continue;
             const from = g.x(bars[i - 1].timeMs + interval / 2),
               to = g.x(bars[i].timeMs + interval / 2);
-            const top0 = g.y(upper[i - 1]),
-              bottom0 = g.y(lower[i - 1]),
-              top1 = g.y(upper[i]),
-              bottom1 = g.y(lower[i]);
-            // Vertical slices that follow the edge lines; hard-edged quads tile without seams.
-            const slices = Math.max(1, Math.ceil((to - from) / FILL_SLICE));
-            for (let j = 0; j < slices; j++) {
-              const t = (j + 0.5) / slices,
-                top = top0 + (top1 - top0) * t,
-                bottom = bottom0 + (bottom1 - bottom0) * t;
-              this.line(
-                from + ((to - from) * j) / slices,
-                (top + bottom) / 2,
-                from + ((to - from) * (j + 1)) / slices,
-                (top + bottom) / 2,
-                Math.abs(bottom - top),
-                tone,
-                priceClip,
-              );
-            }
+            this.trapezoid(
+              from,
+              g.y(upper[i - 1]),
+              g.y(lower[i - 1]),
+              to,
+              g.y(upper[i]),
+              g.y(lower[i]),
+              tone,
+              priceClip,
+            );
           }
         }
       }
