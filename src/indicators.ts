@@ -457,24 +457,38 @@ const TREND_COLORS: Readonly<Record<TrendState, RGBA>> = { bull: MINT, bear: AMB
 const TREND_NAMES: Readonly<Record<TrendState, string>> = { bull: 'Bull', bear: 'Bear', neutral: 'Neutral' };
 
 /**
- * Ribbon state per bar: bull while the fast EMA is above the slow one, bear while below,
- * neutral while they sit within `neutral` ATRs (14-bar Wilder) of each other. Null until
- * both EMAs and the ATR exist.
+ * Ribbon state per bar from the gap between the fast and slow EMAs, in ATRs (14-bar
+ * Wilder). A trend starts once the gap clears `enter` (bull above, bear below) and holds
+ * until the gap shrinks to `neutral`. Within `neutral` it is neutral. A state lasts at
+ * least `minBars` bars. Null until both EMAs and the ATR exist.
  */
 export function classifyTrend(
   candles: readonly Candle[],
   fastPeriod = 8,
   slowPeriod = 21,
   neutral = 0.1,
+  enter = neutral,
+  minBars = 1,
 ): (TrendState | null)[] {
   const closes = candles.map(c => c.close);
   const fast = emaSeries(closes, fastPeriod),
     slow = emaSeries(closes, slowPeriod),
     atr = atrSeries(candles, 14);
+  let current: TrendState | null = null,
+    held = 0;
   return candles.map((_, i) => {
     if (![fast[i], slow[i], atr[i]].every(Number.isFinite)) return null;
-    const gap = fast[i] - slow[i];
-    return Math.abs(gap) <= neutral * atr[i] ? 'neutral' : gap > 0 ? 'bull' : 'bear';
+    const gap = atr[i] > 0 ? (fast[i] - slow[i]) / atr[i] : 0;
+    let next: TrendState;
+    if (gap > enter || (current === 'bull' && gap > neutral)) next = 'bull';
+    else if (gap < -enter || (current === 'bear' && gap < -neutral)) next = 'bear';
+    else next = Math.abs(gap) <= neutral ? 'neutral' : (current ?? 'neutral');
+    if (current === null || (next !== current && held >= minBars)) {
+      current = next;
+      held = 0;
+    }
+    held++;
+    return current;
   });
 }
 
@@ -515,21 +529,46 @@ function pivots(candles: readonly Candle[], size: number) {
   return { highs, lows };
 }
 
+/** Bars a stop entry waits to trigger, and the most bars a trade projection runs. */
+const TIDE_ENTRY_BARS = 2,
+  TIDE_TRADE_BARS = 30;
+
 /**
- * Tideline: a fast/slow EMA ribbon shaded bull, bear or neutral (see `classifyTrend`), and
- * a long EMA that is green while the close is above it and orange while below.
+ * Tideline: a fast/slow EMA ribbon shaded bull, bear or neutral (see `classifyTrend`, with
+ * `enterPercent` and `neutralPercent` of ATR as the entry and exit gaps), and a long EMA
+ * that is green while the close is above it and orange while below.
  *
  * Optional extras: candles colored by the ribbon (counter-trend bars muted, neutral bars
- * left alone), orange dots off swing highs and lows `pivotBars` wide, and a dot on the fast
- * EMA where a trending bar first pulls back to it while closing on the trend side of the
- * slow EMA.
+ * left alone), orange dots off swing highs and lows `pivotBars` wide, and pullback dots.
+ *
+ * A bull pullback is the first bar of a bull ribbon to touch the fast EMA, closing above
+ * the slow EMA, with the close and the slow EMA above the trend EMA and the slow EMA up at
+ * least 0.2 ATR over 5 bars. With `regime`, the bar must also be in long expansion (see
+ * `classifyRegimes`). Bear pullbacks mirror it. A trend entry gap below the neutral gap
+ * counts as the neutral gap.
+ *
+ * With `targets`, each pullback while no trade is open projects a stop entry at the signal
+ * bar's high, a stop 0.5 ATR beyond its low or the slow EMA, whichever is further, and a
+ * target `targetR` times the risk past the entry, drawn from the bar before the signal so
+ * it shows on a live one. The projection is dropped if the entry
+ * does not trigger within 2 bars, and ends on the bar that hits the stop or target (the
+ * stop when one bar hits both) or after 30 bars.
  */
 export function tideline(
   fastPeriod = 8,
   slowPeriod = 21,
   trendPeriod = 200,
   neutralPercent = 10,
-  options: { candles?: boolean; pivotBars?: number; pullbacks?: boolean } = {},
+  options: {
+    candles?: boolean;
+    pivotBars?: number;
+    pullbacks?: boolean;
+    enterPercent?: number;
+    holdBars?: number;
+    regime?: boolean;
+    targets?: boolean;
+    targetR?: number;
+  } = {},
 ): IndicatorPlugin {
   if (![fastPeriod, slowPeriod, trendPeriod].every(p => Number.isInteger(p) && p >= 1 && p <= 1000))
     throw new ChartError('INVALID_PERIOD');
@@ -539,9 +578,19 @@ export function tideline(
     throw new ChartError('INVALID_INPUT', 'neutral gap must be 0 to 100% of ATR');
   const colorCandles = options.candles ?? true,
     pivotBars = options.pivotBars ?? 2,
-    pullbacks = options.pullbacks ?? true;
+    pullbacks = options.pullbacks ?? true,
+    enterPercent = options.enterPercent ?? 30,
+    holdBars = options.holdBars ?? 3,
+    regimeFilter = options.regime ?? true,
+    targets = options.targets ?? true,
+    targetR = options.targetR ?? 2;
   if (!(Number.isInteger(pivotBars) && pivotBars >= 0 && pivotBars <= 20))
     throw new ChartError('INVALID_INPUT', 'pivot bars must be 0 to 20');
+  if (!(enterPercent >= 0 && enterPercent <= 200))
+    throw new ChartError('INVALID_INPUT', 'trend entry gap must be 0 to 200% of ATR');
+  if (!(Number.isInteger(holdBars) && holdBars >= 1 && holdBars <= 20))
+    throw new ChartError('INVALID_INPUT', 'hold bars must be 1 to 20');
+  if (!(targetR >= 0.5 && targetR <= 10)) throw new ChartError('INVALID_INPUT', 'target must be 0.5 to 10 R');
   const edge = (color: RGBA): RGBA => [color[0], color[1], color[2], 0.3];
   return {
     id: `tideline-${fastPeriod}-${slowPeriod}-${trendPeriod}`,
@@ -552,9 +601,14 @@ export function tideline(
       slow: slowPeriod,
       trend: trendPeriod,
       neutral: neutralPercent,
+      enter: enterPercent,
+      hold: holdBars,
       candles: +colorCandles,
       pivots: pivotBars,
       pullbacks: +pullbacks,
+      regime: +regimeFilter,
+      targets: +targets,
+      targetR,
     },
     color: MINT,
     outputs: [
@@ -569,9 +623,16 @@ export function tideline(
       { id: 'pivot-low', name: 'Swing low', color: PIVOT_DOT, style: 'dot', radius: 2.5 },
       { id: 'pullback-bull', name: 'Bull pullback', color: BULL_DOT, style: 'dot', radius: 4 },
       { id: 'pullback-bear', name: 'Bear pullback', color: BEAR_DOT, style: 'dot', radius: 4 },
+      { id: 'entry', name: 'Entry', color: [GREY[0], GREY[1], GREY[2], 0.5] },
+      { id: 'stop', name: 'Stop', color: [RED[0], RED[1], RED[2], 0.45] },
+      { id: 'target', name: 'Target', color: [MINT[0], MINT[1], MINT[2], 0.45] },
     ],
-    // The upper index sets the fill color, so each pair fills in its state's color whichever EMA is on top.
-    fills: TREND_STATES.map((_, k) => ({ upper: 2 * k, lower: 2 * k + 1, opacity: 0.28 })),
+    fills: [
+      // The upper index sets the fill color, so each pair fills in its state's color whichever EMA is on top.
+      ...TREND_STATES.map((_, k) => ({ upper: 2 * k, lower: 2 * k + 1, opacity: 0.28 })),
+      { upper: 15, lower: 13, opacity: 0.06 },
+      { upper: 14, lower: 13, opacity: 0.06 },
+    ],
     // EMA seeds, the ATR and late-confirmed pivots depend on other bars, so the series is recomputed. It is O(n).
     calculateOutputs(candles) {
       const n = candles.length;
@@ -580,7 +641,15 @@ export function tideline(
         slow = emaSeries(closes, slowPeriod),
         trend = emaSeries(closes, trendPeriod),
         atr = atrSeries(candles, 14);
-      const states = classifyTrend(candles, fastPeriod, slowPeriod, neutralPercent / 100);
+      const states = classifyTrend(
+        candles,
+        fastPeriod,
+        slowPeriod,
+        neutralPercent / 100,
+        Math.max(enterPercent, neutralPercent) / 100,
+        holdBars,
+      );
+      const regimes = regimeFilter && pullbacks ? classifyRegimes(candles) : null;
       const ribbon = TREND_STATES.flatMap(state => {
         const keep = (i: number) => states[i] === state;
         return [segment(fast, keep), segment(slow, keep)];
@@ -604,15 +673,69 @@ export function tideline(
         if (lows[i]) pivotLow[i] = candles[i].low - atr[i] * 0.35;
       }
       const [bullPullback, bearPullback] = [empty(), empty()];
+      const [entryLine, stopLine, targetLine] = [empty(), empty(), empty()];
+      // A projection draws from the bar before the signal, so a signal on the live bar shows, to the bar it ends on.
+      // The next one starts at least a bar later, so lines never join.
+      let free = 0;
+      const project = (i: number, side: 1 | -1) => {
+        const bar = candles[i];
+        const entry = side > 0 ? bar.high : bar.low;
+        const stop =
+          side > 0 ? Math.min(bar.low, slow[i]) - atr[i] * 0.5 : Math.max(bar.high, slow[i]) + atr[i] * 0.5;
+        const target = entry + side * targetR * Math.abs(entry - stop);
+        let last = Math.min(n - 1, i + TIDE_TRADE_BARS),
+          live = false;
+        for (let k = i + 1; k <= last; k++) {
+          const { high, low } = candles[k];
+          if (!live) {
+            if (side > 0 ? high >= entry : low <= entry) live = true;
+            else if (k - i >= TIDE_ENTRY_BARS) return;
+            else continue;
+          }
+          if ((side > 0 ? low <= stop : high >= stop) || (side > 0 ? high >= target : low <= target)) {
+            last = k;
+            break;
+          }
+        }
+        for (let k = i - 1; k <= last; k++) {
+          entryLine[k] = entry;
+          stopLine[k] = stop;
+          targetLine[k] = target;
+        }
+        free = last + 3;
+      };
       if (pullbacks)
-        for (let i = 1; i < n; i++) {
+        for (let i = 5; i < n; i++) {
           const bar = candles[i],
             prior = candles[i - 1];
-          if (!Number.isFinite(fast[i - 1])) continue;
-          if (states[i] === 'bull' && bar.low <= fast[i] && bar.close > slow[i] && prior.low > fast[i - 1])
+          if (![fast[i - 1], slow[i - 5], trend[i], atr[i]].every(Number.isFinite) || !(atr[i] > 0)) continue;
+          const slope = (slow[i] - slow[i - 5]) / atr[i];
+          if (
+            states[i] === 'bull' &&
+            bar.low <= fast[i] &&
+            bar.close > slow[i] &&
+            prior.low > fast[i - 1] &&
+            bar.close > trend[i] &&
+            slow[i] > trend[i] &&
+            slope >= 0.2 &&
+            (!regimes || regimes[i] === 'long')
+          ) {
             bullPullback[i] = fast[i];
-          if (states[i] === 'bear' && bar.high >= fast[i] && bar.close < slow[i] && prior.high < fast[i - 1])
+            if (targets && i >= free) project(i, 1);
+          }
+          if (
+            states[i] === 'bear' &&
+            bar.high >= fast[i] &&
+            bar.close < slow[i] &&
+            prior.high < fast[i - 1] &&
+            bar.close < trend[i] &&
+            slow[i] < trend[i] &&
+            slope <= -0.2 &&
+            (!regimes || regimes[i] === 'short')
+          ) {
             bearPullback[i] = fast[i];
+            if (targets && i >= free) project(i, -1);
+          }
         }
       return [
         ...ribbon,
@@ -623,6 +746,9 @@ export function tideline(
         pivotLow,
         bullPullback,
         bearPullback,
+        entryLine,
+        stopLine,
+        targetLine,
       ];
     },
   };
@@ -912,22 +1038,32 @@ export const builtInIndicators: readonly IndicatorDefinition[] = [
     kind: 'tideline',
     name: 'Tideline',
     description:
-      'EMA ribbon shaded by trend, a long EMA colored by which side price is on, trend-colored candles, swing dots and pullback dots.',
+      'EMA ribbon shaded by trend, a long EMA colored by which side price is on, trend-colored candles, swing dots, and filtered pullback dots with a projected stop and target.',
     pane: 'price',
     inputs: {
       fast: { label: 'Fast', default: 8, min: 1, max: 999 },
       slow: { label: 'Slow', default: 21, min: 2, max: 1000 },
       trend: { label: 'Trend', default: 200, min: 1, max: 1000 },
       neutral: { label: 'Neutral gap % ATR', default: 10, min: 0, max: 100 },
+      enter: { label: 'Trend entry gap % ATR', default: 30, min: 0, max: 200 },
+      hold: { label: 'Trend hold bars', default: 3, min: 1, max: 20 },
       candles: { label: 'Color candles', default: 1, min: 0, max: 1, toggle: true },
       pivots: { label: 'Swing dot bars (0 off)', default: 2, min: 0, max: 20 },
       pullbacks: { label: 'Pullback dots', default: 1, min: 0, max: 1, toggle: true },
+      regime: { label: 'Only in expansion', default: 1, min: 0, max: 1, toggle: true },
+      targets: { label: 'Stop and target', default: 1, min: 0, max: 1, toggle: true },
+      targetR: { label: 'Target R', default: 2, min: 0.5, max: 10, integer: false },
     },
     create: (inputs, id) => ({
       ...tideline(inputs.fast, inputs.slow, inputs.trend, inputs.neutral, {
         candles: !!inputs.candles,
         pivotBars: inputs.pivots,
         pullbacks: !!inputs.pullbacks,
+        enterPercent: inputs.enter,
+        holdBars: inputs.hold,
+        regime: !!inputs.regime,
+        targets: !!inputs.targets,
+        targetR: inputs.targetR,
       }),
       id,
     }),
