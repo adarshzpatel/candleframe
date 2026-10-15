@@ -1,11 +1,14 @@
 #!/usr/bin/env node
-// Checks that the demo widget autosaves drawings and loads them again.
+// Checks that the demo widget autosaves drawings and loads them again, and that
+// chart settings stay with the pane across interval and symbol changes.
 //
 //   node scripts/layout-persistence.mjs                    # starts Vite on 5198
 //   node scripts/layout-persistence.mjs --url http://127.0.0.1:5173
 //
 // Adds a drawing, reloads, moves it, reloads straight away (the pagehide flush),
-// then switches symbol and back. Fails if a drawing or its position is lost.
+// then switches symbol and back. Fails if a drawing or its position is lost. Then visits
+// another interval (so it has a saved layout), adds an indicator and switches to
+// footprints, then switches interval, symbol and reloads: both must stay on the pane.
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { chromium } from 'playwright';
@@ -46,7 +49,8 @@ try {
     page.evaluate(
       ([id, value]) => {
         const select = document.querySelector('#app > *').shadowRoot.querySelector(`#${id}`);
-        const chosen = value ?? [...select.options].map(o => o.value).find(v => v !== select.value);
+        const chosen =
+          value ?? select.items.find(item => !item.disabled && item.value !== select.value).value;
         select.value = chosen;
         select.dispatchEvent(new Event('change', { bubbles: true }));
         return chosen;
@@ -115,6 +119,55 @@ try {
   await sleep(300);
   current = await drawings();
   check(current.find(d => d.id === 'persisted')?.points[0].price === moved, 'switching back restores it');
+
+  // Chart settings: the indicator list and the chart type.
+  const settings = () =>
+    page.evaluate(() => {
+      const d = window.candleframe.inspect().document;
+      return { tideline: d.indicators.some(i => i.kind === 'tideline'), chartType: d.chartType ?? 'candles' };
+    });
+  const kept = async label => {
+    const now = await settings();
+    check(now.tideline && now.chartType === 'footprint', `chart settings stay on the pane ${label}`);
+  };
+  const switchTo = async (id, value) => {
+    const chosen = await pick(id, value);
+    const field = id === 'symbol' ? 'symbol' : 'interval';
+    await page.waitForFunction(
+      ([field, value]) =>
+        (field === 'symbol'
+          ? window.candleframe.inspect().symbol
+          : window.candleframe.inspect().feed.interval) === value,
+      [field, chosen],
+    );
+    await sleep(700);
+    return chosen;
+  };
+  const interval = await page.evaluate(() => window.candleframe.inspect().feed.interval);
+  const other = await switchTo('interval');
+  // A drawing makes the other interval save a layout of its own, without these settings.
+  await page.evaluate(() => {
+    const { timeMs, close } = window.candleframe.inspect().latestCandle;
+    window.candleframe.execute({
+      type: 'drawing.add',
+      drawing: { id: 'other-interval', type: 'horizontal-line', points: [{ timeMs, price: close }] },
+    });
+  });
+  await sleep(700);
+  await switchTo('interval', interval);
+  await page.evaluate(() => {
+    window.candleframe.execute({ type: 'indicator.add', indicator: { kind: 'tideline' } });
+    window.candleframe.execute({ type: 'chartType.set', chartType: 'footprint' });
+  });
+  await sleep(700);
+  await switchTo('interval', other);
+  await kept(`switching ${interval} to ${other}`);
+  await switchTo('symbol');
+  await kept('switching symbol');
+  await page.reload();
+  await ready();
+  await sleep(300);
+  await kept('after a reload');
 } catch (error) {
   problems.push(`step failed: ${error.message}`);
   console.log(`FAIL ${error.message}`);

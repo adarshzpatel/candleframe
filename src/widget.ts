@@ -125,6 +125,11 @@ interface Cell {
   timeFormats: TimeFormats;
   /** Market key whose saved document has loaded; autosave waits for it. */
   loadedKey: string | null;
+  /**
+   * The first load has run. Chart settings belong to the pane: the first load takes them
+   * from the saved document, later market switches keep the pane's own.
+   */
+  paneLoaded?: boolean;
   savedRevision: number;
   saveTimer?: ReturnType<typeof setTimeout>;
   unsubscribe: () => void;
@@ -496,9 +501,16 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
   }
 
   // Autosave per chart. It waits for the market's saved document to load, so a fresh
-  // chart never overwrites it.
-  const documentContent = (d: Readonly<ChartDocument>) =>
-    JSON.stringify([d.layers, d.intensity, d.indicators, d.drawings]);
+  // chart never overwrites it. Only drawings are per market; indicators, layers, chart
+  // type and heatmap intensity are chart settings that stay with the pane.
+  const documentContent = (d: Readonly<ChartDocument>) => JSON.stringify(d.drawings);
+  const paneSettings = (d: Readonly<ChartDocument>) => ({
+    layers: d.layers,
+    intensity: d.intensity,
+    indicators: d.indicators,
+    chartType: d.chartType ?? 'candles',
+    ...(d.footprint ? { footprint: d.footprint } : {}),
+  });
   async function saveCell(cell: Cell, manual = false) {
     clearTimeout(cell.saveTimer);
     cell.saveTimer = undefined;
@@ -524,7 +536,12 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
       other.savedRevision = other.state.documentRevision + 1;
       try {
         other.chart.restoreDocument(
-          { ...document, viewport: current.viewport, priceScale: current.priceScale },
+          {
+            ...document,
+            ...paneSettings(current),
+            viewport: current.viewport,
+            priceScale: current.priceScale,
+          },
           undefined,
           { undoable: false },
         );
@@ -560,6 +577,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
         chart.restoreDocument(
           {
             ...(saved as ChartDocument),
+            ...(cell.paneLoaded ? paneSettings(now.document) : {}),
             viewport: now.document.viewport,
             priceScale: log ? { mode: 'auto', log } : { mode: 'auto' },
           },
@@ -573,6 +591,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     if (disposed || !cells.includes(cell) || layoutKey(cell) !== key) return;
     cell.savedRevision = chart.inspect().documentRevision;
     cell.loadedKey = key;
+    cell.paneLoaded = true;
     if (cell.state) scheduleSave(cell, cell.state);
   }
   async function restoreCell(cell: Cell) {
