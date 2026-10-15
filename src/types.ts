@@ -142,9 +142,13 @@ export interface IndicatorOutput {
   readonly themeColor?: IndicatorColorSlot;
   /**
    * `histogram` draws bars from zero, toned by sign. `column` draws bars from zero in the
-   * output's own color. Default `line`.
+   * output's own color. `dot` draws a small circle at each finite value. `candles` is not
+   * drawn or fitted: its values index `palette` and recolor the price candles, NaN keeping
+   * the theme color. Default `line`.
    */
-  readonly style?: 'line' | 'histogram' | 'column';
+  readonly style?: 'line' | 'histogram' | 'column' | 'dot' | 'candles';
+  /** With `style: 'candles'`: the candle colors its values index. */
+  readonly palette?: readonly (readonly [number, number, number, number])[];
 }
 export interface IndicatorPlugin {
   readonly id: string;
