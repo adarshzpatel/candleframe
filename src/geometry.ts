@@ -62,12 +62,13 @@ export function paneRanges(state: RuntimeState, fromMs: number, toMs: number): P
         return { id: plugin.id, name: plugin.name, min: plugin.range.min, max: plugin.range.max };
       let min = Infinity,
         max = -Infinity;
-      for (const values of series)
-        for (let i = start; i < end; i++)
-          if (Number.isFinite(values[i])) {
-            min = Math.min(min, values[i]);
-            max = Math.max(max, values[i]);
-          }
+      for (const [k, values] of series.entries())
+        if (plugin.outputs?.[k]?.style !== 'candles')
+          for (let i = start; i < end; i++)
+            if (Number.isFinite(values[i])) {
+              min = Math.min(min, values[i]);
+              max = Math.max(max, values[i]);
+            }
       for (const level of plugin.levels ?? []) {
         min = Math.min(min, level);
         max = Math.max(max, level);
@@ -115,12 +116,13 @@ export function createGeometry(
   if (state.document.layers.indicator && visible.length)
     for (const { plugin, series, visible: shown } of state.indicators) {
       if (!shown || (plugin.pane ?? 'price') !== 'price') continue;
-      for (const values of series)
-        for (let i = indexes.start; i < indexes.end; i++)
-          if (Number.isFinite(values[i]) && values[i] > 0) {
-            low = Math.min(low, values[i]);
-            high = Math.max(high, values[i]);
-          }
+      for (const [k, values] of series.entries())
+        if (plugin.outputs?.[k]?.style !== 'candles')
+          for (let i = indexes.start; i < indexes.end; i++)
+            if (Number.isFinite(values[i]) && values[i] > 0) {
+              low = Math.min(low, values[i]);
+              high = Math.max(high, values[i]);
+            }
     }
   if (!Number.isFinite(low)) {
     low = 68000;

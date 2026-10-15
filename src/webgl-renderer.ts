@@ -133,6 +133,25 @@ const colorsFor = (theme: ResolvedChartTheme) => {
   };
 };
 
+/**
+ * Per-bar candle colors from `[start, end)`, read from the first shown price indicator with
+ * a `candles` output. Undefined keeps the theme color.
+ */
+function candleTones(state: RuntimeState, start: number, end: number): (Color | undefined)[] {
+  const tones: (Color | undefined)[] = new Array(Math.max(0, end - start));
+  if (!state.document.layers.indicator) return tones;
+  for (const { plugin, series, visible } of state.indicators) {
+    if (!visible || (plugin.pane ?? 'price') !== 'price') continue;
+    const k = plugin.outputs?.findIndex(output => output.style === 'candles') ?? -1;
+    const palette = plugin.outputs?.[k]?.palette;
+    if (k < 0 || !palette?.length) continue;
+    const values = series[k] ?? [];
+    for (let i = start; i < end; i++) tones[i - start] = palette[values[i]];
+    return tones;
+  }
+  return tones;
+}
+
 /** Instanced line/rectangle geometry and a bounded, incrementally updated depth texture. */
 export class WebGL2Renderer implements ChartRenderer {
   readonly name = 'WebGL2';
@@ -448,7 +467,9 @@ export class WebGL2Renderer implements ChartRenderer {
       close: number;
       volume: number;
       footprint?: boolean;
+      tone?: Color;
     }[] = [];
+    const tones = candleTones(state, range.start, range.end);
     // Footprint bars leave their candle to the overlay, which draws it beside the cells.
     const footprints = !merge && footprintShown(state.document, g.barSpacing);
     let column = NaN,
@@ -463,6 +484,7 @@ export class WebGL2Renderer implements ChartRenderer {
         last.low = Math.min(last.low, bar.low);
         last.close = bar.close;
         last.volume += bar.volume;
+        last.tone = tones[i - range.start];
         last.x = (last.x * members + x) / (members + 1);
         members++;
       } else {
@@ -474,6 +496,7 @@ export class WebGL2Renderer implements ChartRenderer {
           close: bar.close,
           volume: bar.volume,
           footprint: footprints && !!bar.footprint?.length,
+          tone: tones[i - range.start],
         });
         column = key;
         members = 1;
@@ -524,7 +547,7 @@ export class WebGL2Renderer implements ChartRenderer {
     for (const bar of drawn) {
       const up = bar.close >= bar.open;
       const x = bar.x,
-        color = up ? colors.up : colors.down;
+        color = bar.tone ?? (up ? colors.up : colors.down);
       if (state.document.layers.candles && !bar.footprint) {
         this.line(
           x,
@@ -532,7 +555,7 @@ export class WebGL2Renderer implements ChartRenderer {
           x,
           g.y(bar.low),
           appearance.wickWidth,
-          up ? colors.wickUp : colors.wickDown,
+          bar.tone ?? (up ? colors.wickUp : colors.wickDown),
           priceClip,
         );
         const top = g.y(Math.max(bar.open, bar.close)),
@@ -599,6 +622,8 @@ export class WebGL2Renderer implements ChartRenderer {
           ? plugin.outputs
           : [{ color: plugin.color, style: 'line' as const }];
         outputs.forEach((output, k) => {
+          // Dots are drawn on the overlay; candle colors were applied to the bars above.
+          if (output.style === 'dot' || output.style === 'candles') return;
           const values = series[k] ?? [];
           const color = indicatorColor(theme, plugin, k);
           if (output.style === 'histogram' || output.style === 'column') {

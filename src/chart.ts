@@ -16,6 +16,7 @@ import {
   renderPriceLines,
 } from './chart-overlays.ts';
 import { renderBubbles } from './bubble-scene.ts';
+import { renderIndicatorDots } from './dot-scene.ts';
 import { renderFlowSignals } from './signal-scene.ts';
 import type {
   ChartMarker,
@@ -652,6 +653,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     const g = geometry;
     renderFootprints(ctx, state, g, theme, footprints);
     renderProfiles(ctx, state, g, theme, profiles, timeZone);
+    renderIndicatorDots(ctx, state, g, theme);
     renderBubbles(ctx, state, g, theme);
     renderFlowSignals(ctx, state, g, theme);
     ctx.font = `${theme.typography.axisSize}px ${theme.typography.numberFamily}`;
