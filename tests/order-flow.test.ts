@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { cvd, priceDelta, volumeProfile, IndicatorRegistry } from '../src/indicators.ts';
-import { buildProfile, profileStep } from '../src/profiles.ts';
+import { buildProfile, currentSession, profileStep, sessionRanges } from '../src/profiles.ts';
 import { ChartRuntime } from '../src/runtime.ts';
 import { createSimulatedFeed } from '../src/simulated-feed.ts';
 import type { Candle } from '../src/types.ts';
@@ -89,11 +89,62 @@ test('profile indicators validate inputs and register as price-axis kinds', () =
   assert.equal(registry.get('price-delta')?.pane, 'profile');
   assert.equal(registry.get('cvd')?.pane, 'separate');
   assert.deepEqual(registry.create('vp', {}, 'vp-1').profile, {
-    mode: 'volume',
+    volume: true,
+    delta: true,
     rowHeight: 5,
     width: 0.2,
     valueArea: 0.7,
+    range: 'visible',
+    sessions: 0,
   });
+  // Range options: 0 current session, 1 today, 2 visible.
+  const today = registry.create('vp', { range: 1, sessions: 1, delta: 0 }, 'vp-2');
+  assert.equal(today.name, "Today's volume profile");
+  assert.deepEqual(
+    [today.profile?.range, today.profile?.sessions, today.profile?.delta],
+    ['today', 10, false],
+  );
+  assert.equal(registry.create('vp', { range: 0 }, 'vp-3').profile?.range, 'session');
+  assert.equal(registry.create('vp', {}, 'vp-4').inputs?.range, 2);
+  assert.throws(() => registry.inputs('vp', { range: 3 }), /range must be/);
+  // Price delta is merged into the volume profile: old layouts load, the add list skips it.
+  assert.equal(registry.get('price-delta')?.hidden, true);
+  assert.deepEqual(registry.create('price-delta', {}, 'pd').profile, {
+    volume: false,
+    delta: true,
+    rowHeight: 5,
+    width: 0.1,
+  });
+});
+
+test('session ranges split bars by calendar day in the chart time zone', () => {
+  const hour = 3_600_000;
+  // Hourly bars from 2026-01-01 00:00 UTC over three days.
+  const candles = Array.from({ length: 72 }, (_, i) => bar(Date.UTC(2026, 0, 1) + i * hour, 1, 2, 1));
+  assert.deepEqual(sessionRanges(candles, 10), [
+    { start: 0, end: 24 },
+    { start: 24, end: 48 },
+    { start: 48, end: 72 },
+  ]);
+  assert.deepEqual(sessionRanges(candles, 2), [
+    { start: 24, end: 48 },
+    { start: 48, end: 72 },
+  ]);
+  // New York is five hours behind UTC in January, so its days start at 05:00 UTC.
+  assert.deepEqual(sessionRanges(candles, 1, 'America/New_York'), [{ start: 53, end: 72 }]);
+});
+
+test('the current session starts after the last trading gap, or at midnight UTC without one', () => {
+  const hour = 3_600_000;
+  const day0 = Date.UTC(2026, 0, 1);
+  const continuous = Array.from({ length: 30 }, (_, i) => bar(day0 + i * hour, 1, 2, 1));
+  assert.deepEqual(currentSession(continuous, hour), { start: 24, end: 30 });
+  // 09:00 to 16:00 on two days: the session is the second day's bars.
+  const gapped = [0, 1].flatMap(d =>
+    Array.from({ length: 7 }, (_, i) => bar(day0 + d * 24 * hour + (9 + i) * hour, 1, 2, 1)),
+  );
+  assert.deepEqual(currentSession(gapped, hour), { start: 7, end: 14 });
+  assert.equal(currentSession([], hour), null);
 });
 
 test('the runtime publishes profile indicators without series and CVD from simulated flow', t => {

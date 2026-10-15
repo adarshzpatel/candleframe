@@ -193,14 +193,24 @@ export interface IndicatorPlugin {
 export type IndicatorPane = 'price' | 'separate' | 'profile';
 /** How a profile indicator aggregates and draws the visible bars. */
 export interface ProfileOptions {
-  /** `volume` stacks buy and sell volume; `delta` draws buy minus sell from a center line. */
-  readonly mode: 'volume' | 'delta';
+  /** Draw the volume column: buy and sell volume at each price, with POC and value area. */
+  readonly volume: boolean;
+  /** Draw the delta column: buy minus sell volume at each price. */
+  readonly delta: boolean;
   /** Target row height in pixels. Rows snap to round prices so they stay put while panning. */
   readonly rowHeight: number;
-  /** Share of the plot width, 0.05 to 0.5. */
+  /** Share of the plot width, 0.05 to 0.5. The delta column takes half when both show. */
   readonly width: number;
-  /** Share of volume inside the value area, such as 0.7. Volume mode only. */
+  /** Share of volume inside the value area, such as 0.7. */
   readonly valueArea?: number;
+  /**
+   * `visible` profiles the bars in view against the price axis. `today` (the calendar day in
+   * the chart time zone) and `session` (bars since the last trading gap) draw only that
+   * profile, over its own bars, with no axis column or past sessions. Default `visible`.
+   */
+  readonly range?: 'visible' | 'today' | 'session';
+  /** Also draw a fixed-range profile over each of this many past days. Default 0. */
+  readonly sessions?: number;
 }
 export interface BubbleOptions {
   /** Smallest print shown, in contracts or units. */

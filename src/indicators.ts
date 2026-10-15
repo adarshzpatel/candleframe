@@ -12,6 +12,10 @@ export interface IndicatorInputSpec {
   max: number;
   /** Default true. */
   integer?: boolean;
+  /** An on/off switch stored as 0 or 1; `min` 0 and `max` 1. */
+  toggle?: boolean;
+  /** Named choices stored as their index; `min` 0 and `max` the last index. */
+  options?: readonly string[];
 }
 
 /** A registered indicator kind. Documents store `{ kind, inputs }` and the runtime calls `create`. */
@@ -21,6 +25,8 @@ export interface IndicatorDefinition {
   readonly description: string;
   readonly pane: IndicatorPane;
   readonly inputs: Readonly<Record<string, IndicatorInputSpec>>;
+  /** Left out of the add list; documents that use it still load. */
+  readonly hidden?: boolean;
   create(inputs: Readonly<Record<string, number>>, id: string): IndicatorPlugin;
 }
 
@@ -496,23 +502,61 @@ function checkProfile(rowHeight: number, width: number) {
   if (!(width >= 0.05 && width <= 0.5)) throw new ChartError('INVALID_INPUT', 'width must be 5 to 50%');
 }
 
-/** Visible-range volume profile with point of control and value area, against the price axis. */
-export function volumeProfile(rowHeight = 5, width = 0.2, valueArea = 0.7): IndicatorPlugin {
+/** Range choices in the order the settings list them. */
+const PROFILE_RANGES = ['session', 'today', 'visible'] as const;
+
+/** How many past days the sessions switch draws. */
+export const PROFILE_SESSIONS = 10;
+
+/**
+ * Volume profile with point of control and value area against the price axis, and a delta
+ * column beside it. `sessions` also draws a fixed-range profile over each of the last ten
+ * days. `today` and `session` replace both with that one profile, over its own bars.
+ */
+export function volumeProfile(
+  rowHeight = 5,
+  width = 0.2,
+  valueArea = 0.7,
+  options: { delta?: boolean; range?: 'visible' | 'today' | 'session'; sessions?: boolean } = {},
+): IndicatorPlugin {
   checkProfile(rowHeight, width);
   if (!(valueArea >= 0.1 && valueArea <= 1))
     throw new ChartError('INVALID_INPUT', 'value area must be 10 to 100%');
+  const delta = options.delta ?? true,
+    range = options.range ?? 'visible',
+    sessions = !!options.sessions;
   return {
     id: 'vp',
-    name: 'Volume profile',
+    name:
+      range === 'today'
+        ? "Today's volume profile"
+        : range === 'session'
+          ? 'Session volume profile'
+          : 'Volume profile',
     kind: 'vp',
-    inputs: { rowHeight, width: Math.round(width * 100), valueArea: Math.round(valueArea * 100) },
+    inputs: {
+      rowHeight,
+      width: Math.round(width * 100),
+      valueArea: Math.round(valueArea * 100),
+      delta: +delta,
+      range: PROFILE_RANGES.indexOf(range),
+      sessions: +sessions,
+    },
     pane: 'profile',
     color: TEAL,
-    profile: { mode: 'volume', rowHeight, width, valueArea },
+    profile: {
+      volume: true,
+      delta,
+      rowHeight,
+      width,
+      valueArea,
+      range,
+      sessions: sessions ? PROFILE_SESSIONS : 0,
+    },
   };
 }
 
-/** Buy minus sell volume at each price for the visible bars, drawn from a center line. */
+/** Buy minus sell volume at each price for the visible bars. Superseded by `volumeProfile`. */
 export function priceDelta(rowHeight = 5, width = 0.1): IndicatorPlugin {
   checkProfile(rowHeight, width);
   return {
@@ -522,7 +566,7 @@ export function priceDelta(rowHeight = 5, width = 0.1): IndicatorPlugin {
     inputs: { rowHeight, width: Math.round(width * 100) },
     pane: 'profile',
     color: MINT,
-    profile: { mode: 'delta', rowHeight, width },
+    profile: { volume: false, delta: true, rowHeight, width },
   };
 }
 
@@ -698,15 +742,23 @@ export const builtInIndicators: readonly IndicatorDefinition[] = [
   {
     kind: 'vp',
     name: 'Volume profile',
-    description: 'Buy and sell volume at each price for the visible bars, with POC and value area.',
+    description:
+      'Volume and delta at each price for the visible bars, today or the current session, with POC, value area and past sessions.',
     pane: 'profile',
     inputs: {
+      range: { label: 'Range', default: 2, min: 0, max: 2, options: ['Current session', 'Today', 'Visible'] },
       rowHeight: { label: 'Row px', default: 5, min: 2, max: 40 },
       width: { label: 'Width %', default: 20, min: 5, max: 50 },
       valueArea: { label: 'Value area %', default: 70, min: 10, max: 100 },
+      delta: { label: 'Delta', default: 1, min: 0, max: 1, toggle: true },
+      sessions: { label: `Last ${PROFILE_SESSIONS} sessions`, default: 0, min: 0, max: 1, toggle: true },
     },
     create: (inputs, id) => ({
-      ...volumeProfile(inputs.rowHeight, inputs.width / 100, inputs.valueArea / 100),
+      ...volumeProfile(inputs.rowHeight, inputs.width / 100, inputs.valueArea / 100, {
+        delta: !!inputs.delta,
+        range: PROFILE_RANGES[inputs.range],
+        sessions: !!inputs.sessions,
+      }),
       id,
     }),
   },
@@ -715,6 +767,7 @@ export const builtInIndicators: readonly IndicatorDefinition[] = [
     name: 'Price delta',
     description: 'Buy minus sell volume at each price for the visible bars.',
     pane: 'profile',
+    hidden: true,
     inputs: {
       rowHeight: { label: 'Row px', default: 5, min: 2, max: 40 },
       width: { label: 'Width %', default: 10, min: 5, max: 50 },

@@ -18,10 +18,12 @@ export const indicatorPanelStyles: string = `
 .indicator-add span{white-space:nowrap}
 .indicator-add small{margin-left:auto;color:var(--muted);font-size:var(--small-size);white-space:nowrap}
 .indicator-empty{margin:0;padding:calc(20px * var(--space)) calc(16px * var(--space));color:var(--muted);text-align:center}
-.widget-dialog.settings-dialog{bottom:auto;width:min(var(--theme-layout-dialogWidth,364px),calc(100% - 20px))}
+.widget-dialog.settings-dialog{inset:50% auto auto 50%;transform:translate(-50%,-50%);width:min(var(--theme-layout-dialogWidth,364px),calc(100% - 20px))}
 .indicator-settings{display:grid;gap:calc(10px * var(--space))}
-.indicator-settings label{display:grid;grid-template-columns:1fr 7em;align-items:center;gap:calc(10px * var(--space));color:var(--text)}
+.indicator-settings label{display:grid;grid-template-columns:1fr minmax(7em,auto);align-items:center;gap:calc(10px * var(--space));color:var(--text)}
+.indicator-settings select{height:var(--control-height);padding:0 calc(8px * var(--space));border:var(--border-width) solid var(--line);border-radius:var(--radius);background:var(--bg);color:var(--bright);font:var(--ui-weight) var(--ui-size) var(--ui-font,inherit)}
 .indicator-settings input{height:var(--control-height);padding:0 calc(8px * var(--space));border:var(--border-width) solid var(--line);border-radius:var(--radius);background:var(--bg);color:var(--bright);font:var(--ui-weight) var(--ui-size) var(--mono)}
+.indicator-settings input[type=checkbox]{justify-self:end;width:16px;height:16px;margin:0;accent-color:var(--accent)}
 .indicator-settings p{margin:0;color:var(--muted)}
 .legend-indicator>.legend-item{position:relative;gap:calc(6px * var(--space));min-height:calc(var(--control-height) - 6px);padding:0 calc(4px * var(--space));margin-left:calc(-4px * var(--space));border-radius:var(--radius);pointer-events:auto}
 .legend-item:hover,.legend-item:focus-within{background:var(--surface);text-shadow:none}
@@ -73,7 +75,9 @@ export function createIndicatorPanel(
     const terms = query.value.toLowerCase().trim();
     const sections: HTMLElement[] = [];
     const matches = state.indicatorKinds.filter(
-      kind => !terms || `${kind.name} ${kind.kind} ${kind.description}`.toLowerCase().includes(terms),
+      kind =>
+        !kind.hidden &&
+        (!terms || `${kind.name} ${kind.kind} ${kind.description}`.toLowerCase().includes(terms)),
     );
     if (matches.length) {
       const list = doc.createElement('div');
@@ -143,19 +147,45 @@ export function createIndicatorSettings(
   }
   inputs.forEach(([key, input], k) => {
     const label = doc.createElement('label');
+    const current = () => chart.inspect().indicators.find(i => i.id === id)?.inputs[key] ?? input.default;
+    if (input.options) {
+      const select = doc.createElement('select');
+      input.options.forEach((name, value) => select.append(new Option(name, String(value))));
+      select.value = String(indicator.inputs[key] ?? input.default);
+      if (!k) select.dataset.autofocus = '';
+      select.addEventListener('change', () => {
+        try {
+          chart.execute({ type: 'indicator.update', id, inputs: { [key]: Number(select.value) } });
+        } catch (error) {
+          report(error instanceof Error ? error.message : String(error));
+          select.value = String(current());
+        }
+      });
+      label.append(input.label, select);
+      element.append(label);
+      return;
+    }
     const field = doc.createElement('input');
-    field.type = 'number';
-    field.min = String(input.min);
-    field.max = String(input.max);
-    field.step = input.integer === false ? 'any' : '1';
-    field.value = String(indicator.inputs[key] ?? input.default);
+    if (input.toggle) {
+      label.className = 'toggle';
+      field.type = 'checkbox';
+      field.checked = !!(indicator.inputs[key] ?? input.default);
+    } else {
+      field.type = 'number';
+      field.min = String(input.min);
+      field.max = String(input.max);
+      field.step = input.integer === false ? 'any' : '1';
+      field.value = String(indicator.inputs[key] ?? input.default);
+    }
     if (!k) field.dataset.autofocus = '';
     field.addEventListener('change', () => {
       try {
-        chart.execute({ type: 'indicator.update', id, inputs: { [key]: Number(field.value) } });
+        const value = input.toggle ? +field.checked : Number(field.value);
+        chart.execute({ type: 'indicator.update', id, inputs: { [key]: value } });
       } catch (error) {
         report(error instanceof Error ? error.message : String(error));
-        field.value = String(chart.inspect().indicators.find(i => i.id === id)?.inputs[key] ?? input.default);
+        if (input.toggle) field.checked = !!current();
+        else field.value = String(current());
       }
     });
     label.append(input.label, field);

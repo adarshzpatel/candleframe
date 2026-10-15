@@ -651,7 +651,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     if (!state.candles.length) return;
     const g = geometry;
     renderFootprints(ctx, state, g, theme, footprints);
-    renderProfiles(ctx, state, g, theme, profiles);
+    renderProfiles(ctx, state, g, theme, profiles, timeZone);
     renderBubbles(ctx, state, g, theme);
     renderFlowSignals(ctx, state, g, theme);
     ctx.font = `${theme.typography.axisSize}px ${theme.typography.numberFamily}`;
