@@ -144,9 +144,10 @@ export interface IndicatorOutput {
    * `histogram` draws bars from zero, toned by sign. `column` draws bars from zero in the
    * output's own color. `dot` draws a small circle at each finite value. `candles` is not
    * drawn or fitted: its values index `palette` and recolor the price candles, NaN keeping
-   * the theme color. Default `line`.
+   * the theme color. `none` is not drawn but still feeds fills and the fitted range.
+   * Default `line`.
    */
-  readonly style?: 'line' | 'histogram' | 'column' | 'dot' | 'candles';
+  readonly style?: 'line' | 'histogram' | 'column' | 'dot' | 'candles' | 'none';
   /** With `style: 'dot'`: radius in pixels. Default 3. */
   readonly radius?: number;
   /** With `style: 'candles'`: the candle colors its values index. */

@@ -648,7 +648,7 @@ export class WebGL2Renderer implements ChartRenderer {
           : [{ color: plugin.color, style: 'line' as const }];
         outputs.forEach((output, k) => {
           // Dots are drawn on the overlay; candle colors were applied to the bars above.
-          if (output.style === 'dot' || output.style === 'candles') return;
+          if (output.style === 'dot' || output.style === 'candles' || output.style === 'none') return;
           const values = series[k] ?? [];
           const color = indicatorColor(theme, plugin, k);
           if (output.style === 'histogram' || output.style === 'column') {

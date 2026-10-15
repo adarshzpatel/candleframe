@@ -591,7 +591,6 @@ export function tideline(
   if (!(Number.isInteger(holdBars) && holdBars >= 1 && holdBars <= 20))
     throw new ChartError('INVALID_INPUT', 'hold bars must be 1 to 20');
   if (!(targetR >= 0.5 && targetR <= 10)) throw new ChartError('INVALID_INPUT', 'target must be 0.5 to 10 R');
-  const edge = (color: RGBA): RGBA => [color[0], color[1], color[2], 0.3];
   return {
     id: `tideline-${fastPeriod}-${slowPeriod}-${trendPeriod}`,
     name: `Tideline ${fastPeriod} ${slowPeriod} ${trendPeriod}`,
@@ -613,8 +612,19 @@ export function tideline(
     color: MINT,
     outputs: [
       ...TREND_STATES.flatMap(state => [
-        { id: `${state}-fast`, name: `${TREND_NAMES[state]} fast`, color: edge(TREND_COLORS[state]) },
-        { id: `${state}-slow`, name: `${TREND_NAMES[state]} slow`, color: edge(TREND_COLORS[state]) },
+        // Edges only bound the fill; the ribbon has no border.
+        {
+          id: `${state}-fast`,
+          name: `${TREND_NAMES[state]} fast`,
+          color: TREND_COLORS[state],
+          style: 'none' as const,
+        },
+        {
+          id: `${state}-slow`,
+          name: `${TREND_NAMES[state]} slow`,
+          color: TREND_COLORS[state],
+          style: 'none' as const,
+        },
       ]),
       { id: 'trend-above', name: 'Trend (close above)', color: MINT },
       { id: 'trend-below', name: 'Trend (close below)', color: AMBER },
