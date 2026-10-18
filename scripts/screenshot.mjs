@@ -7,6 +7,7 @@
 //   node scripts/screenshot.mjs --bars 24                                  # zoomed in to 24 bars
 //   node scripts/screenshot.mjs --interval 15m --bars 600 --add vp:day=1:sessions=1   # inputs after the kind
 //   node scripts/screenshot.mjs --theme paper,sand                         # one shot per theme
+//   node scripts/screenshot.mjs --bars 120 --position long                 # selected position plan
 import { spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -84,6 +85,27 @@ try {
         const toMs = latestCandle.timeMs + 2 * feed.intervalMs;
         chart.execute({ type: 'viewport.set', fromMs: toMs - bars * feed.intervalMs, toMs });
       }, Number(args.bars));
+    if (args.position)
+      await page.evaluate(type => {
+        const chart = window.candleframe;
+        const { latestCandle: last, feed } = chart.inspect();
+        const side = type === 'short' ? -1 : 1,
+          start = last.timeMs - 60 * feed.intervalMs,
+          end = start + 45 * feed.intervalMs;
+        chart.execute({
+          type: 'drawing.add',
+          drawing: {
+            id: 'screenshot-position',
+            type: `${type}-position`,
+            points: [
+              { timeMs: start, price: last.close },
+              { timeMs: end, price: last.close * (1 + side * 0.01) },
+              { timeMs: end, price: last.close * (1 - side * 0.004) },
+            ],
+          },
+        });
+        chart.selectDrawing('screenshot-position');
+      }, args.position);
     await sleep(800);
     for (const theme of args.theme ? args.theme.split(',') : [null]) {
       if (theme) {

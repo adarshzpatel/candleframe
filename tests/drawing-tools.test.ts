@@ -2,7 +2,12 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { DrawingRegistry, builtInDrawingTools, translateDrawing } from '../src/drawing-tools.ts';
 import { geometryForRanges } from '../src/geometry.ts';
-import { createPosition, movePositionHandle, positionMetrics } from '../src/position-drawing.ts';
+import {
+  createPosition,
+  movePositionHandle,
+  positionMetrics,
+  positionOutcome,
+} from '../src/position-drawing.ts';
 import type {
   Drawing,
   DrawingContext,
@@ -231,16 +236,55 @@ test('pitchfork median passes through the midpoint of its two fork anchors', () 
 test('position plans require ordered prices and display independently computed risk/reward', () => {
   const long = drawing('long-position', [point(20, 140), point(60, 180), point(60, 120)]);
   const scene = registry.project(long, context);
-  assert.ok(texts(scene).some(p => p.text === 'LONG  ·  2.00R  ·  140.00'));
+  assert.ok(texts(scene).some(p => p.text === 'LONG 140.00  ·  R/R 2.00'));
   assert.equal(paths(scene).filter(p => p.fill).length, 2);
   const short = drawing('short-position', [point(20, 160), point(60, 130), point(60, 170)]);
-  assert.ok(texts(registry.project(short, context)).some(p => p.text === 'SHORT  ·  3.00R  ·  160.00'));
+  assert.ok(texts(registry.project(short, context)).some(p => p.text === 'SHORT 160.00  ·  R/R 3.00'));
   assert.throws(() => drawing('long-position', short.points), /INVALID_POSITION_PRICES/);
   assert.throws(() => drawing('short-position', long.points), /INVALID_POSITION_PRICES/);
   assert.throws(
     () => drawing('long-position', [point(20, 140), point(60, 180), point(60, 140)]),
     /INVALID_POSITION_PRICES/,
   );
+});
+
+test('position labels show distance, percent and ticks for each level', () => {
+  const long = drawing('long-position', [point(20, 140), point(60, 180), point(60, 120)]);
+  const labels = texts(registry.project(long, { ...context, tickSize: 0.25 })).map(p => p.text);
+  assert.ok(labels.includes('Target 180.00  ·  +40.00 (28.57%)  ·  160 ticks'));
+  assert.ok(labels.includes('Stop 120.00  ·  −20.00 (14.29%)  ·  80 ticks'));
+});
+
+test('position outcomes replay candles from fill to the first level reached', () => {
+  const candle = (timeMs: number, low: number, high: number, close = (low + high) / 2) => ({
+    timeMs,
+    open: close,
+    high,
+    low,
+    close,
+    volume: 1,
+  });
+  const long = drawing('long-position', [point(20, 140), point(60, 180), point(60, 120)]);
+  assert.deepEqual(positionOutcome(long, [candle(10, 130, 150), candle(30, 145, 160)]), { state: 'pending' });
+  const open = positionOutcome(long, [candle(20, 138, 142), candle(30, 141, 160, 155), candle(70, 100, 300)]);
+  assert.deepEqual(open, { state: 'open', fillMs: 20, exitMs: 30, exitPrice: 155, pnl: 15 });
+  assert.equal(positionOutcome(long, [candle(20, 138, 142), candle(40, 150, 185)]).state, 'target');
+  // One bar through both levels cannot be ordered, so it counts against the plan.
+  assert.equal(positionOutcome(long, [candle(20, 110, 190)]).state, 'stop');
+  const short = drawing('short-position', [point(20, 160), point(60, 130), point(60, 170)]);
+  assert.deepEqual(positionOutcome(short, [candle(20, 158, 162), candle(30, 125, 150)]), {
+    state: 'target',
+    fillMs: 20,
+    exitMs: 30,
+    exitPrice: 130,
+    pnl: 30,
+  });
+  const scene = registry.project(long, {
+    ...context,
+    candles: [candle(20, 138, 142), candle(30, 141, 160, 155)],
+  });
+  assert.ok(texts(scene).some(p => p.text.endsWith('\nOpen P&L +15.00 (+10.71%)')));
+  assert.equal(paths(scene).filter(p => p.fill).length, 3);
 });
 
 test('positions remain editable near the price floor and when their time extent runs backwards', () => {

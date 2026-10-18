@@ -422,6 +422,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       theme,
       intervalMs: state.feed.intervalMs,
       tickSize: state.feed.instrument.tickSize,
+      candles: state.candles,
       formatPrice: value => formatPrice.format(value),
       measureText(text, font) {
         ctx!.save();

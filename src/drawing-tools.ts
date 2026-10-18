@@ -1,5 +1,11 @@
 import { ChartError } from './errors.ts';
-import { createPosition, movePositionHandle, positionHandles, positionMetrics } from './position-drawing.ts';
+import {
+  createPosition,
+  movePositionHandle,
+  positionHandles,
+  positionMetrics,
+  positionOutcome,
+} from './position-drawing.ts';
 import { themeTokenDefaults } from './theme-tokens.ts';
 import type { Anchor } from './types.ts';
 import type {
@@ -321,11 +327,14 @@ function measurement(d: Drawing, c: DrawingContext): DrawingPrimitive[] {
 function position(d: Drawing, c: DrawingContext): DrawingPrimitive[] {
   const [entry, target, stop] = screen(d, c);
   if (!target || !stop) return [];
-  const right = target.x,
+  const g = c.geometry,
+    right = target.x,
     x = (entry.x + right) / 2,
-    metrics = positionMetrics(d);
+    metrics = positionMetrics(d),
+    [entryPrice, targetPrice, stopPrice] = d.points.map(p => p.price);
   const gain = c.theme?.palette.positive ?? '#65d9a0',
-    loss = c.theme?.palette.negative ?? '#ed7979';
+    loss = c.theme?.palette.negative ?? '#ed7979',
+    ink = c.theme?.palette.background ?? '#0b0f14';
   const region = (end: DrawingPoint, color: string): DrawingPrimitive[] => [
     path(rectangle(entry, { x: right, y: end.y }), { closed: true, fill: color, width: 0 }),
     path(rectangle(entry, { x: right, y: end.y }), {
@@ -339,28 +348,64 @@ function position(d: Drawing, c: DrawingContext): DrawingPrimitive[] {
     padding = c.theme?.chart.annotationPadding ?? 6;
   const outside = (y: number) =>
     y < entry.y
-      ? Math.max(c.geometry.top + size + padding, y - 10)
-      : Math.min(c.geometry.top + c.geometry.plotHeight - padding, y + size + padding + 5);
+      ? Math.max(g.top + size + padding, y - 10)
+      : Math.min(g.top + g.plotHeight - padding, y + size + padding + 5);
+  const signed = (value: number) => `${value < 0 ? '−' : '+'}${c.formatPrice(Math.abs(value))}`;
+  const percent = (value: number) => `${((value / entryPrice) * 100).toFixed(2)}%`;
+  const ticks = (value: number) =>
+    c.tickSize ? `  ·  ${Math.round(Math.abs(value) / c.tickSize)} ticks` : '';
+  const pill = { align: 'center' as const, color: ink, radius: 4 };
+  const font = `${size}px ${c.theme?.typography.annotationFamily ?? 'monospace'}`;
+  const measure = (value: string) =>
+    Math.max(...value.split('\n').map(line => c.measureText?.(line, font) ?? line.length * size * 0.62)) +
+    padding * 2;
+  // Keeps centred labels inside the plot when the plan is narrow or partly offscreen.
+  const fit = (value: string, y: number): DrawingPoint => {
+    const half = measure(value) / 2;
+    return { x: Math.max(g.left + half, Math.min(g.left + g.plotWidth - half, x)), y };
+  };
+  const level = (name: string, price: number, distance: number) => {
+    const head = `${name} ${c.formatPrice(price)}`,
+      tail = `${signed(distance)} (${percent(Math.abs(distance))})${ticks(distance)}`,
+      line = `${head}  ·  ${tail}`;
+    return measure(line) > g.plotWidth ? `${head}\n${tail}` : line;
+  };
   const side = d.type === 'long-position' ? 'LONG' : 'SHORT';
+  const summary = `${side} ${c.formatPrice(entryPrice)}  ·  R/R ${metrics.ratio.toFixed(2)}`;
+  const scene = [...region(target, gain), ...region(stop, loss), path([entry, { x: right, y: entry.y }])];
+  let status = '',
+    statusColor: string | undefined;
+  if (c.candles) {
+    const outcome = positionOutcome(d, c.candles);
+    if (outcome.state === 'pending') status = 'Waiting for entry';
+    else {
+      const pnl = outcome.pnl!,
+        color = pnl >= 0 ? gain : loss,
+        from = { x: g.x(outcome.fillMs!), y: entry.y },
+        to = { x: g.x(outcome.exitMs!), y: g.y(outcome.exitPrice!) };
+      statusColor = color;
+      // A second fill over the level region shows how far the trade has travelled so far.
+      scene.push(
+        path(rectangle(from, to), { closed: true, fill: color, width: 0 }),
+        path([from, to], { color: c.theme?.palette.text ?? '#e6edf3', width: 1, dash: [4, 4], opacity: 0.7 }),
+      );
+      const name =
+        outcome.state === 'open' ? 'Open P&L' : outcome.state === 'target' ? 'Target hit' : 'Stopped';
+      status = `${name} ${signed(pnl)} (${pnl < 0 ? '−' : '+'}${percent(Math.abs(pnl))})`;
+    }
+  }
+  const targetLabel = level('Target', targetPrice, metrics.reward),
+    stopLabel = level('Stop', stopPrice, -metrics.risk),
+    center = status ? `${summary}\n${status}` : summary;
   return [
-    ...region(target, gain),
-    ...region(stop, loss),
-    path([entry, { x: right, y: entry.y }]),
-    text(
-      { x, y: outside(target.y) },
-      `Target ${c.formatPrice(d.points[1].price)}  +${metrics.rewardPercent.toFixed(2)}%`,
-      { align: 'center', color: gain },
-    ),
-    text(
-      { x, y: entry.y + size * 0.35 },
-      `${side}  ·  ${metrics.ratio.toFixed(2)}R  ·  ${c.formatPrice(d.points[0].price)}`,
-      { align: 'center' },
-    ),
-    text(
-      { x, y: outside(stop.y) },
-      `Stop ${c.formatPrice(d.points[2].price)}  −${metrics.riskPercent.toFixed(2)}%`,
-      { align: 'center', color: loss },
-    ),
+    ...scene,
+    text(fit(targetLabel, outside(target.y)), targetLabel, { ...pill, background: gain }),
+    text(fit(center, entry.y + size * 0.35), center, {
+      align: 'center',
+      radius: 4,
+      ...(statusColor ? { background: statusColor, color: ink } : {}),
+    }),
+    text(fit(stopLabel, outside(stop.y)), stopLabel, { ...pill, background: loss }),
   ];
 }
 const validatePosition =

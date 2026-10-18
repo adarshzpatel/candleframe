@@ -16,7 +16,7 @@ The workbench includes 30 drawing tools and a shared editing workflow. The catal
 | Measurements | Price range, date range, date and price range | Two clicks |
 | Position plans | Long position, short position | One click at entry, then drag level or width handles |
 
-Position plans start at 1:1 reward/risk and show target/stop prices, percentage distances and a compact entry badge. Target and stop handles move vertically, the side handle adjusts width, and the entry handle adjusts entry between the two levels. Dragging a shaded region moves the whole plan. Prices are constrained during handle drags so crossing entry cannot produce an invalid position on release. They do not submit orders or calculate account position sizes. Fibonacci levels are editable and can be cleared to restore defaults. Measurements use the selected interval and elapsed UTC time; exchange session calendars are not implemented.
+Position plans start at 1:1 reward/risk. Target and stop labels show the price, distance, percentage and tick count. The entry label shows side, entry and reward/risk, plus the trade's state when candles are loaded: waiting for entry, open P&L, target hit or stopped. The plan fills on the first candle inside its width that trades through entry, then closes on the first candle that reaches target or stop; a candle that reaches both counts as stopped. A darker fill and a dashed line trace the trade from fill to exit or the latest candle. Entry, target and stop handles sit on the left edge and move vertically, and the right-edge handle adjusts width. Dragging a shaded region moves the whole plan. Prices are constrained during handle drags so crossing entry cannot produce an invalid position on release. They do not submit orders or calculate account position sizes. Fibonacci levels are editable and can be cleared to restore defaults. Measurements use the selected interval and elapsed UTC time; exchange session calendars are not implemented.
 
 ## Editing
 
@@ -113,4 +113,4 @@ Tools may implement `create(anchor, context)` for one-click placement while reta
 
 Optional `handles(drawing, context)` and `moveHandle(drawing, id, anchor, context)` hooks must be supplied together. They define projected handle locations, cursors and constrained anchor updates. The shared scene paints and hit-tests those same locations. Numeric IDs address ordinary raw anchors; custom handles should use string IDs and their paired move hook. `DrawingContext.tickSize` is available to constrain prices. `editableProperties: true` enables double-click/Enter activation through `onDrawingEdit` without opening an editor immediately on placement.
 
-Account sizing, leverage, quantity and simulated trade P&L remain outside this position-plan implementation.
+Account sizing, leverage and quantity remain outside this position-plan implementation.

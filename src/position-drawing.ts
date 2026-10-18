@@ -1,4 +1,4 @@
-import type { Anchor } from './types.ts';
+import type { Anchor, Candle } from './types.ts';
 import type { Drawing, DrawingContext, DrawingHandle } from './drawing-types.ts';
 
 export const isPosition = (drawing: Pick<Drawing, 'type'> | undefined | null): boolean =>
@@ -16,6 +16,61 @@ export function positionMetrics(drawing: Pick<Drawing, 'type' | 'points'>) {
     ratio: reward / risk,
     rewardPercent: (reward / entry.price) * 100,
     riskPercent: (risk / entry.price) * 100,
+  };
+}
+
+export interface PositionOutcome {
+  /** Waiting for price to trade through entry, still running, or closed at a level. */
+  state: 'pending' | 'open' | 'target' | 'stop';
+  fillMs?: number;
+  exitMs?: number;
+  exitPrice?: number;
+  /** Price distance in the trade's favour, negative when losing. */
+  pnl?: number;
+}
+
+/**
+ * Replays candles inside the plan's time extent. The plan fills on the first candle that trades
+ * through entry, then closes on the first candle that reaches target or stop. A candle that
+ * reaches both counts as a stop, since bar data cannot say which came first.
+ */
+export function positionOutcome(
+  drawing: Pick<Drawing, 'type' | 'points'>,
+  candles: readonly Candle[],
+): PositionOutcome {
+  const [entry, target, stop] = drawing.points,
+    direction = positionDirection(drawing.type);
+  const from = Math.min(entry.timeMs, target.timeMs),
+    to = Math.max(entry.timeMs, target.timeMs);
+  let fillMs: number | undefined, last: Candle | undefined;
+  for (const candle of candles) {
+    if (candle.timeMs < from) continue;
+    if (candle.timeMs > to) break;
+    if (fillMs === undefined) {
+      if (candle.low > entry.price || candle.high < entry.price) continue;
+      fillMs = candle.timeMs;
+    }
+    last = candle;
+    const stopped = direction > 0 ? candle.low <= stop.price : candle.high >= stop.price,
+      reached = direction > 0 ? candle.high >= target.price : candle.low <= target.price;
+    if (stopped || reached) {
+      const exitPrice = stopped ? stop.price : target.price;
+      return {
+        state: stopped ? 'stop' : 'target',
+        fillMs,
+        exitMs: candle.timeMs,
+        exitPrice,
+        pnl: (exitPrice - entry.price) * direction,
+      };
+    }
+  }
+  if (fillMs === undefined || !last) return { state: 'pending' };
+  return {
+    state: 'open',
+    fillMs,
+    exitMs: last.timeMs,
+    exitPrice: last.close,
+    pnl: (last.close - entry.price) * direction,
   };
 }
 
@@ -40,12 +95,11 @@ export function positionHandles(drawing: Drawing, { geometry: g }: DrawingContex
   if (drawing.points.length < 3) return [];
   const [entry, target, stop] = drawing.points,
     start = g.x(entry.timeMs),
-    end = g.x(target.timeMs),
-    middle = (start + end) / 2;
+    end = g.x(target.timeMs);
   return [
     { id: 'entry', at: { x: start, y: g.y(entry.price) }, cursor: 'ns-resize' },
-    { id: 'target', at: { x: middle, y: g.y(target.price) }, cursor: 'ns-resize' },
-    { id: 'stop', at: { x: middle, y: g.y(stop.price) }, cursor: 'ns-resize' },
+    { id: 'target', at: { x: start, y: g.y(target.price) }, cursor: 'ns-resize' },
+    { id: 'stop', at: { x: start, y: g.y(stop.price) }, cursor: 'ns-resize' },
     { id: 'extent', at: { x: end, y: g.y(entry.price) }, cursor: 'ew-resize' },
   ];
 }

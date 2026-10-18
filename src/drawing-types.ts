@@ -1,5 +1,5 @@
 import type { ResolvedChartTheme } from './themes.ts';
-import type { Anchor } from './types.ts';
+import type { Anchor, Candle } from './types.ts';
 import type { ChartGeometry } from './geometry.ts';
 
 export interface DrawingStyle {
@@ -59,6 +59,8 @@ export type DrawingPrimitive =
       color?: string;
       size?: number;
       background?: string;
+      /** Corner radius for the background box. */
+      radius?: number;
       align?: 'left' | 'center' | 'right';
     };
 export interface DrawingContext {
@@ -66,6 +68,8 @@ export interface DrawingContext {
   geometry: ChartGeometry;
   intervalMs: number;
   tickSize?: number;
+  /** Loaded candles in time order, for drawings that replay price (position outcomes). */
+  candles?: readonly Candle[];
   formatPrice(price: number): string;
   /** Shared measured text width for painting and hit testing; optional for headless hosts. */
   measureText?(text: string, font: string): number;

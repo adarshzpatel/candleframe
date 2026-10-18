@@ -174,7 +174,11 @@ export function renderDrawings(
         ctx.textBaseline = 'alphabetic';
         ctx.fillStyle = primitive.background ?? themeColor(theme, theme.chart.annotationBackground);
         ctx.globalAlpha = theme.chart.annotationOpacity;
-        ctx.fillRect(b.x, b.y, b.width, b.height);
+        if (primitive.radius && typeof ctx.roundRect === 'function') {
+          ctx.beginPath();
+          ctx.roundRect(b.x, b.y, b.width, b.height, primitive.radius);
+          ctx.fill();
+        } else ctx.fillRect(b.x, b.y, b.width, b.height);
         ctx.globalAlpha = 1;
         ctx.fillStyle = primitive.color ?? d.style.color;
         b.lines.forEach((line, i) =>
