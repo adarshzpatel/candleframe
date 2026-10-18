@@ -32,7 +32,7 @@ jobs:
       - run: npm ci --prefix site
       - run: node scripts/check-doc-snippets.mjs
       - run: npm run site:build
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site/dist
 
