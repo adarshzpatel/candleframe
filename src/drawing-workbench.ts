@@ -6,6 +6,7 @@ import type { RuntimeState } from './types.ts';
 import type {
   Drawing,
   DrawingInteractionState,
+  DrawingLevelStyle,
   DrawingOptionValue,
   DrawingSetting,
   DrawingStyle,
@@ -23,12 +24,23 @@ import { isChartError } from './errors.ts';
 
 import { createDrawingTextEditor } from './drawing-text-editor.ts';
 import { uiIcon as svg } from './ui-icons.ts';
-import { DRAWING_HOTKEYS } from './drawing-tools.ts';
+import { DRAWING_HOTKEYS, fibDefaultLevels } from './drawing-tools.ts';
+import { drawingOption, fibLevelColor } from './drawing-primitives.ts';
 import { defineSelect, type CfSelectElement } from './select.ts';
 
 const FAMILIES = ['Lines', 'Fib & Gann', 'Patterns', 'Forecasting', 'Shapes', 'Annotations'];
 /** Line widths offered in the drawing toolbar, in pixels. */
 const LINE_WIDTHS = [1, 2, 3, 5, 8];
+/** The most levels a drawing holds, as the registry allows. */
+const MAX_LEVELS = 24;
+const replaced = <T>(list: readonly T[], index: number, value: T) =>
+  list.map((item, i) => (i === index ? value : item));
+const without = <T>(list: readonly T[], index: number) => list.filter((_, i) => i !== index);
+/** A colour input needs six hex digits. */
+const pickerColor = (color: string) => {
+  const hex = color.slice(1);
+  return hex.length <= 4 ? `#${[...hex.slice(0, 3)].map(c => c + c).join('')}` : `#${hex.slice(0, 6)}`;
+};
 
 export interface DrawingWorkbenchElements {
   root: HTMLElement;
@@ -60,6 +72,28 @@ export function createDrawingWorkbench(
   flyout.setAttribute('aria-label', 'Choose drawing tool');
   flyout.innerHTML = `<div class="drawing-tool-list" role="menu"></div>`;
   root.append(flyout);
+  /**
+   * Popups open in the top layer where the browser supports it, so overlays a host stacks
+   * over the widget, such as the demo's order ticket, cannot cover them. They are then fixed
+   * to the viewport, and `frame` shifts their root- or panel-relative coordinates there.
+   */
+  const topLayer = typeof flyout.showPopover === 'function';
+  function reveal(popup: HTMLElement, open: boolean) {
+    popup.hidden = !open;
+    if (!topLayer || !popup.isConnected) return;
+    if (open !== popup.matches(':popover-open')) popup[open ? 'showPopover' : 'hidePopover']();
+  }
+  function frame(box: HTMLElement) {
+    if (!topLayer) return { left: 0, top: 0, right: 0, bottom: 0 };
+    const b = box.getBoundingClientRect(),
+      view = owner.documentElement;
+    return {
+      left: b.left + box.clientLeft,
+      top: b.top + box.clientTop,
+      right: view.clientWidth - b.right,
+      bottom: view.clientHeight - b.bottom,
+    };
+  }
   const toolList = flyout.querySelector<HTMLElement>('.drawing-tool-list')!;
   let openGroup = groups[0],
     lastDrawings: readonly Drawing[] | undefined,
@@ -68,7 +102,7 @@ export function createDrawingWorkbench(
   const buttons = new Map<string, HTMLButtonElement>(),
     moreButtons = new Map<string, HTMLButtonElement>();
   function closeTools() {
-    flyout.hidden = true;
+    reveal(flyout, false);
     buttons.forEach(b => b.setAttribute('aria-expanded', 'false'));
     moreButtons.forEach(b => b.setAttribute('aria-expanded', 'false'));
   }
@@ -91,11 +125,13 @@ export function createDrawingWorkbench(
   }
   function positionTools(button: HTMLElement) {
     const bounds = root.getBoundingClientRect(),
-      anchor = button.getBoundingClientRect();
+      anchor = button.getBoundingClientRect(),
+      edge = frame(root);
     flyout.style.maxHeight = `${Math.max(0, root.clientHeight - 16)}px`;
+    if (topLayer) flyout.style.maxWidth = `${Math.max(0, root.clientWidth - 16)}px`;
     // Beside the rail, with the first row level with the button.
-    flyout.style.left = `${Math.max(8, Math.min(anchor.right - bounds.left - root.clientLeft + 6, root.clientWidth - flyout.offsetWidth - 8))}px`;
-    flyout.style.top = `${Math.max(8, Math.min(anchor.top - bounds.top - root.clientTop - 4, root.clientHeight - flyout.offsetHeight - 8))}px`;
+    flyout.style.left = `${edge.left + Math.max(8, Math.min(anchor.right - bounds.left - root.clientLeft + 6, root.clientWidth - flyout.offsetWidth - 8))}px`;
+    flyout.style.top = `${edge.top + Math.max(8, Math.min(anchor.top - bounds.top - root.clientTop - 4, root.clientHeight - flyout.offsetHeight - 8))}px`;
   }
   const hotkeys = new Map(
     Object.entries(DRAWING_HOTKEYS).map(([code, type]) => [type, `Alt + ${code.slice(3)}`]),
@@ -164,7 +200,7 @@ export function createDrawingWorkbench(
     if (wasOpen) return;
     openGroup = group;
     flyout.setAttribute('aria-label', `${group} tools`);
-    flyout.hidden = false;
+    reveal(flyout, true);
     b.setAttribute('aria-expanded', 'true');
     listTools();
     positionTools(b);
@@ -321,7 +357,7 @@ export function createDrawingWorkbench(
   settings.id = 'drawing-settings';
   settings.hidden = true;
   settings.setAttribute('aria-label', 'Drawing settings');
-  settings.innerHTML = `<div class="drawing-panel-heading"><strong class="drawing-property-title">Defaults</strong><button class="drawing-close" aria-label="Close drawing settings">${svg('close', 16)}</button></div><div class="drawing-properties"><label>Text<textarea aria-label="Drawing text" maxlength="2000" rows="2"></textarea></label><div class="drawing-property-row"><label>Fill opacity<input aria-label="Drawing fill opacity" type="number" min="0" max="1" step="0.05"></label><label>Font size<input aria-label="Drawing font size" type="number" min="10" max="32" step="1"></label></div><div class="drawing-option-fields"></div><label class="drawing-levels-field">Levels<input aria-label="Fibonacci levels" placeholder="0, 0.236, 0.382, 0.5, 0.618, 1"></label><div class="drawing-anchor-fields"></div><div class="drawing-selected-actions"><button data-action="duplicate">Duplicate</button><button data-action="front">Bring to front</button><button data-action="back">Send to back</button></div><div class="drawing-template-footer"><button class="button drawing-template-open" aria-haspopup="dialog" aria-expanded="false" aria-controls="drawing-templates">Template${svg('chevron', 14)}</button></div></div>`;
+  settings.innerHTML = `<div class="drawing-panel-heading"><strong class="drawing-property-title">Defaults</strong><button class="drawing-close" aria-label="Close drawing settings">${svg('close', 16)}</button></div><div class="drawing-properties"><label>Text<textarea aria-label="Drawing text" maxlength="2000" rows="2"></textarea></label><div class="drawing-property-row"><label>Fill opacity<input aria-label="Drawing fill opacity" type="number" min="0" max="1" step="0.05"></label><label>Font size<input aria-label="Drawing font size" type="number" min="10" max="32" step="1"></label></div><div class="drawing-option-fields"></div><div class="drawing-anchor-fields"></div><div class="drawing-selected-actions"><button data-action="duplicate">Duplicate</button><button data-action="front">Bring to front</button><button data-action="back">Send to back</button></div><div class="drawing-template-footer"><button class="button drawing-template-open" aria-haspopup="dialog" aria-expanded="false" aria-controls="drawing-templates">Template${svg('chevron', 14)}</button></div></div>`;
   panel.append(settings);
   panel.append(objects);
   function positionObjects() {
@@ -330,13 +366,15 @@ export function createDrawingWorkbench(
       anchor = (
         objectToggle.closest('.chart-toolbar') ?? panel.querySelector('.chart-toolbar')!
       ).getBoundingClientRect();
-    const top = Math.max(8, anchor.bottom - bounds.top - panel.clientTop + 8);
-    objects.style.top = `${top}px`;
-    objects.style.right = `${Math.max(10, bounds.right - anchor.right)}px`;
+    const top = Math.max(8, anchor.bottom - bounds.top - panel.clientTop + 8),
+      edge = frame(panel);
+    objects.style.top = `${edge.top + top}px`;
+    objects.style.right = `${edge.right + Math.max(10, bounds.right - anchor.right)}px`;
     objects.style.maxHeight = `${Math.max(0, panel.clientHeight - top - 8)}px`;
+    if (topLayer) objects.style.maxWidth = `${Math.max(0, panel.clientWidth - 20)}px`;
   }
   function toggleObjects(open: boolean) {
-    objects.hidden = !open;
+    reveal(objects, open);
     objectToggle.setAttribute('aria-expanded', String(open));
     if (open) {
       toggleSettings(false);
@@ -347,13 +385,18 @@ export function createDrawingWorkbench(
   function positionSettings() {
     const bounds = panel.getBoundingClientRect(),
       anchor = strip.getBoundingClientRect();
-    const bottom = bounds.bottom - anchor.top + 6;
-    settings.style.bottom = `${bottom}px`;
+    const bottom = bounds.bottom - anchor.top + 6,
+      edge = frame(panel);
+    settings.style.bottom = `${edge.bottom + bottom}px`;
+    if (topLayer) {
+      settings.style.left = `${edge.left + panel.clientWidth / 2}px`;
+      settings.style.maxWidth = `${Math.max(0, panel.clientWidth - 20)}px`;
+    }
     settings.style.maxHeight = `${Math.max(0, panel.clientHeight - bottom - 8)}px`;
   }
   function toggleSettings(open: boolean) {
     if (!open && templateTrigger === settings.querySelector('.drawing-template-open')) closeTemplates();
-    settings.hidden = !open;
+    reveal(settings, open);
     settingsButton.setAttribute('aria-expanded', String(open));
     if (open) {
       toggleObjects(false);
@@ -402,6 +445,7 @@ export function createDrawingWorkbench(
       style: { ...current?.style, ...patch.style },
       options: { ...current?.options, ...patch.options },
       levels: patch.levels ?? current?.levels,
+      levelStyles: patch.levelStyles ?? current?.levelStyles,
     });
   }
   function editStyle(patch: Partial<DrawingStyle>) {
@@ -430,12 +474,15 @@ export function createDrawingWorkbench(
   templateMenu.setAttribute('aria-label', 'Drawing templates');
   templateMenu.tabIndex = -1;
   panel.append(templateMenu);
+  if (topLayer) for (const popup of [flyout, objects, settings, templateMenu]) popup.popover = 'manual';
   const templateButtons = [
     strip.querySelector<HTMLButtonElement>('.drawing-template-button')!,
     settings.querySelector<HTMLButtonElement>('.drawing-template-open')!,
   ];
   let templateTrigger: HTMLButtonElement | null = null,
-    templateMode: 'menu' | 'save' | 'replace' = 'menu',
+    templateMode: 'menu' | 'save' | 'replace' | 'rename' = 'menu',
+    /** The template being renamed. */
+    templateRenaming = '',
     templateDraft = '',
     templateError = '';
   /** The tool a template action reads or writes, and the look it has now. */
@@ -450,20 +497,23 @@ export function createDrawingWorkbench(
     return { type, tool, drawing, defaults, value: drawing ? drawingTemplateValue(drawing) : defaults };
   }
   function closeTemplates() {
-    templateMenu.hidden = true;
+    reveal(templateMenu, false);
     templateTrigger = null;
     templateMode = 'menu';
-    templateDraft = templateError = '';
+    templateDraft = templateError = templateRenaming = '';
     templateButtons.forEach(b => b.setAttribute('aria-expanded', 'false'));
   }
   function positionTemplates() {
     if (!templateTrigger) return;
     const bounds = panel.getBoundingClientRect(),
       anchor = templateTrigger.getBoundingClientRect();
-    const bottom = bounds.bottom - anchor.top + 6;
-    templateMenu.style.bottom = `${bottom}px`;
+    const bottom = bounds.bottom - anchor.top + 6,
+      edge = frame(panel);
+    templateMenu.style.bottom = `${edge.bottom + bottom}px`;
     templateMenu.style.maxHeight = `${Math.max(0, panel.clientHeight - bottom - 8)}px`;
-    templateMenu.style.left = `${Math.max(8, Math.min(anchor.left - bounds.left, panel.clientWidth - templateMenu.offsetWidth - 8))}px`;
+    if (topLayer)
+      templateMenu.style.maxWidth = `min(calc(var(--ui-size) * 22), ${Math.max(0, panel.clientWidth - 16)}px)`;
+    templateMenu.style.left = `${edge.left + Math.max(8, Math.min(anchor.left - bounds.left, panel.clientWidth - templateMenu.offsetWidth - 8))}px`;
   }
   function openTemplates(trigger: HTMLButtonElement) {
     const wasOpen = !templateMenu.hidden && templateTrigger === trigger;
@@ -471,7 +521,7 @@ export function createDrawingWorkbench(
     if (wasOpen) return;
     closeTools();
     templateTrigger = trigger;
-    templateMenu.hidden = false;
+    reveal(templateMenu, true);
     trigger.setAttribute('aria-expanded', 'true');
     renderTemplates();
     positionTemplates();
@@ -513,6 +563,29 @@ export function createDrawingWorkbench(
       renderTemplates();
     }
   }
+  function renameTemplate() {
+    const target = templateTarget();
+    if (!target) return;
+    try {
+      const renamed = templates.rename(target.type, templateRenaming, templateDraft);
+      templateMode = 'menu';
+      templateDraft = templateError = templateRenaming = '';
+      renderTemplates();
+      report(`Renamed template to "${renamed.name}"`);
+      templateMenu
+        .querySelector<HTMLElement>(`[aria-label="Apply template ${CSS.escape(renamed.name)}"]`)
+        ?.focus({ preventScroll: true });
+    } catch (error) {
+      templateError = isChartError(error, 'TEMPLATE_EXISTS')
+        ? `${target.tool.label} already has a template with that name.`
+        : isChartError(error, 'INVALID_TEMPLATE_NAME')
+          ? `Enter a name of up to ${MAX_TEMPLATE_NAME_LENGTH} characters.`
+          : error instanceof Error
+            ? error.message.replaceAll('_', ' ')
+            : String(error);
+      renderTemplates();
+    }
+  }
   function renderTemplates() {
     const target = templateTarget();
     if (!target) return closeTemplates();
@@ -528,17 +601,18 @@ export function createDrawingWorkbench(
     };
     const heading = owner.createElement('div');
     heading.className = 'drawing-tool-section';
-    heading.textContent = `${target.tool.label} templates`;
+    heading.textContent =
+      templateMode === 'rename' ? `Rename "${templateRenaming}"` : `${target.tool.label} templates`;
     templateMenu.append(heading);
     if (templateMode !== 'menu') {
       const form = owner.createElement('form');
       form.className = 'drawing-template-form';
-      if (templateMode === 'save') {
+      if (templateMode === 'save' || templateMode === 'rename') {
         const input = owner.createElement('input');
         input.value = templateDraft;
         input.maxLength = MAX_TEMPLATE_NAME_LENGTH;
         input.placeholder = 'Template name';
-        input.setAttribute('aria-label', 'Template name');
+        input.setAttribute('aria-label', templateMode === 'rename' ? 'New template name' : 'Template name');
         input.addEventListener('input', () => (templateDraft = input.value), { signal: abort.signal });
         input.addEventListener(
           'keydown',
@@ -553,7 +627,11 @@ export function createDrawingWorkbench(
           { signal: abort.signal },
         );
         form.append(input);
-        queueMicrotask(() => input.isConnected && input.focus({ preventScroll: true }));
+        queueMicrotask(() => {
+          if (!input.isConnected) return;
+          input.focus({ preventScroll: true });
+          if (templateMode === 'rename') input.select();
+        });
       } else {
         const question = owner.createElement('p');
         question.textContent = `Replace "${templates.find(target.type, templateDraft)?.name ?? templateDraft.trim()}"?`;
@@ -571,7 +649,8 @@ export function createDrawingWorkbench(
       const submit = owner.createElement('button');
       submit.type = 'submit';
       submit.className = 'button primary';
-      submit.textContent = templateMode === 'save' ? 'Save' : 'Replace';
+      submit.textContent =
+        templateMode === 'save' ? 'Save' : templateMode === 'rename' ? 'Rename' : 'Replace';
       const cancel = owner.createElement('button');
       cancel.type = 'button';
       cancel.className = 'button';
@@ -593,7 +672,8 @@ export function createDrawingWorkbench(
         'submit',
         event => {
           event.preventDefault();
-          saveTemplate(templateMode === 'replace');
+          if (templateMode === 'rename') renameTemplate();
+          else saveTemplate(templateMode === 'replace');
         },
         { signal: abort.signal },
       );
@@ -626,11 +706,26 @@ export function createDrawingWorkbench(
       const { name, ...look } = template;
       const apply = item(name, () => applyLook(look, `Applied template "${name}"`));
       apply.setAttribute('aria-label', `Apply template ${name}`);
+      const rename = owner.createElement('button');
+      rename.className = 'drawing-template-delete drawing-template-rename';
+      rename.innerHTML = svg('edit', 15);
+      rename.setAttribute('aria-label', `Rename template ${name}`);
+      rename.title = 'Rename';
+      rename.addEventListener(
+        'click',
+        () => {
+          templateMode = 'rename';
+          templateRenaming = templateDraft = name;
+          templateError = '';
+          renderTemplates();
+        },
+        { signal: abort.signal },
+      );
       const remove = owner.createElement('button');
       remove.className = 'drawing-template-delete';
       remove.innerHTML = svg('trash', 15);
       remove.setAttribute('aria-label', `Delete template ${name}`);
-      remove.dataset.tooltip = 'Delete';
+      remove.title = 'Delete';
       remove.addEventListener(
         'click',
         () =>
@@ -652,7 +747,7 @@ export function createDrawingWorkbench(
           }),
         { signal: abort.signal },
       );
-      row.append(apply, remove);
+      row.append(apply, rename, remove);
       list.append(row);
     }
     if (!list.childElementCount) {
@@ -765,19 +860,142 @@ export function createDrawingWorkbench(
       event => editStyle({ fontSize: Number((event.target as HTMLInputElement).value) }),
       { signal: abort.signal },
     );
-  settings.querySelector<HTMLInputElement>('[aria-label="Fibonacci levels"]')!.addEventListener(
-    'change',
-    event =>
-      attempt(() => {
-        const levels = (event.target as HTMLInputElement).value.trim()
-          ? (event.target as HTMLInputElement).value.split(',').map(x => Number(x.trim()))
-          : [];
-        if (selection.selected)
-          chart.execute({ type: 'drawing.update', id: selection.selected.id, patch: { levels } });
-        remember({ levels });
-      }),
-    { signal: abort.signal },
-  );
+  /** Gives the selection, and the tool's next drawing, these levels and per-level looks. */
+  function editLevels(levels: number[], levelStyles: DrawingLevelStyle[]) {
+    attempt(() => {
+      if (selection.selected)
+        chart.execute({ type: 'drawing.update', id: selection.selected.id, patch: { levels, levelStyles } });
+      remember({ levels, levelStyles });
+    });
+  }
+  /** A drawing's levels, or a tool's next ones, with one look per level. */
+  function levelState(d: Drawing | null, type: string) {
+    const remembered = selection.options.toolDefaults[type],
+      own = d ? d.levels : (remembered?.levels ?? []),
+      levels = [...(own.length ? own : fibDefaultLevels(type))],
+      looks = levels.map((_, i): DrawingLevelStyle => ({
+        ...(d ? d.levelStyles : remembered?.levelStyles)?.[i],
+      }));
+    return { own, levels, looks };
+  }
+  /**
+   * One row per level, like the familiar levels table: on/off, value and colour. Handlers read
+   * the current levels, since a focused table is not rebuilt after each edit.
+   */
+  function levelTable(d: Drawing | null, type: string, fields: readonly DrawingSetting[]) {
+    const { own, levels, looks } = levelState(d, type),
+      remembered = selection.options.toolDefaults[type];
+    const now = () => levelState(selection.selected, type);
+    const lineColor = (d?.style ?? { ...selection.options.style, ...remembered?.style }).color;
+    const oneColor =
+      drawingOption<boolean>(
+        { options: { ...(d ? undefined : remembered?.options), ...d?.options } },
+        { settings: fields },
+        'levelColors',
+      ) === false;
+    // Adding or removing a row changes the table's shape, so it is rebuilt before focus moves.
+    const reshape = (levels: number[], looks: DrawingLevelStyle[], focus: string) => {
+      editLevels(levels, looks);
+      renderOptions(fields, selection.selected, true);
+      settings.querySelector<HTMLElement>(focus)?.focus({ preventScroll: true });
+    };
+    const table = owner.createElement('div');
+    table.className = 'drawing-level-table';
+    table.setAttribute('role', 'group');
+    table.setAttribute('aria-label', 'Fibonacci levels');
+    levels.forEach((level, i) => {
+      const row = owner.createElement('div');
+      row.className = 'drawing-level-row';
+      const shown = owner.createElement('input');
+      shown.type = 'checkbox';
+      shown.checked = looks[i].visible !== false;
+      shown.setAttribute('aria-label', `Show level ${i + 1}`);
+      shown.addEventListener(
+        'change',
+        () => {
+          const { levels, looks } = now(),
+            look = { ...looks[i] };
+          if (shown.checked) delete look.visible;
+          else look.visible = false;
+          editLevels(levels, replaced(looks, i, look));
+        },
+        { signal: abort.signal },
+      );
+      const value = owner.createElement('input');
+      value.type = 'number';
+      value.step = 'any';
+      value.min = '-1000';
+      value.max = '1000';
+      value.value = String(level);
+      value.setAttribute('aria-label', `Level ${i + 1} value`);
+      value.addEventListener(
+        'change',
+        () => {
+          const { levels, looks } = now();
+          editLevels(replaced(levels, i, value.value.trim() ? Number(value.value) : NaN), looks);
+        },
+        { signal: abort.signal },
+      );
+      const color = owner.createElement('input');
+      color.type = 'color';
+      color.value = pickerColor(oneColor ? lineColor : (looks[i].color ?? fibLevelColor(level, i)));
+      color.disabled = oneColor;
+      color.title = oneColor ? 'Turn on Colour each level to pick level colours' : '';
+      color.setAttribute('aria-label', `Level ${i + 1} colour`);
+      color.addEventListener(
+        'change',
+        () => {
+          const { levels, looks } = now();
+          editLevels(levels, replaced(looks, i, { ...looks[i], color: color.value }));
+        },
+        { signal: abort.signal },
+      );
+      const remove = owner.createElement('button');
+      remove.type = 'button';
+      remove.className = 'drawing-level-remove';
+      remove.innerHTML = svg('close', 14);
+      remove.setAttribute('aria-label', `Remove level ${i + 1}`);
+      remove.title = 'Remove';
+      remove.disabled = levels.length <= 1;
+      remove.addEventListener(
+        'click',
+        () => {
+          const { levels, looks } = now();
+          reshape(without(levels, i), without(looks, i), '.drawing-level-add');
+        },
+        { signal: abort.signal },
+      );
+      row.append(shown, value, color, remove);
+      table.append(row);
+    });
+    const actions = owner.createElement('div');
+    actions.className = 'drawing-level-actions';
+    const add = owner.createElement('button');
+    add.type = 'button';
+    add.className = 'button drawing-level-add';
+    add.textContent = 'Add level';
+    add.disabled = levels.length >= MAX_LEVELS;
+    add.addEventListener(
+      'click',
+      () => {
+        const { levels, looks } = now();
+        reshape(
+          [...levels, Number((Math.max(...levels) + 1).toFixed(3))],
+          looks,
+          '.drawing-level-row:last-child input[type=number]',
+        );
+      },
+      { signal: abort.signal },
+    );
+    const reset = owner.createElement('button');
+    reset.type = 'button';
+    reset.className = 'button';
+    reset.textContent = 'Reset levels';
+    reset.disabled = !own.length && looks.every(look => !Object.keys(look).length);
+    reset.addEventListener('click', () => reshape([], [], '.drawing-level-add'), { signal: abort.signal });
+    actions.append(add, reset);
+    return [table, actions];
+  }
   settings.querySelectorAll<HTMLButtonElement>('[data-action]').forEach(button =>
     button.addEventListener(
       'click',
@@ -806,10 +1024,10 @@ export function createDrawingWorkbench(
       { signal: abort.signal },
     ),
   );
-  function renderOptions(fields: readonly DrawingSetting[], d: Drawing | null) {
+  function renderOptions(fields: readonly DrawingSetting[], d: Drawing | null, force = false) {
     const holder = settings.querySelector<HTMLElement>('.drawing-option-fields')!;
     // Rebuilding while a field has focus would drop the user's place in the form.
-    if (holder.contains(activeElement())) return;
+    if (!force && holder.contains(activeElement())) return;
     holder.replaceChildren();
     const type = d?.type ?? selection.tool,
       remembered = selection.options.toolDefaults[type]?.options;
@@ -839,9 +1057,18 @@ export function createDrawingWorkbench(
         const input = owner.createElement('input');
         input.type = 'checkbox';
         input.checked = value === true;
-        input.addEventListener('change', () => editOption(field.key, input.checked), {
-          signal: abort.signal,
-        });
+        input.dataset.key = field.key;
+        input.addEventListener(
+          'change',
+          () => {
+            editOption(field.key, input.checked);
+            // The levels table greys its colours with this switch.
+            if (field.key !== 'levelColors') return;
+            renderOptions(fields, selection.selected, true);
+            holder.querySelector<HTMLElement>('[data-key="levelColors"]')?.focus({ preventScroll: true });
+          },
+          { signal: abort.signal },
+        );
         control = input;
         label.append(control, name);
       } else if (field.kind === 'select') {
@@ -884,7 +1111,20 @@ export function createDrawingWorkbench(
       }
       section!.append(label);
     }
-    holder.hidden = !fields.length;
+    if (type.startsWith('fib-')) {
+      // The table leads the Levels section, or gets its own when a tool has none.
+      let levels = [...holder.querySelectorAll('legend')].find(
+        l => l.textContent === 'Levels',
+      )?.parentElement;
+      if (!levels) {
+        levels = owner.createElement('fieldset');
+        levels.className = 'drawing-option-section';
+        levels.innerHTML = '<legend>Levels</legend>';
+        holder.prepend(levels);
+      }
+      levels.querySelector('legend')!.after(...levelTable(d, type, fields));
+    }
+    holder.hidden = !holder.childElementCount;
   }
   function renderProperties() {
     const d = selection.selected,
@@ -905,9 +1145,6 @@ export function createDrawingWorkbench(
     settings.querySelector<HTMLInputElement>('[aria-label="Drawing font size"]')!.value = String(
       style.fontSize,
     );
-    settings.querySelector<HTMLElement>('.drawing-levels-field')!.hidden = !d?.type.startsWith('fib-');
-    settings.querySelector<HTMLInputElement>('[aria-label="Fibonacci levels"]')!.value =
-      d?.levels.join(', ') ?? '';
     renderOptions(tool?.settings ?? [], d);
     const anchors = settings.querySelector('.drawing-anchor-fields')!;
     anchors.replaceChildren();
@@ -1116,13 +1353,21 @@ export function createDrawingWorkbench(
       renderObjects();
     }
   }
-  const resize = new ResizeObserver(() => {
+  function reposition() {
     const button = buttons.get(openGroup);
     if (!flyout.hidden && button) positionTools(button);
     if (!objects.hidden) positionObjects();
     if (!settings.hidden) positionSettings();
     if (!templateMenu.hidden) positionTemplates();
-  });
+  }
+  const resize = new ResizeObserver(reposition);
+  // Top-layer popups are fixed to the viewport, so they follow a scrolling host page.
+  if (topLayer)
+    owner.defaultView?.addEventListener('scroll', reposition, {
+      capture: true,
+      passive: true,
+      signal: abort.signal,
+    });
   resize.observe(root);
   resize.observe(panel);
   resize.observe(strip);

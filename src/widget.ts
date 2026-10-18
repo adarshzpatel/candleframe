@@ -1343,6 +1343,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     const flushAll = () => {
       cells.forEach(flushCell);
       flushWorkspace();
+      templates?.flush();
     };
     doc.defaultView?.addEventListener('pagehide', flushAll, { signal: abort.signal });
     doc.addEventListener(
