@@ -4,6 +4,14 @@
   "description": "Framework-free WebGL2 financial charting engine and embeddable trading chart widget",
   "license": "MIT",
   "author": "adarshzpatel",
+  "homepage": "https://adarshzpatel.github.io/candleframe/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/adarshzpatel/candleframe.git"
+  },
+  "bugs": {
+    "url": "https://github.com/adarshzpatel/candleframe/issues"
+  },
   "type": "module",
   "keywords": [
     "chart",
