@@ -241,3 +241,43 @@ test('modified Schiff and inside pitchforks start halfway between the first two 
     0,
   );
 });
+
+test('fib and gann levels follow per-level show and colour, matched by table row', () => {
+  const types = [
+    'fib-trend-time',
+    'fib-arcs',
+    'fib-circles',
+    'fib-wedge',
+    'pitchfan',
+    'gann-box',
+    'gann-square',
+  ];
+  for (const type of types) {
+    const points =
+      registry.get(type)!.points === 3
+        ? [point(20, 120), point(60, 170), point(40, 140)]
+        : [point(20, 120), point(60, 170)];
+    // Out of order, so a lookup by sorted position would pick the wrong row.
+    const levels = [0.618, 0.382, 1];
+    // Gann square fans have their own hues, one of them the 0.382 orange.
+    const options: Record<string, boolean> = type === 'gann-square' ? { fans: false } : {};
+    const plain = project(drawing(type, points, { levels, options }));
+    const styled = project(
+      drawing(type, points, { levels, options, levelStyles: [{ color: '#123456' }, { visible: false }, {}] }),
+    );
+    const colored = (primitives: DrawingPrimitive[], color: string) =>
+      strokes(primitives).filter(p => p.color === color).length;
+    assert.equal(colored(plain, '#123456'), 0, type);
+    assert.ok(colored(styled, '#123456') > 0, `${type} draws the recoloured level`);
+    assert.ok(strokes(styled).length < strokes(plain).length, `${type} hides the unchecked level`);
+    assert.equal(colored(styled, '#ff9800'), 0, `${type} leaves out the hidden 0.382 level`);
+    const oneColor = project(
+      drawing(type, points, {
+        levels,
+        levelStyles: [{ color: '#123456' }],
+        options: { ...options, levelColors: false },
+      }),
+    );
+    assert.equal(colored(oneColor, '#123456'), 0, `${type} ignores level colours when they are off`);
+  }
+});

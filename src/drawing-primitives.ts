@@ -156,13 +156,15 @@ export function bars(c: DrawingContext, from: number, to: number): number {
   return Number(count.toFixed(2));
 }
 
-/** Familiar Fibonacci hues by ratio; other ratios cycle through the same set. */
+/** Familiar Fibonacci hues by ratio, plus Gann's quarters; other ratios cycle through the same set. */
 const FIB_COLORS: Record<string, string> = {
   '0': '#787b86',
   '0.236': '#f23645',
+  '0.25': '#f23645',
   '0.382': '#ff9800',
   '0.5': '#4caf50',
   '0.618': '#089981',
+  '0.75': '#00bcd4',
   '0.786': '#00bcd4',
   '1': '#787b86',
   '1.272': '#9c27b0',
