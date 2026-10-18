@@ -1,22 +1,30 @@
 # Drawing suite, version 0.3
 
-The workbench includes 32 drawing tools and a shared editing workflow. The catalog covers common chart-analysis drawings.
+The workbench includes 85 drawing tools and a shared editing workflow.
 
 ## Tools
 
-The rail has six families, each split into sections in its menu.
+The rail has six families, each split into sections in its menu. Tools place with as many clicks as they have anchors; paths finish with Enter or a double-click, brushes with a release, and position plans with one click.
 
-| Family | Section | Tools | Placement |
-| --- | --- | --- | --- |
-| Lines | Lines | Trend line, ray, info line, extended line, trend angle | Two clicks |
-| Lines | Lines | Horizontal line, horizontal ray, vertical line, cross line | One click |
-| Lines | Channels, Pitchforks | Parallel channel, pitchfork, Schiff pitchfork | Three clicks |
-| Fib & Gann | Fibonacci | Retracement, trend-based extension, channel, time zone, speed resistance fan | Two or three clicks |
-| Forecasting | Projection | Long position, short position | One click at entry, then drag level or width handles |
-| Forecasting | Measurer | Date range, price range, date and price range | Two clicks |
-| Shapes | Brushes | Brush, highlighter | Drag, then release |
-| Shapes | Arrows, Shapes | Arrow, rectangle, ellipse, triangle, polyline | Two/three clicks; Enter or double-click finishes a polyline |
-| Annotations | Text and notes | Text, callout, price label | One click; callout uses tip then label location |
+| Family | Section | Tools |
+| --- | --- | --- |
+| Lines | Lines | Trend line, ray, info line, extended line, trend angle, horizontal line, horizontal ray, vertical line, cross line |
+| Lines | Channels | Parallel channel, regression trend, flat top/bottom, disjoint channel |
+| Lines | Pitchforks | Pitchfork, Schiff, modified Schiff, inside pitchfork |
+| Fib & Gann | Fibonacci | Retracement, trend-based extension, channel, time zone, speed resistance fan, trend-based time, speed resistance arcs, circles, spiral, wedge, pitchfan |
+| Fib & Gann | Gann | Gann box, Gann square fixed, Gann square, Gann fan |
+| Patterns | Chart patterns | XABCD, cypher, head and shoulders, ABCD, triangle pattern, three drives |
+| Patterns | Elliott waves | Impulse, correction, triangle, double combo, triple combo |
+| Patterns | Cycles | Cyclic lines, time cycles, sine line |
+| Forecasting | Projection | Long position, short position, forecast, bars pattern, ghost feed, projection |
+| Forecasting | Volume-based | Anchored VWAP, fixed range volume profile |
+| Forecasting | Measurer | Date range, price range, date and price range |
+| Shapes | Brushes | Brush, highlighter |
+| Shapes | Arrows | Arrow, arrow marker, arrow mark up, arrow mark down |
+| Shapes | Shapes | Rectangle, ellipse, triangle, polyline, rotated rectangle, circle, path, arc, curve, double curve |
+| Annotations | Text and notes | Text, callout, price label, note, price note, pin, signpost, flag mark, comment, table, anchored text, anchored note |
+
+Each family has its own module, `src/drawing-tools-<family>.ts`, and its own notes in `docs/drawing-notes/`: [patterns](drawing-notes/patterns.md), [Fibonacci and Gann](drawing-notes/fib.md), [channels and cycles](drawing-notes/channels.md), [forecasting](drawing-notes/forecast.md) and [shapes and notes](drawing-notes/shapes.md). Editing features have notes too: [multi-selection and groups](drawing-notes/multiselect.md), [visibility and favourites](drawing-notes/visibility.md) and [settings follow-ups](drawing-notes/settings.md).
 
 Clicking a family button picks the last tool used from it. The small corner button, or a right-click, opens the family menu. Alt+T, Alt+H, Alt+J, Alt+V, Alt+C and Alt+F pick the trend line, horizontal line, horizontal ray, vertical line, cross line and Fibonacci retracement.
 
