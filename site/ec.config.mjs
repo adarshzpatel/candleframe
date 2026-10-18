@@ -1,5 +1,5 @@
 // Code blocks use a base16 scheme (https://github.com/chriskempson/base16) built from the site's
-// own Caret Neutral tokens, so code reads as a raised card without leaving the page's palette:
+// own tokens (Caret's roles on zinc greys), so code reads as a raised card without leaving the page's palette:
 // base00 is the card (surface), base01 the header a step off it, base02 the hairline, base03-07
 // the page's inks. The accents are one muted OKLCH lightness and chroma per mode (L .78 C .105 in
 // dark, L .47 C .115 in light), at 6:1 or better on the card. Scopes map to base16 slots per the
@@ -9,14 +9,14 @@ import { defineEcConfig, ExpressiveCodeTheme } from '@astrojs/starlight/expressi
 import { pluginLineNumbers } from '@expressive-code/plugin-line-numbers';
 
 const neutralDark = {
-  base00: '#1e1c17', // surface
-  base01: '#282721', // hover
-  base02: '#333129', // line
-  base03: '#7d8086',
-  base04: '#9ca0a7', // ink-3
-  base05: '#bbc1c9', // ink-2
-  base06: '#edf0f5', // ink
-  base07: '#edf0f5',
+  base00: '#1c1c1e', // surface
+  base01: '#262629', // hover
+  base02: '#313133', // line
+  base03: '#7f7f86',
+  base04: '#9f9fa7', // ink-3
+  base05: '#bfbfc9', // ink-2
+  base06: '#efeff3', // ink
+  base07: '#efeff3',
   base08: '#f39d93', // red, hue 27
   base09: '#eca575', // orange, hue 55
   base0A: '#d6b265', // yellow, hue 85
@@ -27,14 +27,14 @@ const neutralDark = {
   base0F: '#cc986e', // brown, hue 60
 };
 const neutralLight = {
-  base00: '#fdfcfa', // surface
-  base01: '#eeece8', // hover
-  base02: '#dddbd5', // line
-  base03: '#777a80',
-  base04: '#5f6369', // ink-3
-  base05: '#42464d', // ink-2
-  base06: '#15181f', // ink
-  base07: '#15181f',
+  base00: '#fcfcfe', // surface
+  base01: '#ececf0', // hover
+  base02: '#dbdbde', // line
+  base03: '#797980',
+  base04: '#626269', // ink-3
+  base05: '#454548', // ink-2
+  base06: '#18181a', // ink
+  base07: '#18181a',
   base08: '#903d36',
   base09: '#8a4603',
   base0A: '#785400',

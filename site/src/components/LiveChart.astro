@@ -18,8 +18,9 @@
   import { createSimulatedFeed, sma } from '@candleframe/core.ts';
   import type { ChartTheme } from '@candleframe/themes.ts';
 
-  // The chart in Caret's Neutral palette, so it sits on the page instead of in a box.
-  // Hex values are Caret's OKLCH tokens; the order of indicator colors follows its chart-1…6.
+  // The chart in the site's palette, Caret's roles on zinc greys, so it sits on the page
+  // instead of in a box. Borders sit a step above the page's hairlines so control outlines
+  // read on the chart; the order of indicator colors follows Caret's chart-1…6.
   const typography = {
     uiFamily: '"Schibsted Grotesk Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     headingFamily: '"Schibsted Grotesk Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
@@ -30,23 +31,23 @@
     mode: 'dark',
     typography,
     palette: {
-      background: '#161510',
-      surface: '#1e1c17',
-      raised: '#282721',
-      border: '#333129',
-      borderStrong: '#434138',
-      text: '#bbc1c9',
-      textStrong: '#edf0f5',
-      textMuted: '#9ca0a7',
-      textFaint: '#7d8086',
+      background: '#151517',
+      surface: '#1c1c1e',
+      raised: '#262629',
+      border: '#47474a',
+      borderStrong: '#62626c',
+      text: '#bfbfc9',
+      textStrong: '#efeff3',
+      textMuted: '#9f9fa7',
+      textFaint: '#7f7f86',
       accent: '#f0b142',
       accentText: '#201301',
       positive: '#3ab260',
       negative: '#f57569',
-      grid: '#1c1b15',
-      crosshair: '#9ca0a7',
-      markerBackground: '#33322c',
-      markerText: '#edf0f5',
+      grid: '#1b1b1d',
+      crosshair: '#9f9fa7',
+      markerBackground: '#313134',
+      markerText: '#efeff3',
       indicator: '#70a6f5',
       indicator2: '#d29933',
       indicator3: '#d774f5',
@@ -54,7 +55,7 @@
       indicator5: '#f6787f',
       indicator6: '#5ebf34',
       drawing: '#f0b142',
-      watermark: '#333129',
+      watermark: '#313134',
     },
   };
   const light: ChartTheme = {
@@ -63,23 +64,23 @@
     mode: 'light',
     typography,
     palette: {
-      background: '#f5f4ef',
-      surface: '#fdfcfa',
-      raised: '#eeece8',
-      border: '#dddbd5',
-      borderStrong: '#cac8c2',
-      text: '#42464d',
-      textStrong: '#15181f',
-      textMuted: '#5f6369',
-      textFaint: '#777a80',
+      background: '#f3f3f7',
+      surface: '#fcfcfe',
+      raised: '#ececf0',
+      border: '#cacace',
+      borderStrong: '#aaaab0',
+      text: '#454548',
+      textStrong: '#18181a',
+      textMuted: '#626269',
+      textFaint: '#797980',
       accent: '#f5af26',
       accentText: '#201301',
       positive: '#007936',
       negative: '#b93e37',
-      grid: '#edece7',
-      crosshair: '#5f6369',
-      markerBackground: '#e1e0db',
-      markerText: '#15181f',
+      grid: '#ebebef',
+      crosshair: '#626269',
+      markerBackground: '#dfdfe3',
+      markerText: '#18181a',
       indicator: '#458cf2',
       indicator2: '#b58329',
       indicator3: '#d054f3',
@@ -87,7 +88,7 @@
       indicator5: '#f55264',
       indicator6: '#4c9e28',
       drawing: '#af7c17',
-      watermark: '#dddbd5',
+      watermark: '#dadbde',
     },
   };
 

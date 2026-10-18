@@ -1,6 +1,6 @@
 /*
- * The site follows Caret's design rules and Neutral theme (caretui.rashmitaparmanik.com):
- * warm grey paper, graphite ink, an amber accent used only to mark attention, hairlines
+ * The site follows Caret's design rules (caretui.rashmitaparmanik.com) on zinc greys:
+ * cool grey paper and ink, an amber accent used only to mark attention, hairlines
  * before shadows, Schibsted Grotesk for the interface and Paper Mono for code.
  *
  * --cf-* are Caret's role tokens. Starlight's own variables are mapped onto them once, below.
@@ -17,19 +17,19 @@
 
 :root {
   color-scheme: dark;
-  --cf-page: oklch(19.5% 0.01 95);
-  --cf-surface: oklch(22.8% 0.01 95);
-  --cf-sunken: oklch(16.5% 0.01 95);
-  --cf-hover: oklch(27.2% 0.01 95);
-  --cf-pressed: oklch(31.5% 0.01 95);
-  --cf-selected: oklch(29.2% 0.01 95);
-  --cf-ink: oklch(95.5% 0.007 260);
-  --cf-ink-2: oklch(80.8% 0.013 260);
-  --cf-ink-3: oklch(70.6% 0.011 260);
-  --cf-on-ink: oklch(19.5% 0.01 95);
-  --cf-line: oklch(31.3% 0.014 95);
-  --cf-line-strong: oklch(37.3% 0.014 95);
-  --cf-border-control: oklch(54.7% 0.008 260);
+  --cf-page: oklch(19.5% 0.005 286);
+  --cf-surface: oklch(22.8% 0.005 286);
+  --cf-sunken: oklch(16.5% 0.005 286);
+  --cf-hover: oklch(27.2% 0.005 286);
+  --cf-pressed: oklch(31.5% 0.005 286);
+  --cf-selected: oklch(29.2% 0.005 286);
+  --cf-ink: oklch(95.5% 0.005 286);
+  --cf-ink-2: oklch(80.8% 0.013 286);
+  --cf-ink-3: oklch(70.6% 0.011 286);
+  --cf-on-ink: oklch(19.5% 0.005 286);
+  --cf-line: oklch(35% 0.005 286);
+  --cf-line-strong: oklch(43% 0.005 286);
+  --cf-border-control: oklch(54.7% 0.008 286);
   --cf-accent: oklch(80% 0.143 78);
   --cf-on-accent: oklch(20% 0.04 78);
   --cf-accent-soft: oklch(30% 0.063 78);
@@ -49,10 +49,10 @@
   --cf-info: oklch(69.2% 0.16 245);
   --cf-info-soft: oklch(28.5% 0.055 245);
   --cf-info-line: oklch(55.6% 0.14 245);
-  --cf-btn-primary: oklch(95.5% 0.007 260);
-  --cf-btn-primary-hover: oklch(88.5% 0.007 260);
-  --cf-btn-primary-ledge: oklch(65.5% 0.007 260);
-  --cf-on-btn-primary: oklch(19.5% 0.01 95);
+  --cf-btn-primary: oklch(95.5% 0.005 286);
+  --cf-btn-primary-hover: oklch(88.5% 0.005 286);
+  --cf-btn-primary-ledge: oklch(65.5% 0.007 286);
+  --cf-on-btn-primary: oklch(19.5% 0.005 286);
   --cf-btn-secondary-hl: oklch(100% 0 0 / 0.06);
   --cf-scrim: oklch(0% 0 0 / 0.6);
   /* Inline code sits on the same card as code blocks (ec.config.mjs). */
@@ -66,19 +66,19 @@
 }
 :root[data-theme='light'] {
   color-scheme: light;
-  --cf-page: oklch(96.6% 0.006 95);
-  --cf-surface: oklch(99.2% 0.003 95);
-  --cf-sunken: oklch(93.6% 0.006 95);
-  --cf-hover: oklch(94.4% 0.006 95);
-  --cf-pressed: oklch(90.5% 0.006 95);
-  --cf-selected: oklch(92.4% 0.006 95);
-  --cf-ink: oklch(21% 0.014 260);
-  --cf-ink-2: oklch(39.4% 0.013 260);
-  --cf-ink-3: oklch(49.8% 0.011 260);
-  --cf-on-ink: oklch(98.5% 0.003 95);
-  --cf-line: oklch(89.2% 0.009 95);
-  --cf-line-strong: oklch(83.2% 0.009 95);
-  --cf-border-control: oklch(61.8% 0.008 260);
+  --cf-page: oklch(96.6% 0.005 286);
+  --cf-surface: oklch(99.2% 0.003 286);
+  --cf-sunken: oklch(93.6% 0.005 286);
+  --cf-hover: oklch(94.4% 0.005 286);
+  --cf-pressed: oklch(90.5% 0.005 286);
+  --cf-selected: oklch(92.4% 0.005 286);
+  --cf-ink: oklch(21% 0.005 286);
+  --cf-ink-2: oklch(39.4% 0.005 286);
+  --cf-ink-3: oklch(49.8% 0.011 286);
+  --cf-on-ink: oklch(98.5% 0.003 286);
+  --cf-line: oklch(88% 0.005 286);
+  --cf-line-strong: oklch(80% 0.005 286);
+  --cf-border-control: oklch(61.8% 0.008 286);
   --cf-accent: oklch(80% 0.158 78);
   --cf-accent-soft: oklch(94% 0.05 78);
   --cf-accent-strong: oklch(62.2% 0.123 78);
@@ -97,14 +97,14 @@
   --cf-info: oklch(51.8% 0.13 245);
   --cf-info-soft: oklch(95% 0.026 245);
   --cf-info-line: oklch(62.7% 0.158 245);
-  --cf-btn-primary: oklch(28% 0.014 260);
-  --cf-btn-primary-hover: oklch(34% 0.014 260);
-  --cf-btn-primary-ledge: oklch(11% 0.014 260);
-  --cf-on-btn-primary: oklch(98.5% 0.003 95);
+  --cf-btn-primary: oklch(28% 0.005 286);
+  --cf-btn-primary-hover: oklch(34% 0.005 286);
+  --cf-btn-primary-ledge: oklch(11% 0.005 286);
+  --cf-on-btn-primary: oklch(98.5% 0.003 286);
   --cf-btn-secondary-hl: oklch(100% 0 0 / 0.6);
-  --cf-scrim: oklch(21% 0.014 260 / 0.4);
-  --cf-e-float: 0 6px 16px -6px oklch(21% 0.014 260 / 0.12);
-  --cf-e-modal: 0 16px 40px -12px oklch(21% 0.014 260 / 0.2), 0 4px 12px -4px oklch(21% 0.014 260 / 0.1);
+  --cf-scrim: oklch(21% 0.005 286 / 0.4);
+  --cf-e-float: 0 6px 16px -6px oklch(21% 0.014 286 / 0.12);
+  --cf-e-modal: 0 16px 40px -12px oklch(21% 0.014 286 / 0.2), 0 4px 12px -4px oklch(21% 0.014 286 / 0.1);
 }
 
 :root {
