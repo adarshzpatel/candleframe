@@ -1,3 +1,9 @@
+import { channelsIcons } from './drawing-tools-channels.ts';
+import { fibIcons } from './drawing-tools-fib.ts';
+import { forecastIcons } from './drawing-tools-forecast.ts';
+import { patternsIcons } from './drawing-tools-patterns.ts';
+import { shapesIcons } from './drawing-tools-shapes.ts';
+
 /** A shared 24-unit icon grid. Icons are decorative; controls own accessible labels. */
 const paths: Record<string, string> = {
   palette:
@@ -81,6 +87,7 @@ const paths: Record<string, string> = {
   template:
     '<rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><path d="M16.5 13v7M13 16.5h7"/>',
 };
+Object.assign(paths, channelsIcons, fibIcons, forecastIcons, patternsIcons, shapesIcons);
 const groups: Record<string, string> = {
   Lines: 'trendline',
   'Fib & Gann': 'fib-retracement',

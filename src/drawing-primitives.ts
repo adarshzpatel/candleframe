@@ -1,6 +1,8 @@
 import type {
   Drawing,
   DrawingContext,
+  DrawingOptionValue,
+  DrawingToolDefinition,
   DrawingPoint,
   DrawingPrimitive,
   DrawingSetting,
@@ -160,3 +162,12 @@ export const choice = (
   choices: choices.map(([v, l]) => ({ value: v, label: l })),
   ...(section ? { section } : {}),
 });
+
+/** Reads a tool setting, falling back to its declared default. */
+export function drawingOption<T extends DrawingOptionValue>(
+  drawing: Pick<Drawing, 'options'>,
+  definition: Pick<DrawingToolDefinition, 'settings'> | undefined,
+  key: string,
+): T {
+  return (drawing.options?.[key] ?? definition?.settings?.find(s => s.key === key)?.default) as T;
+}

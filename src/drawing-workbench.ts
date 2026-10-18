@@ -26,6 +26,7 @@ import { uiIcon as svg } from './ui-icons.ts';
 import { DRAWING_HOTKEYS } from './drawing-tools.ts';
 import { defineSelect, type CfSelectElement } from './select.ts';
 
+const FAMILIES = ['Lines', 'Fib & Gann', 'Patterns', 'Forecasting', 'Shapes', 'Annotations'];
 /** Line widths offered in the drawing toolbar, in pixels. */
 const LINE_WIDTHS = [1, 2, 3, 5, 8];
 
@@ -48,7 +49,10 @@ export function createDrawingWorkbench(
   const tree = root.getRootNode() as ShadowRoot | Document;
   const activeElement = () => tree.activeElement;
   const catalog = chart.drawingTools();
-  const groups = [...new Set(catalog.map(t => t.group))];
+  // The familiar rail order; custom families follow in catalog order.
+  const groups = [
+    ...new Set([...FAMILIES.filter(f => catalog.some(t => t.group === f)), ...catalog.map(t => t.group)]),
+  ];
   const abort = new AbortController();
   const flyout = owner.createElement('section');
   flyout.className = 'drawing-flyout';
@@ -99,7 +103,10 @@ export function createDrawingWorkbench(
   function listTools() {
     toolList.replaceChildren();
     let section: string | undefined;
-    for (const t of catalog.filter(t => t.group === openGroup)) {
+    const inGroup = catalog.filter(t => t.group === openGroup),
+      sections = [...new Set(inGroup.map(t => t.section))];
+    // Tools registered later still list under their section's heading.
+    for (const t of sections.flatMap(name => inGroup.filter(t => t.section === name))) {
       if (t.section && t.section !== section) {
         const heading = owner.createElement('div');
         heading.className = 'drawing-tool-section';

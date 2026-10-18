@@ -1,4 +1,9 @@
 import { ChartError } from './errors.ts';
+import { channelTools, cycleTools } from './drawing-tools-channels.ts';
+import { fibTools, gannTools, pitchforkTools } from './drawing-tools-fib.ts';
+import { projectionTools, volumeTools } from './drawing-tools-forecast.ts';
+import { elliottTools, patternTools } from './drawing-tools-patterns.ts';
+import { arrowTools, noteTools, shapeTools } from './drawing-tools-shapes.ts';
 import {
   add,
   angle,
@@ -7,6 +12,7 @@ import {
   axisTag,
   bars,
   choice,
+  drawingOption,
   duration,
   fill,
   line,
@@ -39,6 +45,8 @@ import type {
   DrawingToolDefaults,
   DrawingToolDefinition,
 } from './drawing-types.ts';
+
+export { drawingOption };
 
 export const DEFAULT_DRAWING_STYLE: Readonly<DrawingStyle> = Object.freeze({
   color: '#a9c4ff',
@@ -711,6 +719,7 @@ export const builtInDrawingTools: readonly DrawingToolDefinition[] = Object.free
   tool('parallel-channel', 'Parallel channel', 'Lines', 'Channels', 3, channel, {
     hint: 'Click two baseline points, then the opposite side.',
   }),
+  ...channelTools,
   tool('pitchfork', 'Pitchfork', 'Lines', 'Pitchforks', 3, pitchfork, {
     hint: 'Click the origin, then the two fork anchors.',
     settings: [toggle('background', 'Background', true, 'Style')],
@@ -719,6 +728,7 @@ export const builtInDrawingTools: readonly DrawingToolDefinition[] = Object.free
     hint: 'Click the origin, then the two fork anchors.',
     settings: [toggle('background', 'Background', true, 'Style')],
   }),
+  ...pitchforkTools,
   tool('fib-retracement', 'Fib retracement', 'Fib & Gann', 'Fibonacci', 2, fibonacci, {
     hint: 'Click the start of the move, then its end.',
     settings: fibSettings(true, true),
@@ -738,8 +748,15 @@ export const builtInDrawingTools: readonly DrawingToolDefinition[] = Object.free
   tool('fib-fan', 'Fib speed resistance fan', 'Fib & Gann', 'Fibonacci', 2, fibonacci, {
     settings: fibSettings(true, false),
   }),
+  ...fibTools,
+  ...gannTools,
+  ...patternTools,
+  ...elliottTools,
+  ...cycleTools,
   position('long-position', 'Long position'),
   position('short-position', 'Short position'),
+  ...projectionTools,
+  ...volumeTools,
   tool('date-range', 'Date range', 'Forecasting', 'Measurer', 2, measurement),
   tool('price-range', 'Price range', 'Forecasting', 'Measurer', 2, measurement),
   tool('date-price-range', 'Date and price range', 'Forecasting', 'Measurer', 2, measurement),
@@ -748,10 +765,12 @@ export const builtInDrawingTools: readonly DrawingToolDefinition[] = Object.free
   tool('arrow', 'Arrow', 'Shapes', 'Arrows', 2, lineTool('arrow'), {
     settings: lineSettings(false, false, 'arrow'),
   }),
+  ...arrowTools,
   tool('rectangle', 'Rectangle', 'Shapes', 'Shapes', 2, shape, { settings: shapeSettings(true) }),
   tool('ellipse', 'Ellipse', 'Shapes', 'Shapes', 2, shape, { settings: shapeSettings(false) }),
   tool('triangle', 'Triangle', 'Shapes', 'Shapes', 3, shape, { settings: shapeSettings(false) }),
   tool('polyline', 'Polyline', 'Shapes', 'Shapes', 'path', shape),
+  ...shapeTools,
   tool('text', 'Text', 'Annotations', 'Text and notes', 1, annotation, {
     hint: 'Click to place, then type your text.',
     editableText: true,
@@ -766,6 +785,7 @@ export const builtInDrawingTools: readonly DrawingToolDefinition[] = Object.free
     editableText: true,
     settings: textSettings(true),
   }),
+  ...noteTools,
 ]);
 for (const definition of builtInDrawingTools)
   if (definition.settings) builtInSettings.set(definition.type, definition.settings);
@@ -863,15 +883,6 @@ function normalizedOptions(
     if (setting?.default !== given) result[key] = given as DrawingOptionValue;
   }
   return Object.keys(result).length ? result : undefined;
-}
-
-/** Reads a tool setting, falling back to its declared default. */
-export function drawingOption<T extends DrawingOptionValue>(
-  drawing: Pick<Drawing, 'options'>,
-  definition: Pick<DrawingToolDefinition, 'settings'> | undefined,
-  key: string,
-): T {
-  return (drawing.options?.[key] ?? definition?.settings?.find(s => s.key === key)?.default) as T;
 }
 
 /** Owns document validation and the trusted tool catalog; unknown tools stay round-trippable. */
