@@ -54,7 +54,7 @@ Codes worth handling: `REVISION_CONFLICT` (re-read), `UNKNOWN_INDICATOR` (`detai
 `examples/mcp-server.ts` exposes a headless chart over the Model Context Protocol, with no dependencies. It serves the simulation by default, or a CSV with `time,open,high,low,close[,volume]` columns:
 
 ```sh
-npm run mcp                                                    # simulated BTC/USD
+npm run --silent mcp                                           # simulated BTC/USD (--silent keeps npm's banner off stdout)
 node --experimental-strip-types examples/mcp-server.ts --csv prices.csv --symbol AAPL --interval 1d --gaps
 claude mcp add candleframe -- node --experimental-strip-types "$PWD/examples/mcp-server.ts"
 ```

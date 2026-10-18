@@ -2,6 +2,8 @@
 
 A framework-independent financial chart engine written in TypeScript and compiled to JavaScript. Version 0.3 includes a WebGL2 chart, a self-contained embeddable workbench, pluggable feeds, and the research and roadmap for a broader open-source library.
 
+Guides, examples and agent docs: **https://adarshzpatel.github.io/candleframe/** (source in `site/`; `npm run site:build`, then `node scripts/check-site-links.mjs` and `node scripts/site-screens.mjs`).
+
 ## Run locally
 
 Use Node.js 24 and npm.
@@ -68,7 +70,7 @@ const chart = createChartWidget(document.querySelector('#chart'), { feed, timeZo
 socket.onmessage = event => feed.update(JSON.parse(event.data)); // Appends or replaces the last bar.
 ```
 
-Narrower entry points keep bundles and server code small: `candleframe/core` has the runtime, feeds, indicators and schemas with no DOM; `candleframe/chart` adds the WebGL chart and themes; `candleframe/widget` is the workbench; `candleframe/binance` is the live feed. The package is not on npm yet; until it is, build it with `npm run build` and install the folder or a `npm pack` tarball.
+Narrower entry points keep bundles and server code small: `candleframe/core` has the runtime, feeds, indicators and schemas with no DOM; `candleframe/chart` adds the WebGL chart and themes; `candleframe/widget` is the workbench; `candleframe/binance` is the live feed. The package is not on npm yet. Install it from GitHub with `npm install github:adarshzpatel/candleframe` (Node 24); its `prepare` script builds `dist/lib` on install.
 
 See the [embedding guide](docs/embedding.md) and [two-widget example](examples/embed.html). `createChart` remains the chart-only entry point for applications that supply their own UI:
 
@@ -109,6 +111,7 @@ CandleFrame is released under the [MIT license](LICENSE). Bundled fonts use the 
 
 ## Project documents
 
+- [Docs site](https://adarshzpatel.github.io/candleframe/): guides for embedding, data feeds, indicators, plugins and agents. Code blocks are typechecked by `node scripts/check-doc-snippets.mjs`.
 - [Drawing suite and extension API](docs/drawing-suite.md)
 - [Self-contained widget integration](docs/embedding.md)
 - [Multi-chart layouts design](docs/multi-chart-design.md)
