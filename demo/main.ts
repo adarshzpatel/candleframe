@@ -64,11 +64,7 @@ const chart = createChartWidget(host, {
   inspector: true,
   layoutStore: {
     load(key) {
-      // Keep layouts saved by the previous demo available after the UI migration.
-      const [, source, symbol, interval] = JSON.parse(key) as string[];
-      const saved =
-        localStorage.getItem(key) ??
-        localStorage.getItem(`openchart.layout.v2:${source}:${symbol}:${interval}`);
+      const saved = localStorage.getItem(key);
       return saved === null ? null : JSON.parse(saved);
     },
     save: (key, value) => localStorage.setItem(key, JSON.stringify(value)),
