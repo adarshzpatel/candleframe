@@ -36,7 +36,8 @@ export function templateName(value: unknown): string {
 }
 
 /**
- * The style, settings and levels a template takes from a drawing. Points and text stay behind.
+ * The style, settings, levels and visibility a template takes from a drawing. Points and text
+ * stay behind.
  * Given the tool, option keys it does not declare as settings (per-drawing state such as a
  * bars pattern's source range) stay behind too.
  */
@@ -50,6 +51,7 @@ export function drawingTemplateValue(
     style: { ...drawing.style },
     ...(options.length ? { options: Object.fromEntries(options) } : {}),
     ...(drawing.levels.length ? { levels: [...drawing.levels] } : {}),
+    ...(drawing.visibility ? { visibility: structuredClone(drawing.visibility) } : {}),
   };
 }
 
@@ -70,6 +72,7 @@ export function drawingTemplatePatch(
       ]),
     ),
     levels: [...(value?.levels ?? [])],
+    visibility: value?.visibility ? structuredClone(value.visibility) : null,
   };
 }
 

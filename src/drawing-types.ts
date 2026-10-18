@@ -20,7 +20,20 @@ export interface Drawing {
   levels: number[];
   /** Tool-specific settings keyed by `DrawingSetting.key`. Omitted when every value is the default. */
   options?: DrawingOptionValues;
+  /** Intervals the drawing shows on. Omitted when it shows on every interval. */
+  visibility?: DrawingVisibility;
 }
+/** Interval families in the Visibility settings, like the familiar Visibility tab. */
+export type DrawingVisibilityUnit =
+  'ticks' | 'seconds' | 'minutes' | 'hours' | 'days' | 'weeks' | 'months' | 'ranges';
+/** Shows the drawing on intervals of this family whose count lies in `from`..`to`. */
+export interface DrawingVisibilityRange {
+  enabled: boolean;
+  from: number;
+  to: number;
+}
+/** Only families that differ from "on, full range" are stored. */
+export type DrawingVisibility = Partial<Record<DrawingVisibilityUnit, DrawingVisibilityRange>>;
 export type DrawingOptionValue = boolean | number | string;
 export type DrawingOptionValues = Record<string, DrawingOptionValue>;
 /** One field of a tool's settings form. Values persist in `Drawing.options`. */
@@ -46,11 +59,14 @@ export interface DrawingInput {
   text?: string;
   levels?: number[];
   options?: DrawingOptionValues;
+  visibility?: Partial<Record<DrawingVisibilityUnit, Partial<DrawingVisibilityRange>>>;
 }
 export type DrawingPatch = Partial<Pick<Drawing, 'points' | 'locked' | 'visible' | 'text' | 'levels'>> & {
   style?: Partial<DrawingStyle>;
   /** Merged into the current options. */
   options?: DrawingOptionValues;
+  /** Merged per interval family; `null` shows the drawing on every interval again. */
+  visibility?: DrawingVisibility | null;
 };
 export interface DrawingPoint {
   x: number;
@@ -106,6 +122,8 @@ export interface DrawingContext {
   theme?: ResolvedChartTheme;
   geometry: ChartGeometry;
   intervalMs: number;
+  /** The chart's interval, such as `5m` or `500t`. Drawings hidden on it project nothing. */
+  interval?: string;
   tickSize?: number;
   /** Loaded candles in time order, for drawings that replay price (position outcomes). */
   candles?: readonly Candle[];
@@ -155,6 +173,7 @@ export interface DrawingToolDefaults {
   options?: DrawingOptionValues;
   /** Fibonacci levels; empty or omitted uses the tool's built-in levels. */
   levels?: number[];
+  visibility?: DrawingVisibility;
 }
 /** `toolDefaults` entries replace that tool's defaults; `null` clears them. */
 export type DrawingOptionsPatch = Partial<Omit<DrawingOptions, 'style' | 'toolDefaults'>> & {

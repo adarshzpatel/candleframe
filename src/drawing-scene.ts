@@ -7,6 +7,7 @@ import type {
   DrawingPrimitive,
 } from './drawing-types.ts';
 import type { DrawingRegistry } from './drawing-tools.ts';
+import { drawingShown } from './drawing-visibility.ts';
 
 function distanceToSegment(p: DrawingPoint, a: DrawingPoint, b: DrawingPoint): number {
   const dx = b.x - a.x,
@@ -111,7 +112,12 @@ export function hitDrawings(
   const g = context.geometry;
   if (p.x < g.left || p.x > g.left + g.plotWidth || p.y < g.top || p.y > g.top + g.plotHeight) return null;
   const selected = drawings.find(d => d.id === selectedId);
-  if (selected?.visible && !selected.locked && registry.get(selected.type)) {
+  if (
+    selected &&
+    drawingShown(selected, context.interval) &&
+    !selected.locked &&
+    registry.get(selected.type)
+  ) {
     const handle = drawingHandles(selected, registry, context).find(
       handle =>
         Math.hypot(handle.at.x - p.x, handle.at.y - p.y) <=
@@ -122,7 +128,7 @@ export function hitDrawings(
   for (let i = drawings.length - 1; i >= 0; i--) {
     const d = drawings[i];
     const scene = registry.project(d, { ...context, selected: d.id === selectedId });
-    if (d.visible && hitScene(scene, d, p, 7, context))
+    if (hitScene(scene, d, p, 7, context))
       return { drawing: d, handle: null, cursor: d.locked ? 'default' : 'move' };
   }
   return null;
@@ -173,7 +179,7 @@ export function renderDrawings(
   ctx.rect(g.left, g.top, g.plotWidth, g.plotHeight);
   ctx.clip();
   for (const d of drawings) {
-    if (!d.visible) continue;
+    if (!drawingShown(d, context.interval)) continue;
     for (const primitive of registry.project(d, { ...context, selected: d.id === selectedId })) {
       if (primitive.kind === 'axis') {
         tags.push({ drawing: d, primitive });
@@ -238,7 +244,7 @@ export function renderDrawings(
     }
   }
   const editable = (id: string | null | undefined) =>
-    drawings.find(d => d.id === id && d.visible && !d.locked && registry.get(d.type));
+    drawings.find(d => d.id === id && drawingShown(d, context.interval) && !d.locked && registry.get(d.type));
   const hovered = options.hoverId !== selectedId ? editable(options.hoverId) : undefined;
   if (hovered) paintHandles(ctx, hovered, registry, context, theme, true);
   const selected = editable(selectedId);
@@ -247,7 +253,7 @@ export function renderDrawings(
   const axis = options.axis;
   if (!axis) return;
   // The selection's extent shades both axes, with a tag at every anchor, like the crosshair.
-  const shown = drawings.find(d => d.id === selectedId && d.visible);
+  const shown = drawings.find(d => d.id === selectedId && drawingShown(d, context.interval));
   if (shown && registry.get(shown.type)) {
     const color = shown.style.color,
       prices = shown.points.map(p => p.price),

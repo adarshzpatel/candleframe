@@ -422,6 +422,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       geometry,
       theme,
       intervalMs: state.feed.intervalMs,
+      interval: state.feed.interval,
       tickSize: state.feed.instrument.tickSize,
       candles: state.candles,
       formatPrice: value => formatPrice.format(value),

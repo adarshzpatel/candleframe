@@ -94,5 +94,12 @@ export {
   DEFAULT_DRAWING_STYLE,
   drawingOption,
 } from './drawing-tools.ts';
+export {
+  DRAWING_VISIBILITY_UNITS,
+  drawingShown,
+  intervalVisibility,
+  visibleOnInterval,
+} from './drawing-visibility.ts';
+export type { DrawingVisibilityUnitInfo } from './drawing-visibility.ts';
 export type * from './types.ts';
 export type * from './drawing-types.ts';
