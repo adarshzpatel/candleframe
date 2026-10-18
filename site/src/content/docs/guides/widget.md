@@ -78,7 +78,7 @@ Each source, symbol and interval keeps its own drawings and indicators. When the
 
 ## Order book
 
-`orderBook: true` opens the order book panel beside the chart. It reads depth events from the feed, so it only has rows when the feed's descriptor declares depth. The simulation and the Binance feed both do. In widgets 850 pixels wide or narrower, the panel starts closed and opens over the chart from the Order book button.
+`orderBook: true` opens the order book panel beside the chart. It reads depth events from the feed, so it only has rows when the feed's descriptor declares depth. The simulation, the Binance feed and the Hyperliquid feed all do. In widgets 850 pixels wide or narrower, the panel starts closed and opens over the chart from the Order book button.
 
 ## Control the widget from code
 

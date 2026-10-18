@@ -24,6 +24,7 @@ Every entry point is an ES module with its own types. Import from the narrowest 
 | `candleframe/core` | `ChartRuntime`, feeds (`createSimulatedFeed`, `createStaticFeed`), indicators, commands and JSON schemas. No DOM access. | You run charts in Node, a worker, a test or an agent server. |
 | `candleframe/trading` | `attachTrading`, `createPaperBroker` and order helpers | You want an order panel and order lines on top of a widget or chart. |
 | `candleframe/binance` | `createBinanceFeed`, public Binance Spot candles and depth | You want live crypto data without writing a feed. |
+| `candleframe/hyperliquid` | `createHyperliquidFeed`, public Hyperliquid perpetuals candles and depth | You want live perpetuals data without writing a feed. |
 | `candleframe` | Everything above | You prefer one import path. The package sets `sideEffects: false`, so bundlers drop what you do not use. |
 
 The widget and chart entries do not export feeds or indicators. Import those from `candleframe/core`, or use the root entry:

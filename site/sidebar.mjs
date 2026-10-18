@@ -17,7 +17,13 @@ export const sidebar = [
   },
   {
     label: 'Data feeds',
-    items: ['feeds/overview', 'feeds/static-data', 'feeds/live-websocket', 'feeds/trade-bars'],
+    items: [
+      'feeds/overview',
+      'feeds/static-data',
+      'feeds/live-websocket',
+      'feeds/hyperliquid',
+      'feeds/trade-bars',
+    ],
   },
   {
     label: 'Indicators',

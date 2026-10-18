@@ -7,7 +7,7 @@ A live adapter loads history over REST, then streams updates over a WebSocket. T
 
 ## The Binance adapter
 
-`createBinanceFeed` streams public Binance Spot market data with no API key. CandleFrame is not affiliated with or endorsed by Binance.
+`createBinanceFeed` streams public Binance Spot market data with no API key. CandleFrame is not affiliated with or endorsed by Binance. For perpetuals, the [Hyperliquid adapter](../hyperliquid/) makes the same decisions.
 
 ```ts
 import { createBinanceFeed, BINANCE_INTERVALS } from 'candleframe/binance';

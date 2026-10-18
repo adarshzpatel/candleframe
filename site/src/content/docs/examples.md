@@ -29,12 +29,12 @@ Vite prints the address, usually `http://127.0.0.1:5173/`. The paths below are r
 
 The full widget filling the window, with most options turned on. It shows:
 
-- a `markets` catalog with three sources: the trade simulation, live Binance Spot data and a sample equity with weekend and overnight gaps,
+- a `markets` catalog with four sources: the trade simulation, live Binance Spot data, live [Hyperliquid perpetuals](../feeds/hyperliquid/) and a sample equity with weekend and overnight gaps,
 - the order book, `storageKey` autosave, the Inspect button and `autoscaleOnPan`,
 - a custom `layoutStore` that also reads layouts saved by an older version of the demo,
 - a theme built with `createTheme('evergreen', ...)` and a saved appearance restored with `restoreTheme`.
 
-Two query parameters change it. `/?offline` drops the Binance source, so the demo works with no network. `/?trading` attaches the [trading plugin](../plugins/trading/) with a paper broker.
+Two query parameters change it. `/?offline` drops the Binance and Hyperliquid sources, so the demo works with no network. `/?trading` attaches the [trading plugin](../plugins/trading/) with a paper broker.
 
 The demo puts the widget on `window.candleframe`, so you can try the API from the browser console:
 

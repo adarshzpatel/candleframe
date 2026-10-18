@@ -192,7 +192,7 @@ Errors in data a feed sends mark the stream as `error` instead of throwing. See 
 | `UNSUPPORTED_INTERVAL` | The interval string does not parse, or the simulated feed got an interval under 1 minute. |
 | `INVALID_SEED` | The simulated feed's seed is not a finite number. |
 | `UNSUPPORTED_SYMBOL` | The simulated feed has no preset for this symbol. |
-| `UNSUPPORTED_MARKET` | The Binance feed does not support this symbol or interval. `details.intervals` lists the intervals. |
+| `UNSUPPORTED_MARKET` | The Binance or Hyperliquid feed does not support this symbol or interval. `details.intervals` lists the intervals. |
 
 ### Themes and formatting
 

@@ -13,7 +13,7 @@ npm ci
 npm run dev
 ```
 
-Open the URL printed by Vite. The demo opens on a real-time trade simulation that works offline without credentials: individual prints arrive at irregular times, in bursts and lulls, with heavy-tailed sizes and shifting buy and sell aggression, and they build the candles, order flow and book. Select **Binance** in the source picker for public spot candles and top-20 depth snapshots. Exchange availability depends on your network and region; connection errors are visible and never replaced by simulated data.
+Open the URL printed by Vite. The demo opens on a real-time trade simulation that works offline without credentials: individual prints arrive at irregular times, in bursts and lulls, with heavy-tailed sizes and shifting buy and sell aggression, and they build the candles, order flow and book. Select **Binance** in the source picker for public spot candles and top-20 depth snapshots, or **Hyperliquid** for public perpetuals candles and top-20 depth. Exchange availability depends on your network and region; connection errors are visible and never replaced by simulated data.
 
 ```sh
 npm test
@@ -25,7 +25,7 @@ The build creates the static demo in `dist/` and ES modules with TypeScript decl
 
 ## Try version 0.3
 
-- The demo fills the window. Sources: the trade simulation (default), live Binance Spot data (BTC, ETH and SOL against USDT, 1m to 1w candles) and a gapped sample equity. Add `?offline` to drop Binance. The forming candle glides between ticks instead of jumping; reduced-motion preferences turn this off.
+- The demo fills the window. Sources: the trade simulation (default), live Binance Spot data (BTC, ETH and SOL against USDT, 1m to 1w candles), live Hyperliquid perpetuals (BTC, ETH, SOL and HYPE against USDC, 1m to 1d candles) and a gapped sample equity. Add `?offline` to drop both exchanges. The forming candle glides between ticks instead of jumping; reduced-motion preferences turn this off.
 - Drag the plot to pan time and price together without changing their spacing. Fit or double-click the plot to restore the full view. Drag the bottom axis right to widen candle spacing or left to compress it. Drag the right axis up to widen price spacing or down to compress it.
 - Double-click an axis to reset that scale. Focus an axis and use arrow keys to resize or Home to reset. Scroll over the plot to zoom time without scrolling the page. Touch drags stay inside the chart. Use `+` / `-` when the plot is focused.
 - Plot drags ease toward the pointer and glide briefly on release. Zoom, axis resizing, automatic price changes and Fit animate their ranges. A new grab takes control at the displayed position. Reduced-motion preferences disable these effects.
@@ -70,7 +70,7 @@ const chart = createChartWidget(document.querySelector('#chart'), { feed, timeZo
 socket.onmessage = event => feed.update(JSON.parse(event.data)); // Appends or replaces the last bar.
 ```
 
-Narrower entry points keep bundles and server code small: `candleframe/core` has the runtime, feeds, indicators and schemas with no DOM; `candleframe/chart` adds the WebGL chart and themes; `candleframe/widget` is the workbench; `candleframe/binance` is the live feed. The package is not on npm yet. Install it from GitHub with `npm install github:adarshzpatel/candleframe` (Node 24); its `prepare` script builds `dist/lib` on install.
+Narrower entry points keep bundles and server code small: `candleframe/core` has the runtime, feeds, indicators and schemas with no DOM; `candleframe/chart` adds the WebGL chart and themes; `candleframe/widget` is the workbench; `candleframe/binance` and `candleframe/hyperliquid` are the live feeds. The package is not on npm yet. Install it from GitHub with `npm install github:adarshzpatel/candleframe` (Node 24); its `prepare` script builds `dist/lib` on install.
 
 See the [embedding guide](docs/embedding.md) and [two-widget example](examples/embed.html). `createChart` remains the chart-only entry point for applications that supply their own UI:
 
@@ -109,7 +109,7 @@ Interfaces remain experimental. Scripting and broker execution are not implement
 
 CandleFrame is released under the [MIT license](LICENSE). Bundled fonts use the SIL Open Font License; see `src/fonts/`.
 
-CandleFrame is an independent project. It is not affiliated with or endorsed by Binance or any other company named in this repository. Their names and trademarks belong to their owners.
+CandleFrame is an independent project. It is not affiliated with or endorsed by Binance, Hyperliquid or any other company named in this repository. Their names and trademarks belong to their owners.
 
 ## Project documents
 

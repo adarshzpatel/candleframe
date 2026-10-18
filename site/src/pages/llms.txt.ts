@@ -14,7 +14,7 @@ export const GET: APIRoute = async () => {
     '',
     '> A framework-free WebGL2 financial charting library for the browser and for agents: a full widget, a bare chart engine, and a headless runtime with a typed command API. MIT licensed, no runtime dependencies.',
     '',
-    `Install from GitHub with \`npm install github:adarshzpatel/candleframe\` (Node 24). Entry points: \`candleframe/core\` (headless, no DOM), \`candleframe/chart\`, \`candleframe/widget\`, \`candleframe/trading\`, \`candleframe/binance\`. Every page below is plain Markdown. All pages in one file: ${new URL('llms-full.txt', siteRoot).href}`,
+    `Install from GitHub with \`npm install github:adarshzpatel/candleframe\` (Node 24). Entry points: \`candleframe/core\` (headless, no DOM), \`candleframe/chart\`, \`candleframe/widget\`, \`candleframe/trading\`, \`candleframe/binance\`, \`candleframe/hyperliquid\`. Every page below is plain Markdown. All pages in one file: ${new URL('llms-full.txt', siteRoot).href}`,
     '',
     ...[...groups].flatMap(([group, lines]) => [`## ${group}`, '', ...lines, '']),
     '## Optional',

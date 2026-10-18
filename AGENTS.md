@@ -26,7 +26,8 @@ Use Node 24. The build includes type checking and emits the demo and plain JavaS
 | Shared coordinates and autoscaling | `src/geometry.ts` |
 | Input events, overlays and chart lifecycle | `src/chart.ts` |
 | Indicator example | `src/indicators.ts` |
-| Live metadata, REST/socket reconciliation, retries | `src/binance-feed.ts` |
+| Live metadata, REST/socket reconciliation, retries | `src/binance-feed.ts`, `src/hyperliquid-feed.ts` |
+| Live Hyperliquid check in the demo (needs network) | `scripts/hyperliquid-live.mjs` |
 | Axis drag math | `src/scales.ts` |
 | Pan momentum and displayed scale transitions | `src/pan-motion.ts`, `src/scale-motion.ts` |
 | Drawing contracts, validation and tool geometry | `src/drawing-types.ts`, `src/drawing-tools.ts` |
@@ -53,7 +54,7 @@ Use Node 24. The build includes type checking and emits the demo and plain JavaS
 | Intervals, session gaps and time labels | `src/intervals.ts`, `src/time-scale.ts`, `src/time-format.ts` |
 | Static feed and history paging | `src/static-feed.ts`, `ChartRuntime.loadOlderHistory` |
 | Structured errors | `src/errors.ts` |
-| Correctness regressions | `tests/core.test.ts`, `tests/binance-feed.test.ts`, `tests/simulated-feed.test.ts` |
+| Correctness regressions | `tests/core.test.ts`, `tests/binance-feed.test.ts`, `tests/hyperliquid-feed.test.ts`, `tests/simulated-feed.test.ts` |
 
 ## Working rules
 
