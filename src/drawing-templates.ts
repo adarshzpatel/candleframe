@@ -35,12 +35,13 @@ export function templateName(value: unknown): string {
   return name;
 }
 
-/** The style, settings and levels a template takes from a drawing. Points and text stay behind. */
+/** The style, settings, levels and visibility a template takes from a drawing. Points and text stay behind. */
 export function drawingTemplateValue(drawing: Drawing): DrawingToolDefaults {
   return {
     style: { ...drawing.style },
     ...(drawing.options ? { options: { ...drawing.options } } : {}),
     ...(drawing.levels.length ? { levels: [...drawing.levels] } : {}),
+    ...(drawing.visibility ? { visibility: structuredClone(drawing.visibility) } : {}),
   };
 }
 
@@ -61,6 +62,7 @@ export function drawingTemplatePatch(
       ]),
     ),
     levels: [...(value?.levels ?? [])],
+    visibility: value?.visibility ? structuredClone(value.visibility) : null,
   };
 }
 

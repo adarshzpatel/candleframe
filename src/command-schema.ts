@@ -1,3 +1,4 @@
+import { DRAWING_VISIBILITY_UNITS } from './drawing-visibility.ts';
 import type { ChartCommand } from './types.ts';
 
 /**
@@ -25,6 +26,26 @@ const style: Schema = {
     fillOpacity: { type: 'number', minimum: 0, maximum: 1 },
     fontSize: { type: 'number', minimum: 10, maximum: 32 },
   },
+  additionalProperties: false,
+};
+const visibility: Schema = {
+  type: 'object',
+  description:
+    "Intervals the drawing shows on, per family. Omitted families show on every count; counts are whole numbers in each family's bounds.",
+  properties: Object.fromEntries(
+    DRAWING_VISIBILITY_UNITS.map(({ unit, min, max }) => [
+      unit,
+      {
+        type: 'object',
+        properties: {
+          enabled: { type: 'boolean' },
+          from: { type: 'integer', minimum: min, maximum: max },
+          to: { type: 'integer', minimum: min, maximum: max },
+        },
+        additionalProperties: false,
+      },
+    ]),
+  ),
   additionalProperties: false,
 };
 const priceScale: Schema = {
@@ -170,6 +191,7 @@ const commands = {
             additionalProperties: { type: ['boolean', 'number', 'string'] },
             maxProperties: 32,
           },
+          visibility,
         },
         additionalProperties: false,
       },
@@ -196,6 +218,7 @@ const commands = {
             additionalProperties: { type: ['boolean', 'number', 'string'] },
             maxProperties: 32,
           },
+          visibility: { oneOf: [visibility, { type: 'null' }] },
         },
         additionalProperties: false,
       },

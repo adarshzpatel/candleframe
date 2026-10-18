@@ -237,6 +237,7 @@ export class DrawingController {
       ...(defaults?.options && Object.keys(defaults.options).length
         ? { options: { ...defaults.options } }
         : {}),
+      ...(defaults?.visibility ? { visibility: structuredClone(defaults.visibility) } : {}),
     };
   }
   down(p: DrawingPoint, context: DrawingContext, modifiers: DrawingModifiers = {}): boolean {

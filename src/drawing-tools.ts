@@ -32,6 +32,7 @@ import {
   positionOutcome,
 } from './position-drawing.ts';
 import { themeTokenDefaults } from './theme-tokens.ts';
+import { drawingShown, normalizedVisibility } from './drawing-visibility.ts';
 import type { Anchor } from './types.ts';
 import type {
   Drawing,
@@ -828,7 +829,10 @@ export function normalizedToolDefaults(
   value: unknown,
   definition: Pick<DrawingToolDefinition, 'settings'> | undefined,
 ): DrawingToolDefaults {
-  if (!object(value) || Object.keys(value).some(key => !['style', 'options', 'levels'].includes(key)))
+  if (
+    !object(value) ||
+    Object.keys(value).some(key => !['style', 'options', 'levels', 'visibility'].includes(key))
+  )
     throw new ChartError('INVALID_DRAWING_OPTIONS');
   const result: DrawingToolDefaults = {};
   if (value.style !== undefined) {
@@ -843,6 +847,8 @@ export function normalizedToolDefaults(
   if (options) result.options = options;
   const levels = value.levels === undefined ? [] : normalizedLevels(value.levels);
   if (levels.length) result.levels = levels;
+  const visibility = normalizedVisibility(value.visibility);
+  if (visibility) result.visibility = visibility;
   return result;
 }
 function normalizedPoint(value: unknown): Anchor {
@@ -971,11 +977,13 @@ export class DrawingRegistry {
     };
     const options = normalizedOptions(value.options, definition);
     if (options) drawing.options = options;
+    const visibility = normalizedVisibility(value.visibility);
+    if (visibility) drawing.visibility = visibility;
     definition?.validate?.(drawing);
     return drawing;
   }
   project(drawing: Drawing, context: DrawingContext): DrawingPrimitive[] {
-    if (!drawing.visible) return [];
+    if (!drawingShown(drawing, context.interval)) return [];
     return this.get(drawing.type)?.project(drawing, context) ?? [];
   }
 }
@@ -1002,5 +1010,6 @@ export function translateDrawing(
     style: { ...drawing.style },
     levels: [...drawing.levels],
     ...(drawing.options ? { options: { ...drawing.options } } : {}),
+    ...(drawing.visibility ? { visibility: structuredClone(drawing.visibility) } : {}),
   };
 }
