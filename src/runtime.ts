@@ -429,7 +429,7 @@ export class ChartRuntime {
       interval: d.interval,
       layers: { heatmap: this.heatmapEnabled, candles: true, volume: true, indicator: true },
       intensity: 1,
-      viewport: { fromMs: 0, toMs: 180 * d.intervalMs, following: true },
+      viewport: { fromMs: 0, toMs: this.defaultBars * d.intervalMs, following: true },
       priceScale: { mode: 'auto' },
       indicators: structuredClone(this.defaultIndicators),
       drawings: [],
@@ -517,8 +517,13 @@ export class ChartRuntime {
     this.scaleCache = { candles: this.candles, descriptor: this.descriptor, scale };
     return scale;
   }
-  /** The default live view: 180 bars ending 12 bars after the latest candle. */
-  private liveViewport(span = 180): ChartDocument['viewport'] {
+  /** Bars in the default live view. A view sets it from its width, so narrow charts keep readable candles. */
+  private defaultBars = 180;
+  setDefaultBars(bars: number): void {
+    if (Number.isFinite(bars)) this.defaultBars = Math.max(20, Math.min(180, Math.round(bars)));
+  }
+  /** The default live view: `defaultBars` bars ending 12 bars after the latest candle. */
+  private liveViewport(span = this.defaultBars): ChartDocument['viewport'] {
     const scale = this.timeScale();
     const end = scale.logical(this.candles.at(-1)?.timeMs ?? 0) + 12;
     return { fromMs: scale.time(end - span), toMs: scale.time(end), following: true };
@@ -797,7 +802,9 @@ export class ChartRuntime {
   }
   private resetViewport(resetSpan = true): void {
     const { fromMs, toMs } = this.document.viewport;
-    this.document.viewport = this.liveViewport(resetSpan ? 180 : this.timeScale().bars(fromMs, toMs));
+    this.document.viewport = this.liveViewport(
+      resetSpan ? this.defaultBars : this.timeScale().bars(fromMs, toMs),
+    );
   }
   private assertRevision(expected?: number): void {
     if (this.disposed) throw new ChartError('DISPOSED');

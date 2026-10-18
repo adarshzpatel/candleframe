@@ -435,12 +435,13 @@ export function createDrawingWorkbench(
     { signal: abort.signal },
   );
   const objectToggle = owner.createElement('button');
-  objectToggle.className = 'drawing-objects-button';
-  objectToggle.innerHTML = `${svg('layers', 17)}<span>0</span>`;
+  objectToggle.className = 'rail-button drawing-objects-button';
+  objectToggle.innerHTML = `${svg('layers')}<span hidden>0</span>`;
   objectToggle.setAttribute('aria-label', 'Drawing objects');
   objectToggle.setAttribute('aria-expanded', 'false');
   objectToggle.dataset.tooltip = 'Drawing objects';
-  panel.querySelector('.chart-toolbar')!.append(objectToggle);
+  // With the drawing tools: the list holds what they made.
+  favouriteToggle.after(objectToggle);
   const objects = owner.createElement('section');
   objects.className = 'drawing-object-panel';
   objects.hidden = true;
@@ -475,17 +476,15 @@ export function createDrawingWorkbench(
     });
   }
   function positionObjects() {
-    // In a grid, open beside the active chart, whose summary holds the toggle.
+    // Beside the rail, level with its toggle.
     const bounds = panel.getBoundingClientRect(),
-      anchor = (
-        objectToggle.closest('.chart-toolbar') ?? panel.querySelector('.chart-toolbar')!
-      ).getBoundingClientRect();
-    const top = Math.max(8, anchor.bottom - bounds.top - panel.clientTop + 8),
+      anchor = objectToggle.getBoundingClientRect();
+    const top = Math.max(8, Math.min(anchor.top - bounds.top - panel.clientTop, panel.clientHeight - 160)),
       edge = frame(panel);
     objects.style.top = `${edge.top + top}px`;
-    objects.style.right = `${edge.right + Math.max(10, bounds.right - anchor.right)}px`;
+    objects.style.left = `${edge.left + 8}px`;
     objects.style.maxHeight = `${Math.max(0, panel.clientHeight - top - 8)}px`;
-    if (topLayer) objects.style.maxWidth = `${Math.max(0, panel.clientWidth - 20)}px`;
+    if (topLayer) objects.style.maxWidth = `${Math.max(0, panel.clientWidth - 16)}px`;
   }
   function toggleObjects(open: boolean) {
     reveal(objects, open);
@@ -1442,7 +1441,10 @@ export function createDrawingWorkbench(
     list.replaceChildren();
     const drawings = lastDrawings ?? [],
       groups = lastGroups ?? [];
-    objectToggle.querySelector('span')!.textContent = String(drawings.length);
+    const count = objectToggle.querySelector('span')!;
+    count.textContent = String(drawings.length);
+    count.hidden = !drawings.length;
+    objectToggle.setAttribute('aria-label', `Drawing objects (${drawings.length})`);
     const hideAll = objects.querySelector<HTMLButtonElement>('#drawing-hide-all')!,
       lockAll = objects.querySelector<HTMLButtonElement>('#drawing-lock-all')!;
     const hidden = selection.options.hidden,

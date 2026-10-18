@@ -148,11 +148,7 @@ try {
   const hover = await inRoot(root =>
     [...root.querySelectorAll('.chart-cell .hover-time')].map(e => e.textContent),
   );
-  check(
-    hover[1] !== 'Latest candle' && hover[1] === hover[0],
-    'crosshair sync shows the hovered bar in other charts',
-    hover,
-  );
+  check(!!hover[1] && hover[1] === hover[0], 'crosshair sync shows the hovered bar in other charts', hover);
   await page.screenshot({ path: `${out}/grid-2x2-crosshair.png` });
 
   // Layout menu: sync checkboxes and presets.

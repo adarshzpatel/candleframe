@@ -1,5 +1,5 @@
 import { ChartError, toChartError } from './errors.ts';
-import { indicatorColor, resolveTheme, themeColor, themeColorCSS } from './themes.ts';
+import { indicatorColor, resolveTheme, systemThemeId, themeColor, themeColorCSS } from './themes.ts';
 import type { ResolvedChartTheme, ThemeInput } from './themes.ts';
 import { createGeometry, geometryForRanges, geometryLayout, stateTimeScale } from './geometry.ts';
 import type { TimeScale } from './time-scale.ts';
@@ -156,7 +156,7 @@ export interface ChartApi {
 /** Mounts a chart-only view. All controls can be supplied by the host application. */
 
 export function createChart(container: HTMLElement, options: ChartOptions): ChartApi {
-  let theme = resolveTheme(options.theme);
+  let theme = resolveTheme(options.theme ?? systemThemeId(container.ownerDocument?.defaultView));
   const runtime = new ChartRuntime(options.feed, options.indicators, {
     heatmap: options.heatmap,
     drawingTools: options.drawingTools,
@@ -247,6 +247,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     minimumFractionDigits: state.feed.instrument.pricePrecision,
     maximumFractionDigits: state.feed.instrument.pricePrecision,
   });
+  const wholePrice = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
   let timeZone = options.timeZone ?? 'UTC';
   let timeFormats = createTimeFormats(state.feed.intervalMs, timeZone);
   let geometry: ChartGeometry;
@@ -729,9 +730,13 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     ctx.fillStyle = themeColor(theme, theme.chart.axisColor);
     ctx.textAlign = 'left';
     const size = theme.typography.axisSize;
+    // Ticks under the last-price tag would show through around its edges.
+    const tagY = latest ? g.y(latest.close) : Number.NaN,
+      tagReach = theme.chart.markerHeight / 2 + size * 0.6;
     for (const tick of ticks.price) {
       // Keep labels whole inside the plot's vertical extent.
       if (tick.position < g.top + size * 0.4 || tick.position > g.top + g.plotHeight - size * 0.2) continue;
+      if (Math.abs(tick.position - tagY) < tagReach) continue;
       ctx.fillText(
         tick.label,
         g.left + g.plotWidth + theme.chart.axisLabelPadding,
@@ -753,12 +758,20 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     ctx.font = regular;
     ctx.textAlign = 'left';
     ctx.fillStyle = theme.palette.textFaint;
-    if (state.document.layers.volume && g.volumeHeight > 0)
-      ctx.fillText(
-        `VOLUME · ${state.feed.instrument.base}`,
-        g.left + theme.chart.axisLabelPadding * 0.4,
-        g.volumeTop + theme.typography.axisSize * 0.9,
-      );
+    if (state.document.layers.volume && g.volumeHeight > 0) {
+      // A background halo keeps the label readable where tall bars reach it.
+      const text = `Volume · ${state.feed.instrument.base}`,
+        x = g.left + theme.chart.axisLabelPadding * 0.4,
+        y = g.volumeTop + size * 0.9;
+      ctx.save();
+      ctx.font = `${size}px ${theme.typography.uiFamily}`;
+      ctx.strokeStyle = theme.palette.background;
+      ctx.lineWidth = 3;
+      ctx.lineJoin = 'round';
+      ctx.strokeText(text, x, y);
+      ctx.fillText(text, x, y);
+      ctx.restore();
+    }
     ctx.fillText(timeFormats.zone, g.left + g.plotWidth + theme.chart.axisLabelPadding, timeBaseline);
     ctx.strokeStyle = theme.palette.border;
     ctx.lineWidth = theme.effects.borderWidth;
@@ -841,7 +854,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     const widest = Math.max(...['00:00', '2026', 'Sept', '28'].map(sample => ctx!.measureText(sample).width));
     const spacing = Math.max(size * 2.4, theme.chart.axisLabelPadding * 2) + 6;
     return {
-      price: priceTicks(g, value => formatPrice.format(value), spacing),
+      price: wholeTicks(priceTicks(g, value => formatPrice.format(value), spacing)),
       time: timeTicks(g, {
         candles: state.candles,
         intervalMs: state.feed.intervalMs,
@@ -864,6 +877,15 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
         ]),
       ),
     };
+  }
+  /** Whole-number steps drop the zeros a fixed precision prints: 68,000 rather than 68,000.00. */
+  function wholeTicks(price: AxisTick[]): AxisTick[] {
+    if (
+      !state.feed.instrument.pricePrecision ||
+      !price.every(t => Number.isInteger(Number(t.value.toFixed(9))))
+    )
+      return price;
+    return price.map(t => ({ ...t, label: wholePrice.format(t.value) }));
   }
   /** Titles, latest values, guide levels and axis labels for indicator panes. */
   function drawPanes(g: ChartGeometry): void {
@@ -1515,6 +1537,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     scaleMotion = null;
     width = entries[0].contentRect.width;
     height = entries[0].contentRect.height;
+    if (width > 0) runtime.setDefaultBars((width - theme.chart.priceAxisWidth) / 4);
     invalidate();
   });
   resize.observe(root);
@@ -1578,6 +1601,8 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       }
       invalidate();
     });
+    // About 4px per bar in the default view: narrow charts show fewer, readable candles.
+    runtime.setDefaultBars((container.clientWidth - theme.chart.priceAxisWidth) / 4);
     runtime.start();
   } catch (error) {
     disposed = true;

@@ -59,10 +59,10 @@ const paths: Record<string, string> = {
   indicators: '<path d="M5 20 9 4h8M4 10h10m1 4 6 6m0-6-6 6"/>',
   volume: '<path d="M5 20V13m7 7V4m7 16V9"/>',
   book: '<path d="M4 5h6m4 0h6M4 10h6m4 0h6M4 15h6m4 0h6M4 20h6m4 0h6"/>',
-  pause: '<path d="M8 5v14M16 5v14"/>',
+  pause: '<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>',
   play: '<path d="m8 4 12 8-12 8V4Z"/>',
   save: '<path d="M5 3h12l4 4v14H3V3h2Zm2 0v7h10V3M7 21v-7h10v7"/>',
-  restore: '<path d="M3 10V5h5M4 6a9 9 0 1 1-1 10m9-9v5l3 2"/>',
+  restore: '<path d="M3 4v5h5"/><path d="M3.5 13a9 9 0 1 0 2.2-6.8L3 9"/>',
   camera: '<path d="M8 6 10 3h4l2 3h5v14H3V6h5Z"/><circle cx="12" cy="13" r="4"/>',
   close: '<path d="m6 6 12 12M6 18 18 6"/>',
   settings:

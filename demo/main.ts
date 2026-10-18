@@ -45,30 +45,23 @@ const markets: WidgetMarketSource[] = [
 ];
 // `?offline` drops Binance, for the smoke test and network-free work.
 if (new URLSearchParams(location.search).has('offline')) markets.splice(1, 1);
-// The demo sets numbers and annotations in Paper Mono. A saved appearance still wins.
-const paperMono = '"Paper Mono", "SFMono-Regular", Consolas, monospace';
+// The demo keeps its Evergreen look and watermark. A saved appearance still wins.
 let savedTheme: ResolvedChartTheme | null = null;
 try {
   const saved = localStorage.getItem(JSON.stringify(['demo', 'appearance']));
   if (saved) savedTheme = restoreTheme(JSON.parse(saved));
 } catch {
-  /* Fall back to the Paper Mono theme. */
+  /* Fall back to the demo theme. */
 }
-// Canvas text does not re-render when a web font arrives, so wait briefly for it.
-await Promise.race([
-  document.fonts.load('12px "Paper Mono"'),
-  new Promise(resolve => setTimeout(resolve, 1500)),
-]).catch(() => {});
 const chart = createChartWidget(host, {
   feed: simulate('BTC/USD', '1m'),
-  theme:
-    savedTheme ??
-    createTheme('evergreen', { typography: { numberFamily: paperMono, annotationFamily: paperMono } }),
+  theme: savedTheme ?? createTheme('evergreen', { chart: { watermarkText: 'candleframe' } }),
   indicators: [sma(20)],
   markets,
   orderBook: true,
   autoscaleOnPan: true,
   storageKey: 'demo',
+  inspector: true,
   // Paper trading against the chart's own prices: tick Trading in the order panel.
   trading: { broker: createPaperBroker({ accounts: ['Paper'] }) },
   layoutStore: {
