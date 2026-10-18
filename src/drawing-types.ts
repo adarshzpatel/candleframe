@@ -112,6 +112,8 @@ export interface DrawingContext {
   formatPrice(price: number): string;
   /** True while this drawing is selected, for details shown only then. */
   selected?: boolean;
+  /** True while the pointer rests on this drawing, for tooltips such as a note's text. */
+  hovered?: boolean;
   /** Axis-style time label. Headless hosts may omit it. */
   formatTime?(timeMs: number): string;
   /** Shared measured text width for painting and hit testing; optional for headless hosts. */
@@ -132,6 +134,11 @@ export interface DrawingToolDefinition {
   readonly editableText?: boolean;
   /** Opens host-owned properties on double-click or Enter, without opening on placement. */
   readonly editableProperties?: boolean;
+  /**
+   * Stays at one spot on the plot while the chart pans or zooms. Pointer edits store that spot in
+   * `options.plotX` and `plotY` as fractions of the plot; see `plotPoint`.
+   */
+  readonly fixedToPlot?: boolean;
   /** Optional one-click placement. The persisted point count still follows `points`. */
   create?(anchor: Anchor, context: DrawingContext): Anchor[];
   /** Custom handles replace raw anchor handles for semantic editing. */

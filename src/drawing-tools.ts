@@ -905,6 +905,7 @@ export class DrawingRegistry {
         (definition.validate !== undefined && typeof definition.validate !== 'function') ||
         (definition.editableText !== undefined && typeof definition.editableText !== 'boolean') ||
         (definition.editableProperties !== undefined && typeof definition.editableProperties !== 'boolean') ||
+        (definition.fixedToPlot !== undefined && typeof definition.fixedToPlot !== 'boolean') ||
         !!definition.handles !== !!definition.moveHandle ||
         ['create', 'handles', 'moveHandle'].some(
           key =>

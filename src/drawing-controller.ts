@@ -1,5 +1,6 @@
 import { ChartError, toChartError } from './errors.ts';
 import { DEFAULT_DRAWING_STYLE, DrawingRegistry, translateDrawing } from './drawing-tools.ts';
+import { plotOptions, plotPoint } from './drawing-primitives.ts';
 import { drawingHandles, hitDrawings } from './drawing-scene.ts';
 import type {
   Drawing,
@@ -222,6 +223,21 @@ export class DrawingController {
     }
     return this.options.magnet === 'strong' || best <= 12 ? snapped : anchor;
   }
+  /** A `fixedToPlot` drawing stores where its first anchor now sits on the plot. */
+  private pin(drawing: Drawing, context: DrawingContext): void {
+    const p = drawing.points[0],
+      g = context.geometry;
+    if (!p || !this.host.registry.get(drawing.type)?.fixedToPlot) return;
+    drawing.options = { ...drawing.options, ...plotOptions({ x: g.x(p.timeMs), y: g.y(p.price) }, context) };
+  }
+  /** Moves a `fixedToPlot` drawing's anchor to where it is drawn, so a drag starts from there. */
+  private unpin(drawing: Drawing, context: DrawingContext): Drawing {
+    const at = this.host.registry.get(drawing.type)?.fixedToPlot ? plotPoint(drawing, context) : undefined;
+    if (!at) return drawing;
+    const anchor = context.geometry.anchor(at.x, at.y);
+    anchor.price = Math.max(this.host.state().feed.instrument.tickSize, anchor.price);
+    return { ...structuredClone(drawing), points: [anchor, ...drawing.points.slice(1)] };
+  }
   private create(points: Anchor[]): Drawing {
     const defaults = this.options.toolDefaults[this.tool];
     return {
@@ -251,7 +267,10 @@ export class DrawingController {
       if (!hit.drawing.locked && this.host.registry.get(hit.drawing.type)) {
         const clone = hit.handle === null && !!modifiers.clone;
         // A clone drags under a new id, so the original stays drawn in place.
-        const original = clone ? { ...structuredClone(hit.drawing), id: crypto.randomUUID() } : hit.drawing;
+        const original = this.unpin(
+          clone ? { ...structuredClone(hit.drawing), id: crypto.randomUUID() } : hit.drawing,
+          context,
+        );
         this.draft = structuredClone(original);
         this.gesture = {
           mode: hit.handle === null ? 'body' : 'handle',
@@ -273,10 +292,12 @@ export class DrawingController {
         this.draft = this.create(
           definition.create(anchor, { ...context, tickSize: state.feed.instrument.tickSize }),
         );
+        this.pin(this.draft, context);
         this.commit();
         return true;
       }
       this.draft = this.create([anchor]);
+      this.pin(this.draft, context);
       this.fixed = [anchor];
       this.emit();
       if (definition.points === 'freehand')
@@ -363,6 +384,7 @@ export class DrawingController {
         ...this.fixed,
         modifiers.shift ? this.constrain(this.fixed.at(-1)!, anchor, context) : anchor,
       ];
+    this.pin(this.draft, context);
     return true;
   }
   up(p: DrawingPoint, context: DrawingContext, modifiers: DrawingModifiers = {}): void {
@@ -397,12 +419,17 @@ export class DrawingController {
     const draft = this.draft,
       cloning = !!this.gesture?.clone,
       editing = this.gesture && this.gesture.mode !== 'freehand' && !cloning;
-    const revision = this.gesture?.revision ?? this.creationRevision;
+    const revision = this.gesture?.revision ?? this.creationRevision,
+      pinned = this.host.registry.get(draft.type)?.fixedToPlot && draft.options;
     this.committing = true;
     try {
       this.host.execute(
         editing
-          ? { type: 'drawing.update', id: draft.id, patch: { points: draft.points } }
+          ? {
+              type: 'drawing.update',
+              id: draft.id,
+              patch: { points: draft.points, ...(pinned ? { options: pinned } : {}) },
+            }
           : { type: 'drawing.add', drawing: draft },
         revision,
       );
