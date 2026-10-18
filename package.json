@@ -22,6 +22,7 @@
     "webgl",
     "webgl2",
     "order-book",
+    "hyperliquid",
     "typescript"
   ],
   "engines": {
@@ -57,6 +58,10 @@
     "./binance": {
       "types": "./dist/lib/binance.d.ts",
       "import": "./dist/lib/binance.js"
+    },
+    "./hyperliquid": {
+      "types": "./dist/lib/hyperliquid.d.ts",
+      "import": "./dist/lib/hyperliquid.js"
     },
     "./package.json": "./package.json"
   },

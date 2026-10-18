@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Typechecks every TypeScript code block in the docs site against the library source,
 // so guides cannot drift from the API. Blocks import from `candleframe`, `candleframe/core`,
-// `candleframe/chart`, `candleframe/widget`, `candleframe/trading` or `candleframe/binance`.
+// `candleframe/chart`, `candleframe/widget`, `candleframe/trading`, `candleframe/binance` or
+// `candleframe/hyperliquid`.
 //
 //   node scripts/check-doc-snippets.mjs                 # all of site/src/content/docs
 //   node scripts/check-doc-snippets.mjs feeds/overview  # pages whose path contains this
@@ -89,6 +90,7 @@ writeFileSync(
           'candleframe/widget': [src('widget-entry.ts')],
           'candleframe/trading': [src('trading-entry.ts')],
           'candleframe/binance': [src('binance.ts')],
+          'candleframe/hyperliquid': [src('hyperliquid.ts')],
         },
       },
       include: ['*.ts', '*.tsx'],

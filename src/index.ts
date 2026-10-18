@@ -1,6 +1,6 @@
 // Everything. Bundlers drop unused parts (the package has no side effects).
 // Narrower entries: `candleframe/core` (no DOM), `candleframe/chart`, `candleframe/widget`,
-// `candleframe/trading`, `candleframe/binance`.
+// `candleframe/trading`, `candleframe/binance`, `candleframe/hyperliquid`.
 export * from './core.ts';
 export * from './chart-entry.ts';
 export * from './trading-entry.ts';
@@ -24,3 +24,4 @@ export type { DrawingFavouriteData, DrawingFavouriteStore } from './drawing-favo
 export { parseIntervalInput, supportsInterval } from './widget-market.ts';
 export type { WidgetFontSource } from './widget-fonts.ts';
 export { createBinanceFeed, BINANCE_INTERVALS } from './binance-feed.ts';
+export { createHyperliquidFeed, HYPERLIQUID_INTERVALS } from './hyperliquid-feed.ts';
