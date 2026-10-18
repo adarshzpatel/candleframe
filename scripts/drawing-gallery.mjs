@@ -6,8 +6,11 @@
 //   node scripts/drawing-gallery.mjs --url http://127.0.0.1:5173/ --out artifacts/drawings
 //   node scripts/drawing-gallery.mjs --only trendline,fib-retracement  # a subset
 //   node scripts/drawing-gallery.mjs --theme paper                     # another theme
+//   node scripts/drawing-gallery.mjs --fixtures scripts/drawing-fixtures/shapes.json --plot
+// A fixtures file maps a tool type to { "points": [[barsBack, priceMove], ...], "text": "..." }.
+// --plot crops each screenshot to the chart.
 import { spawn } from 'node:child_process';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { chromium } from 'playwright';
 
@@ -17,6 +20,7 @@ const arg = name => {
 };
 const out = arg('out') ?? 'artifacts/drawings';
 const only = arg('only')?.split(',');
+const fixtures = arg('fixtures') ? JSON.parse(await readFile(arg('fixtures'), 'utf8')) : {};
 await mkdir(out, { recursive: true });
 
 let url = arg('url'),
@@ -51,7 +55,8 @@ try {
   });
   for (const tool of tools) {
     if (only && !only.includes(tool.type)) continue;
-    const placed = await page.evaluate(({ type, points }) => {
+    tool.fixture = fixtures[tool.type];
+    const placed = await page.evaluate(({ type, points, fixture }) => {
       const chart = window.candleframe;
       chart.execute({ type: 'drawing.clear' });
       const { latestCandle: last, feed } = chart.inspect();
@@ -76,11 +81,12 @@ try {
       const path = Array.from({ length: count }, (_, i) =>
         at(95 - i * 14, (i % 2 ? 0.005 : -0.004) + i * 0.0006),
       );
-      const anchors = special[type] ?? presets[count] ?? path;
+      const fixed = fixture?.points?.map(([bars, move]) => at(bars, move));
+      const anchors = fixed ?? special[type] ?? presets[count] ?? path;
       try {
         chart.execute({
           type: 'drawing.add',
-          drawing: { id: 'gallery', type, points: anchors, text: 'Gallery note' },
+          drawing: { id: 'gallery', type, points: anchors, text: fixture?.text ?? 'Gallery note' },
         });
         chart.selectDrawing('gallery');
         return true;
@@ -93,7 +99,8 @@ try {
       continue;
     }
     await sleep(250);
-    await page.screenshot({ path: `${out}/${tool.type}.png` });
+    const clip = process.argv.includes('--plot') && (await page.locator('.chart-host').first().boundingBox());
+    await page.screenshot({ path: `${out}/${tool.type}.png`, ...(clip ? { clip } : {}) });
     console.log(`ok   ${tool.type}`);
   }
 } finally {
