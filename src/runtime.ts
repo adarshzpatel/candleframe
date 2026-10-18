@@ -1082,7 +1082,7 @@ export class ChartRuntime {
           typeof patch !== 'object' ||
           Array.isArray(patch) ||
           Object.keys(patch).some(
-            key => !['points', 'style', 'locked', 'visible', 'text', 'levels'].includes(key),
+            key => !['points', 'style', 'locked', 'visible', 'text', 'levels', 'options'].includes(key),
           )
         )
           throw new ChartError('INVALID_DRAWING_PATCH');
@@ -1092,10 +1092,16 @@ export class ChartRuntime {
           (!patch.style || typeof patch.style !== 'object' || Array.isArray(patch.style))
         )
           throw new ChartError('INVALID_DRAWING_STYLE');
+        if (
+          patch.options !== undefined &&
+          (!patch.options || typeof patch.options !== 'object' || Array.isArray(patch.options))
+        )
+          throw new ChartError('INVALID_DRAWING_OPTIONS');
         next.drawings[index] = this.drawingRegistry.normalize({
           ...drawing,
           ...patch,
           style: { ...drawing.style, ...patch.style },
+          options: { ...drawing.options, ...patch.options },
         });
         break;
       }
@@ -1268,16 +1274,31 @@ export class ChartRuntime {
         maxBatch: 500,
         drawingTools: this.drawingRegistry
           .list()
-          .map(({ type, label, group, points, hint, editableText, editableProperties, create }) => ({
-            type,
-            label,
-            group,
-            points,
-            hint,
-            editableText: !!editableText,
-            editableProperties: !!editableProperties,
-            placement: create ? 'single-click' : points,
-          })),
+          .map(
+            ({
+              type,
+              label,
+              group,
+              section,
+              points,
+              hint,
+              settings,
+              editableText,
+              editableProperties,
+              create,
+            }) => ({
+              type,
+              label,
+              group,
+              ...(section ? { section } : {}),
+              points,
+              hint,
+              settings: structuredClone(settings ?? []),
+              editableText: !!editableText,
+              editableProperties: !!editableProperties,
+              placement: create ? 'single-click' : points,
+            }),
+          ),
       },
       paused: this.paused,
       dataRevision: this.dataRevision,

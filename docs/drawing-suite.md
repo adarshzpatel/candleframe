@@ -1,27 +1,38 @@
 # Drawing suite, version 0.3
 
-The workbench includes 30 drawing tools and a shared editing workflow. The catalog is an implementation of common chart-analysis drawings.
+The workbench includes 32 drawing tools and a shared editing workflow. The catalog covers common chart-analysis drawings.
 
 ## Tools
 
-| Category | Tools | Placement |
-| --- | --- | --- |
-| Lines | Trend line, ray, extended line, arrow | Two clicks |
-| Levels | Horizontal line, horizontal ray, vertical line, cross line | One click |
-| Channels | Parallel channel, pitchfork, Schiff pitchfork | Three clicks |
-| Fibonacci | Retracement, extension, channel, fan, time zones | Two or three clicks; picker shows instructions |
-| Shapes | Rectangle, ellipse, triangle, polyline | Two/three clicks; Enter or double-click finishes a polyline |
-| Freehand | Brush, highlighter | Drag, then release |
-| Annotations | Text, callout, price label | One click; callout uses tip then label location |
-| Measurements | Price range, date range, date and price range | Two clicks |
-| Position plans | Long position, short position | One click at entry, then drag level or width handles |
+The rail has six families, each split into sections in its menu.
+
+| Family | Section | Tools | Placement |
+| --- | --- | --- | --- |
+| Lines | Lines | Trend line, ray, info line, extended line, trend angle | Two clicks |
+| Lines | Lines | Horizontal line, horizontal ray, vertical line, cross line | One click |
+| Lines | Channels, Pitchforks | Parallel channel, pitchfork, Schiff pitchfork | Three clicks |
+| Fib & Gann | Fibonacci | Retracement, trend-based extension, channel, time zone, speed resistance fan | Two or three clicks |
+| Forecasting | Projection | Long position, short position | One click at entry, then drag level or width handles |
+| Forecasting | Measurer | Date range, price range, date and price range | Two clicks |
+| Shapes | Brushes | Brush, highlighter | Drag, then release |
+| Shapes | Arrows, Shapes | Arrow, rectangle, ellipse, triangle, polyline | Two/three clicks; Enter or double-click finishes a polyline |
+| Annotations | Text and notes | Text, callout, price label | One click; callout uses tip then label location |
+
+Clicking a family button picks the last tool used from it. The small corner button, or a right-click, opens the family menu. Alt+T, Alt+H, Alt+J, Alt+V, Alt+C and Alt+F pick the trend line, horizontal line, horizontal ray, vertical line, cross line and Fibonacci retracement.
+
+A Fibonacci retracement counts from its second anchor (0) back to its first (1). Saved retracements from earlier versions draw with their labels in that order; set **Reverse** to restore the old direction.
 
 Position plans start at 1:1 reward/risk. Target and stop labels show the price, distance, percentage and tick count. The entry label shows side, entry and reward/risk, plus the trade's state when candles are loaded: waiting for entry, open P&L, target hit or stopped. The plan fills on the first candle inside its width that trades through entry, then closes on the first candle that reaches target or stop; a candle that reaches both counts as stopped. A darker fill and a dashed line trace the trade from fill to exit or the latest candle. Entry, target and stop handles sit on the left edge and move vertically, and the right-edge handle adjusts width. Dragging a shaded region moves the whole plan. Prices are constrained during handle drags so crossing entry cannot produce an invalid position on release. They do not submit orders or calculate account position sizes. Fibonacci levels are editable and can be cleared to restore defaults. Measurements use the selected interval and elapsed UTC time; exchange session calendars are not implemented.
 
 ## Editing
 
-Choose a category in the left rail, then a tool from its menu; arrow keys move through the menu. A tool returns to Cursor after placement unless **Keep drawing** is on. The drawing strip controls color, width and line style for the selected object or the next drawing. Its gear opens text, fill, font size, Fibonacci levels and anchor coordinates, plus duplicate and ordering; lock and delete sit beside it. **Objects** opens the drawing list, with show, lock and delete on each row.
+Choose a family in the left rail, then a tool from its menu; arrow keys move through the menu. A tool returns to Cursor after placement unless **Keep drawing** is on. The drawing strip controls color, width and line style for the selected object or the next drawing. Its gear opens the tool's settings, text, fill, font size, Fibonacci levels and anchor coordinates, plus duplicate and ordering; lock and delete sit beside it. Double-click or Enter opens the same settings for any drawing. **Objects** opens the drawing list, with show, lock and delete on each row.
 
+Each tool remembers the last style, settings and Fibonacci levels you chose, and its next drawing starts with them. With a `storageKey` the widget keeps these defaults across reloads. Named looks per tool are covered in [Templates](#templates).
+
+- Hovering a drawing shows its handles faintly. Selecting it shades its price and time extent on both axes, with a tag at each anchor.
+- Shift while placing a point or dragging an anchor snaps the segment to 0°, 45° or 90° on screen.
+- Alt, Ctrl or Command while dragging a drawing's body drags a copy and leaves the original in place.
 - Click an object to select it. Drag its body to move all points together or drag a handle to edit an anchor. Paths with more than eight points expose endpoint handles.
 - Text, callouts and price labels open a text editor after placement. Double-click an annotation, select it and press Enter, or use **Edit text** to reopen it. Enter inserts a new line; Ctrl/Command+Enter or **Apply text** saves text, size and color together as one undo step. Escape or **Cancel** discards the pending edit. Streamed prices do not replace typed text.
 - Double-click a position, select it and press Enter, or choose **Settings** in its drawing strip to edit entry, target, stop and width in bars. Reward/risk input and 1R/2R/3R presets adjust the target while retaining the stop. **Apply position** commits all fields as one undo step; Cancel leaves the plan unchanged.
@@ -34,6 +45,40 @@ Choose a category in the left rail, then a tool from its menu; arrow keys move t
 When the chart has focus, Delete/Backspace removes an unlocked selection, Ctrl/Command+C copies, V pastes and D duplicates. Ctrl/Command+Z undoes; Shift+Ctrl/Command+Z or Ctrl/Command+Y redoes. Enter opens the selected annotation or position editor, or finishes a polyline. Escape cancels placement and clears selection. Drawing and axis gestures remain separate; selected drawings do not block axis resets.
 
 Save layout and Restore include drawings. The storage key is retained from v0.2 so existing layouts can migrate. PNG export includes drawings and their labels. Native file-download handling is not newly certified by this change.
+
+## Templates
+
+The Template button in the drawing strip and the Template button at the foot of the settings panel open the same menu. It acts on the selected drawing's tool, or on the active tool when nothing is selected.
+
+- **Save as…** asks for a name inside the widget and stores the drawing's style, settings and Fibonacci levels. Points and text stay out of templates. Names are 1 to 64 characters. Reusing a name that tool already has, ignoring case, asks before replacing it. Each tool holds up to 20 templates.
+- Saved templates are listed by name. Clicking one applies it to the selection as one `drawing.update`, so one undo reverts it. Settings the template leaves out return to their defaults. The trash button beside a name deletes that template without asking.
+- **Save as default** makes the selection's look the tool's default for new drawings.
+- **Apply default** gives the selection the look a new drawing of its tool would get.
+- **Reset** gives the selection `DEFAULT_DRAWING_STYLE`, clears its settings and restores the built-in Fibonacci levels.
+
+With nothing selected, applying a template sets the active tool's defaults, so the next drawing starts with it, and Reset clears those defaults. Apply and Reset cover the settings a tool declares; option keys outside its `settings` stay on the drawing.
+
+Templates and tool defaults belong to the widget, not the chart document, so they cover every chart and market in it. With a `storageKey` the widget keeps them in localStorage under `["<storageKey>","drawing-templates"]`. Without one they last for the widget session. To keep them with an account, pass `drawingTemplateStore`:
+
+```ts
+createChartWidget(container, {
+  feed,
+  storageKey: 'terminal',
+  drawingTemplateStore: {
+    load: () => account.load('drawing-templates'),
+    save: value => account.save('drawing-templates', value),
+  },
+});
+```
+
+Either method may return a promise. `save` receives the whole `DrawingTemplateData` after each change. On load the widget checks every entry against the registered tools and drops invalid ones; templates for a plugin tool that is not registered stay as they are. Edits made before a slow `load` answers win over the stored copy. A failed load or save shows a message, and templates keep working for the session.
+
+The bare `createChart` engine stores nothing. A host sets per-tool defaults with `setDrawingOptions({ toolDefaults })`. Each entry replaces that tool's defaults, `null` clears them, and the registry checks style, settings and levels the same way it checks a drawing:
+
+```ts
+chart.setDrawingOptions({ toolDefaults: { trendline: { style: { width: 3 }, options: { extendRight: true } } } });
+chart.setDrawingOptions({ toolDefaults: { trendline: null } });
+```
 
 ## Public API
 
@@ -103,7 +148,17 @@ Market candles and indicators remain WebGL2. Drawing scenes render in order on t
 
 The browser creation pass exercised all 30 tools through their real pointer gestures. It also checked body movement as one document revision, styling, duplicate, lock/hide, undo/redo, axis reset with a selection, native text editing and the resulting PNG preview. The browser-created v3 layout containing every tool round-tripped exactly through the headless runtime. The test suite, production build and headless example pass. Tests cover validation, plugin restoration, geometry, limits, scene hit tests, creation/edit cancellation and history. These are correctness checks, not a comparative drawing-performance benchmark. The toolbar now ships inside [the embeddable widget](embedding.md).
 
-Groups, multi-selection, specialized Gann/harmonic/Elliott tools, anchored drawing studies and touch-hardware certification remain future work.
+Groups, multi-selection, per-interval visibility, specialized Gann/harmonic/Elliott tools, anchored drawing studies and touch-hardware certification remain future work.
+
+## Tool settings
+
+A definition may declare `settings`: booleans, selects, colors and bounded numbers, each with a key, label, default and optional section. The widget builds the settings form from them, and `inspect().capabilities.drawingTools[].settings` lists them for agents. Values live in `Drawing.options`, which stores only values that differ from the defaults, so drawings without changes serialize as before. `drawing.update` merges an `options` patch. Read a value with `drawingOption(drawing, definition, key)`.
+
+Built-in settings include extend left/right, arrow ends, middle point and stats for lines; axis labels and text position for level lines; per-level colours, background bands, label side, level format, reverse and extend for Fibonacci tools; background, extend and middle line for shapes; and bold, italic, border and an optional background for text. The text tool has no background by default; callouts and price labels start with one. The background is the text colour at 20% opacity unless you pick a colour and opacity in Settings.
+
+Tools can return `axis` primitives for tags in the price or time gutter, such as the horizontal line's price tag. `DrawingContext.selected` lets a tool show details, like line stats, only while selected.
+
+`node scripts/drawing-behaviour.mjs` checks the rail, hotkeys, Shift snapping, clone drags, settings, remembered defaults and templates across reloads with real input. It starts Vite itself and clears the demo's saved templates before and after the run. `node scripts/drawing-gallery.mjs` screenshots every tool.
 
 Measurement tools draw a dashed diagonal between the two anchors while retaining their brackets, filled range and labels. The diagonal uses `theme.chart.measurementDash`; its color and thickness follow the drawing style.
 

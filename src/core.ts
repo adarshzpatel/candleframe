@@ -88,6 +88,11 @@ export type {
   TrendState,
 } from './indicators.ts';
 export { OrderBook } from './order-book.ts';
-export { DrawingRegistry, builtInDrawingTools, DEFAULT_DRAWING_STYLE } from './drawing-tools.ts';
+export {
+  DrawingRegistry,
+  builtInDrawingTools,
+  DEFAULT_DRAWING_STYLE,
+  drawingOption,
+} from './drawing-tools.ts';
 export type * from './types.ts';
 export type * from './drawing-types.ts';

@@ -554,6 +554,7 @@ test('annotation font measurement and padding are shared by rendering and hit te
     points: [geometry.anchor(100, 200)],
     text: 'Wide\nSmall',
     style: { fontSize: 20 },
+    options: { background: true },
   });
   let background: unknown, opacity: unknown;
   const canvas = new Proxy<Record<string, unknown>>(
@@ -581,8 +582,20 @@ test('annotation font measurement and padding are shared by rendering and hit te
       { font: '20px Georgia, serif', x: 118, y: 224 },
     ],
   );
+  // The box is a light tint of the text colour unless the drawing picks its own.
+  assert.equal(background, '#a9c4ff');
+  assert.equal(opacity, 0.2);
+  const custom = registry.normalize({
+    ...drawing,
+    options: { background: true, backgroundColor: '#ccddee', backgroundOpacity: 0.6 },
+  });
+  renderDrawings(canvas as unknown as CanvasRenderingContext2D, [custom], registry, context, null);
   assert.equal(background, '#ccddee');
-  assert.equal(opacity, 0.4);
+  assert.equal(opacity, 0.6);
+  assert.throws(
+    () => registry.normalize({ ...drawing, options: { backgroundColor: 'red' } }),
+    /INVALID_DRAWING_OPTIONS/,
+  );
   assert.equal(hitDrawings([drawing], registry, context, { x: 313, y: 230 }, null)?.drawing.id, 'note');
   assert.equal(hitDrawings([drawing], registry, context, { x: 324, y: 230 }, null), null);
   assert.ok(seenFonts.every(font => font === '20px Georgia, serif'));

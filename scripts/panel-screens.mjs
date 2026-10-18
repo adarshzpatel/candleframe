@@ -71,7 +71,7 @@ try {
   };
   await sleep(400);
 
-  await host.locator('.drawing-group-button').nth(3).click();
+  await host.locator('.drawing-group-more').nth(3).click();
   await sleep(250);
   await shot('1-tool-flyout', '.drawing-flyout');
   await escape();

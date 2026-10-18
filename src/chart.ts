@@ -41,7 +41,8 @@ import { PanMotion } from './pan-motion.ts';
 import { ScaleMotion } from './scale-motion.ts';
 import { CandleMotion } from './candle-motion.ts';
 import { DrawingController } from './drawing-controller.ts';
-import { renderDrawings } from './drawing-scene.ts';
+import { DRAWING_HOTKEYS } from './drawing-tools.ts';
+import { renderDrawings, type DrawingAxisPainter } from './drawing-scene.ts';
 import { renderProfiles } from './profile-scene.ts';
 import { renderFootprints } from './footprint-scene.ts';
 import type { FootprintCache } from './footprint-scene.ts';
@@ -50,7 +51,8 @@ import type {
   Drawing,
   DrawingContext,
   DrawingInteractionState,
-  DrawingOptions,
+  DrawingModifiers,
+  DrawingOptionsPatch,
   DrawingStyle,
   DrawingToolDefinition,
 } from './drawing-types.ts';
@@ -92,7 +94,7 @@ export interface ChartOptions {
   drawingTools?: readonly DrawingToolDefinition[];
   onToolChange?: (tool: string) => void;
   onDrawingChange?: (state: DrawingInteractionState) => void;
-  /** Owned drawing copy. Text opens after placement; editable properties open on double-click or Enter. */
+  /** Owned drawing copy. Annotations open after placement; any drawing opens on double-click or Enter. */
   onDrawingEdit?: (drawing: Drawing) => void;
   onError?: (error: ChartError) => void;
 }
@@ -127,9 +129,7 @@ export interface ChartApi {
   selectDrawing(id: string | null): void;
   drawingState(): DrawingInteractionState;
   drawingTools(): readonly DrawingToolDefinition[];
-  setDrawingOptions(
-    options: Partial<Omit<DrawingOptions, 'style'>> & { style?: Partial<DrawingStyle> },
-  ): void;
+  setDrawingOptions(options: DrawingOptionsPatch): void;
   capture(): string;
   /** Requests candles before the first loaded bar. The chart also does this when panning near it. */
   loadOlderHistory(): boolean;
@@ -153,6 +153,7 @@ export interface ChartApi {
 }
 
 /** Mounts a chart-only view. All controls can be supplied by the host application. */
+
 export function createChart(container: HTMLElement, options: ChartOptions): ChartApi {
   let theme = resolveTheme(options.theme);
   const runtime = new ChartRuntime(options.feed, options.indicators, {
@@ -424,6 +425,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       tickSize: state.feed.instrument.tickSize,
       candles: state.candles,
       formatPrice: value => formatPrice.format(value),
+      formatTime: value => timeFormats.full(value),
       measureText(text, font) {
         ctx!.save();
         ctx!.font = font;
@@ -432,6 +434,10 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
         return measured;
       },
     };
+  }
+  /** Shift snaps angles; Alt, Ctrl or Command drags a copy. */
+  function modifiers(event: PointerEvent): DrawingModifiers {
+    return { shift: event.shiftKey, clone: event.altKey || event.ctrlKey || event.metaKey };
   }
   function cancelDrawing(): void {
     pendingTextEdit = null;
@@ -589,6 +595,55 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     ctx.fillText(text, x + theme.chart.markerPadding, y + theme.typography.markerSize * 0.35);
   }
 
+  /** Readable text over a drawing's own colour on the axis. */
+  function inkFor(color: string): string {
+    const hex = color.slice(1),
+      full = hex.length <= 4 ? [...hex.slice(0, 3)].map(c => c + c).join('') : hex.slice(0, 6);
+    const [r, g, b] = [0, 2, 4].map(i => parseInt(full.slice(i, i + 2), 16) / 255);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.55 ? '#0b0f14' : '#ffffff';
+  }
+  function drawingAxis(ctx: CanvasRenderingContext2D, g: ChartGeometry): DrawingAxisPainter {
+    const axisLeft = g.left + g.plotWidth + theme.effects.borderWidth,
+      timeTop = height - theme.chart.timeAxisHeight;
+    return {
+      tag(axis, value, color, text) {
+        if (axis === 'price') {
+          const y = g.y(value);
+          if (y < g.top || y > g.top + g.plotHeight) return;
+          label(ctx, text ?? formatPrice.format(value), axisLeft, y, inkFor(color), color);
+        } else {
+          const x = g.x(value);
+          if (x < g.left || x > g.left + g.plotWidth) return;
+          const shown = text ?? timeFormats.full(value),
+            w = labelWidth(ctx, shown);
+          label(
+            ctx,
+            shown,
+            Math.max(g.left, Math.min(g.left + g.plotWidth - w, x - w / 2)),
+            timeTop + theme.chart.timeAxisHeight / 2,
+            inkFor(color),
+            color,
+          );
+        }
+      },
+      band(axis, from, to, color) {
+        ctx.save();
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.18;
+        if (axis === 'price') {
+          const top = Math.max(g.top, g.y(to)),
+            bottom = Math.min(g.top + g.plotHeight, g.y(from));
+          if (bottom > top) ctx.fillRect(axisLeft, top, width - axisLeft, bottom - top);
+        } else {
+          const left = Math.max(g.left, g.x(from)),
+            right = Math.min(g.left + g.plotWidth, g.x(to));
+          if (right > left) ctx.fillRect(left, timeTop, right - left, theme.chart.timeAxisHeight);
+        }
+        ctx.restore();
+      },
+    };
+  }
+
   function clearOverlay(target: HTMLCanvasElement, context: CanvasRenderingContext2D): void {
     const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
     if (target.width !== Math.round(width * dpr) || target.height !== Math.round(height * dpr)) {
@@ -736,6 +791,10 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       runtime.drawingRegistry,
       drawingContext(),
       drawings.selectionId(),
+      {
+        hoverId: drawings.hoverId,
+        axis: drawingAxis(ctx, g),
+      },
     );
     ctx.font = `${theme.typography.uiWeight} ${theme.typography.watermarkSize}px ${theme.typography.uiFamily}`;
     ctx.textAlign = 'right';
@@ -1064,7 +1123,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
         return;
       }
       const placing = drawings.currentTool !== 'cursor';
-      if (drawings.down(p, drawingContext())) {
+      if (drawings.down(p, drawingContext(), modifiers(event))) {
         if (
           placing &&
           !drawings.interacting &&
@@ -1112,6 +1171,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
         }
         return;
       }
+      const hovered = drawings.hoverId;
       if (!drag)
         root.style.cursor =
           drawings.currentTool === 'cursor' && hitCloseBox(closeBoxes, pointer.x, pointer.y)
@@ -1119,7 +1179,8 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
             : drawings.currentTool === 'cursor' && hitPriceLine(priceLines, geometry, pointer.x, pointer.y)
               ? 'ns-resize'
               : drawings.cursor(pointer, drawingContext());
-      if (!drag && drawings.move(pointer, drawingContext())) {
+      if (drawings.hoverId !== hovered) invalidate('overlay');
+      if (!drag && drawings.move(pointer, drawingContext(), modifiers(event))) {
         invalidate('overlay');
         return;
       }
@@ -1190,7 +1251,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       if (drawingPointerId === event.pointerId) {
         const placing = drawings.currentTool !== 'cursor';
         drawingPointerId = null;
-        drawings.up(point(event), drawingContext());
+        drawings.up(point(event), drawingContext(), modifiers(event));
         if (root.hasPointerCapture(event.pointerId)) root.releasePointerCapture(event.pointerId);
         root.style.cursor = 'crosshair';
         invalidate('overlay');
@@ -1261,6 +1322,10 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     () => {
       if (!drag) {
         pointer = null;
+        if (drawings.hoverId) {
+          drawings.leave();
+          invalidate('overlay');
+        }
         publishHover(null);
         invalidate('cursor');
       }
@@ -1271,7 +1336,8 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     const selected = drawings.selected;
     if (!selected?.visible || selected.locked || drawings.interacting || !options.onDrawingEdit) return false;
     const definition = runtime.drawingRegistry.get(selected.type);
-    if (!definition?.editableText && (placement || !definition?.editableProperties)) return false;
+    // Placement opens only the annotation editor; activation opens any registered tool's settings.
+    if (!definition || (placement && !definition.editableText)) return false;
     options.onDrawingEdit(structuredClone(selected));
     return true;
   }
@@ -1311,6 +1377,16 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
     event => {
       const modifier = event.metaKey || event.ctrlKey,
         key = event.key.toLowerCase();
+      // Alt hotkeys pick common tools. Codes, not keys, because Option changes the key on macOS.
+      const hotkey = event.altKey && !modifier && !event.shiftKey ? DRAWING_HOTKEYS[event.code] : undefined;
+      if (hotkey && runtime.drawingRegistry.get(hotkey)) {
+        event.preventDefault();
+        cancelPan();
+        cancelDrawing();
+        drawings.setTool(hotkey);
+        invalidate('overlay');
+        return;
+      }
       if (event.key === 'Enter' && event.target !== timeAxis && event.target !== priceAxis) {
         event.preventDefault();
         if (!editSelectedDrawing()) {

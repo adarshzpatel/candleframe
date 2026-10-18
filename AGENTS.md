@@ -33,6 +33,7 @@ Use Node 24. The build includes type checking and emits the demo and plain JavaS
 | Drawing selection, previews, rendering and hit tests | `src/drawing-controller.ts`, `src/drawing-scene.ts` |
 | Position placement, handles and settings | `src/position-drawing.ts`, `src/position-editor.ts` |
 | Drawing toolbar and object properties | `src/drawing-workbench.ts`, `src/drawing-text-editor.ts` |
+| Drawing templates and saved tool defaults | `src/drawing-templates.ts` |
 | Theme contracts, defaults and validation | `src/themes.ts`, `src/theme-tokens.ts` |
 | Theme controls and scoped CSS variables | `src/theme-editor.ts`, `src/widget-theme.ts` |
 | Bundled widget typography and font licenses | `src/widget-fonts.ts`, `src/fonts/`, `scripts/copy-fonts.mjs` |

@@ -1,4 +1,4 @@
-import { chartThemes, themeColor } from './themes.ts';
+import { chartThemes, themeColor, type ResolvedChartTheme } from './themes.ts';
 import type {
   Drawing,
   DrawingContext,
@@ -31,19 +31,20 @@ function textBox(
 ) {
   const size = primitive.size ?? drawing.style.fontSize;
   const theme = context?.theme ?? chartThemes.evergreen;
-  const padding = theme.chart.annotationPadding,
-    font = `${size}px ${theme.typography.annotationFamily}`;
+  const padding = primitive.plain ? 2 : theme.chart.annotationPadding,
+    font = `${primitive.italic ? 'italic ' : ''}${primitive.bold ? '600 ' : ''}${size}px ${theme.typography.annotationFamily}`;
   const lines = primitive.text.split('\n');
   const width =
     Math.max(...lines.map(line => context?.measureText?.(line, font) ?? line.length * size * 0.62)) +
     padding * 2;
   const x =
-    primitive.at.x - (primitive.align === 'center' ? width / 2 : primitive.align === 'right' ? width : 0);
+      primitive.at.x - (primitive.align === 'center' ? width / 2 : primitive.align === 'right' ? width : 0),
+    height = lines.length * (size + 4) + padding;
   return {
     x,
-    y: primitive.at.y - size - padding / 2,
+    y: primitive.middle ? primitive.at.y - height / 2 : primitive.at.y - size - padding / 2,
     width,
-    height: lines.length * (size + 4) + padding,
+    height,
     size,
     lines,
     padding,
@@ -58,6 +59,7 @@ export function hitScene(
   context?: Pick<DrawingContext, 'theme' | 'measureText'>,
 ): boolean {
   return primitives.some(primitive => {
+    if (primitive.kind === 'axis') return false;
     if (primitive.kind === 'text') {
       const b = textBox(primitive, drawing, context);
       return (
@@ -119,10 +121,40 @@ export function hitDrawings(
   }
   for (let i = drawings.length - 1; i >= 0; i--) {
     const d = drawings[i];
-    if (d.visible && hitScene(registry.project(d, context), d, p, 7, context))
+    const scene = registry.project(d, { ...context, selected: d.id === selectedId });
+    if (d.visible && hitScene(scene, d, p, 7, context))
       return { drawing: d, handle: null, cursor: d.locked ? 'default' : 'move' };
   }
   return null;
+}
+
+/** Chart-owned painters for tags and bands in the axis gutters, outside the plot clip. */
+export interface DrawingAxisPainter {
+  tag(axis: 'price' | 'time', value: number, color: string, text?: string): void;
+  band(axis: 'price' | 'time', from: number, to: number, color: string): void;
+}
+
+function paintHandles(
+  ctx: CanvasRenderingContext2D,
+  drawing: Drawing,
+  registry: DrawingRegistry,
+  context: DrawingContext,
+  theme: ResolvedChartTheme,
+  faint: boolean,
+): void {
+  ctx.save();
+  ctx.globalAlpha = faint ? 0.55 : 1;
+  for (const handle of drawingHandles(drawing, registry, context)) {
+    ctx.fillStyle = themeColor(theme, theme.chart.handleFill);
+    ctx.strokeStyle = themeColor(theme, theme.chart.handleColor);
+    ctx.lineWidth = theme.chart.handleWidth;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.arc(handle.at.x, handle.at.y, theme.chart.handleRadius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 export function renderDrawings(
@@ -131,16 +163,22 @@ export function renderDrawings(
   registry: DrawingRegistry,
   context: DrawingContext,
   selectedId: string | null,
+  options: { hoverId?: string | null; axis?: DrawingAxisPainter } = {},
 ): void {
   const g = context.geometry,
     theme = context.theme ?? chartThemes.evergreen;
+  const tags: { drawing: Drawing; primitive: Extract<DrawingPrimitive, { kind: 'axis' }> }[] = [];
   ctx.save();
   ctx.beginPath();
   ctx.rect(g.left, g.top, g.plotWidth, g.plotHeight);
   ctx.clip();
   for (const d of drawings) {
     if (!d.visible) continue;
-    for (const primitive of registry.project(d, context)) {
+    for (const primitive of registry.project(d, { ...context, selected: d.id === selectedId })) {
+      if (primitive.kind === 'axis') {
+        tags.push({ drawing: d, primitive });
+        continue;
+      }
       ctx.save();
       if (primitive.kind === 'path') {
         if (!primitive.points.length) {
@@ -153,7 +191,10 @@ export function renderDrawings(
         if (primitive.closed) ctx.closePath();
         if (primitive.fill) {
           ctx.fillStyle = primitive.fill;
-          ctx.globalAlpha = d.style.fillOpacity;
+          ctx.globalAlpha =
+            primitive.width === 0 && primitive.opacity !== undefined
+              ? primitive.opacity
+              : d.style.fillOpacity;
           ctx.fill();
         }
         ctx.globalAlpha = primitive.opacity ?? 1;
@@ -172,14 +213,22 @@ export function renderDrawings(
         ctx.font = b.font;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'alphabetic';
-        ctx.fillStyle = primitive.background ?? themeColor(theme, theme.chart.annotationBackground);
-        ctx.globalAlpha = theme.chart.annotationOpacity;
-        if (primitive.radius && typeof ctx.roundRect === 'function') {
-          ctx.beginPath();
-          ctx.roundRect(b.x, b.y, b.width, b.height, primitive.radius);
-          ctx.fill();
-        } else ctx.fillRect(b.x, b.y, b.width, b.height);
-        ctx.globalAlpha = 1;
+        if (!primitive.plain) {
+          ctx.fillStyle = primitive.background ?? themeColor(theme, theme.chart.annotationBackground);
+          ctx.globalAlpha = primitive.backgroundOpacity ?? theme.chart.annotationOpacity;
+          if (primitive.radius && typeof ctx.roundRect === 'function') {
+            ctx.beginPath();
+            ctx.roundRect(b.x, b.y, b.width, b.height, primitive.radius);
+            ctx.fill();
+          } else ctx.fillRect(b.x, b.y, b.width, b.height);
+          ctx.globalAlpha = 1;
+          if (primitive.border) {
+            ctx.strokeStyle = primitive.border;
+            ctx.lineWidth = 1;
+            ctx.setLineDash([]);
+            ctx.strokeRect(b.x, b.y, b.width, b.height);
+          }
+        }
         ctx.fillStyle = primitive.color ?? d.style.color;
         b.lines.forEach((line, i) =>
           ctx.fillText(line, b.x + b.padding, b.y + b.size + b.padding / 2 + i * (b.size + 4)),
@@ -188,18 +237,29 @@ export function renderDrawings(
       ctx.restore();
     }
   }
-  const selected = drawings.find(d => d.id === selectedId && d.visible && !d.locked && registry.get(d.type));
-  if (selected) {
-    for (const handle of drawingHandles(selected, registry, context)) {
-      ctx.fillStyle = themeColor(theme, theme.chart.handleFill);
-      ctx.strokeStyle = themeColor(theme, theme.chart.handleColor);
-      ctx.lineWidth = theme.chart.handleWidth;
-      ctx.setLineDash([]);
-      ctx.beginPath();
-      ctx.arc(handle.at.x, handle.at.y, theme.chart.handleRadius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
+  const editable = (id: string | null | undefined) =>
+    drawings.find(d => d.id === id && d.visible && !d.locked && registry.get(d.type));
+  const hovered = options.hoverId !== selectedId ? editable(options.hoverId) : undefined;
+  if (hovered) paintHandles(ctx, hovered, registry, context, theme, true);
+  const selected = editable(selectedId);
+  if (selected) paintHandles(ctx, selected, registry, context, theme, false);
+  ctx.restore();
+  const axis = options.axis;
+  if (!axis) return;
+  // The selection's extent shades both axes, with a tag at every anchor, like the crosshair.
+  const shown = drawings.find(d => d.id === selectedId && d.visible);
+  if (shown && registry.get(shown.type)) {
+    const color = shown.style.color,
+      prices = shown.points.map(p => p.price),
+      times = shown.points.map(p => p.timeMs);
+    axis.band('price', Math.min(...prices), Math.max(...prices), color);
+    axis.band('time', Math.min(...times), Math.max(...times), color);
+    const anchors = shown.points.length > 8 ? [shown.points[0], shown.points.at(-1)!] : shown.points;
+    for (const p of anchors) {
+      axis.tag('price', p.price, color);
+      axis.tag('time', p.timeMs, color);
     }
   }
-  ctx.restore();
+  for (const { drawing, primitive } of tags)
+    axis.tag(primitive.axis, primitive.value, primitive.color ?? drawing.style.color, primitive.text);
 }

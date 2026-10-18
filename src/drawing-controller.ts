@@ -5,9 +5,10 @@ import type {
   Drawing,
   DrawingContext,
   DrawingInteractionState,
+  DrawingModifiers,
   DrawingOptions,
+  DrawingOptionsPatch,
   DrawingPoint,
-  DrawingStyle,
 } from './drawing-types.ts';
 import type { Anchor, ChartCommand, RuntimeState } from './types.ts';
 
@@ -27,6 +28,8 @@ interface Gesture {
   cursor?: string;
   revision: number;
   moved?: boolean;
+  /** Commit as a new drawing and leave the original in place. */
+  clone?: boolean;
 }
 
 /** Owns unfinished drawing gestures. Only completed edits reach the runtime. */
@@ -48,7 +51,9 @@ export class DrawingController {
     hidden: false,
     style: { ...DEFAULT_DRAWING_STYLE },
     text: 'Note',
+    toolDefaults: {},
   };
+  private hovered: string | null = null;
 
   constructor(host: ControllerHost) {
     this.host = host;
@@ -58,6 +63,10 @@ export class DrawingController {
   }
   get interacting(): boolean {
     return !!this.gesture || !!this.draft;
+  }
+  /** The drawing under the pointer while idle, whose handles show faintly. */
+  get hoverId(): string | null {
+    return this.tool === 'cursor' && !this.gesture && !this.options.hidden ? this.hovered : null;
   }
   get selected(): Drawing | undefined {
     return this.host.state().document.drawings.find(d => d.id === this.selectedId);
@@ -90,8 +99,21 @@ export class DrawingController {
     this.selectedId = id;
     this.emit();
   }
-  configure(value: Partial<Omit<DrawingOptions, 'style'>> & { style?: Partial<DrawingStyle> }): void {
-    const next = { ...this.options, ...value, style: { ...this.options.style, ...value.style } };
+  configure(value: DrawingOptionsPatch): void {
+    const toolDefaults = { ...this.options.toolDefaults };
+    for (const [type, given] of Object.entries(value.toolDefaults ?? {})) {
+      // Validated against the tool so a bad default fails here, not at the next placement.
+      if (given === null) {
+        if (!this.host.registry.get(type)) throw new ChartError('UNKNOWN_DRAWING_TOOL', type);
+        delete toolDefaults[type];
+      } else toolDefaults[type] = this.host.registry.validateDefaults(type, given);
+    }
+    const next = {
+      ...this.options,
+      ...value,
+      style: { ...this.options.style, ...value.style },
+      toolDefaults,
+    };
     if (
       !['off', 'weak', 'strong'].includes(next.magnet) ||
       typeof next.hidden !== 'boolean' ||
@@ -150,10 +172,34 @@ export class DrawingController {
     if (this.tool !== 'cursor') return 'crosshair';
     if (this.gesture) return this.gesture.cursor ?? 'move';
     if (this.options.hidden) return 'crosshair';
-    return (
-      hitDrawings(this.host.state().document.drawings, this.host.registry, context, p, this.selectedId)
-        ?.cursor ?? 'crosshair'
+    const hit = hitDrawings(
+      this.host.state().document.drawings,
+      this.host.registry,
+      context,
+      p,
+      this.selectedId,
     );
+    this.hovered = hit?.drawing.id ?? null;
+    return hit?.cursor ?? 'crosshair';
+  }
+  leave(): void {
+    this.hovered = null;
+  }
+  /** Snaps `to` onto the nearest 45° ray from `from`, measured on screen. */
+  private constrain(from: Anchor, to: Anchor, context: DrawingContext): Anchor {
+    const g = context.geometry,
+      a = { x: g.x(from.timeMs), y: g.y(from.price) },
+      b = { x: g.x(to.timeMs), y: g.y(to.price) };
+    const step = Math.PI / 4,
+      snapped = Math.round(Math.atan2(b.y - a.y, b.x - a.x) / step) * step;
+    const length = Math.hypot(b.x - a.x, b.y - a.y),
+      dx = Math.round(Math.cos(snapped) * 1e6) / 1e6,
+      dy = Math.round(Math.sin(snapped) * 1e6) / 1e6;
+    if (dy === 0) return { timeMs: to.timeMs, price: from.price };
+    if (dx === 0) return { timeMs: from.timeMs, price: to.price };
+    const anchor = g.anchor(a.x + dx * length, a.y + dy * length);
+    anchor.price = Math.max(this.host.state().feed.instrument.tickSize, anchor.price);
+    return anchor;
   }
   private anchor(p: DrawingPoint, context: DrawingContext, snap = true): Anchor {
     const state = this.host.state(),
@@ -177,18 +223,23 @@ export class DrawingController {
     return this.options.magnet === 'strong' || best <= 12 ? snapped : anchor;
   }
   private create(points: Anchor[]): Drawing {
+    const defaults = this.options.toolDefaults[this.tool];
     return {
       id: crypto.randomUUID(),
       type: this.tool,
       points,
-      style: { ...this.options.style },
+      style: { ...this.options.style, ...defaults?.style },
       visible: true,
       locked: false,
-      text: this.options.text,
-      levels: [],
+      // Only annotations start with placeholder text; lines show text once the user adds it.
+      text: this.host.registry.get(this.tool)?.editableText ? this.options.text : '',
+      levels: [...(defaults?.levels ?? [])],
+      ...(defaults?.options && Object.keys(defaults.options).length
+        ? { options: { ...defaults.options } }
+        : {}),
     };
   }
-  down(p: DrawingPoint, context: DrawingContext): boolean {
+  down(p: DrawingPoint, context: DrawingContext, modifiers: DrawingModifiers = {}): boolean {
     if (this.options.hidden) return false;
     const anchor = this.anchor(p, context),
       state = this.host.state();
@@ -198,15 +249,19 @@ export class DrawingController {
       this.emit();
       if (!hit) return false;
       if (!hit.drawing.locked && this.host.registry.get(hit.drawing.type)) {
-        this.draft = structuredClone(hit.drawing);
+        const clone = hit.handle === null && !!modifiers.clone;
+        // A clone drags under a new id, so the original stays drawn in place.
+        const original = clone ? { ...structuredClone(hit.drawing), id: crypto.randomUUID() } : hit.drawing;
+        this.draft = structuredClone(original);
         this.gesture = {
           mode: hit.handle === null ? 'body' : 'handle',
-          original: hit.drawing,
+          original,
           start: this.anchor(p, context, false),
           pointer: p,
           handle: hit.handle,
           cursor: hit.cursor,
           revision: state.documentRevision,
+          clone,
         };
       }
       return true;
@@ -235,16 +290,17 @@ export class DrawingController {
         };
       else if (definition.points === 1) this.commit();
     } else if (!this.gesture) {
-      const last = this.fixed.at(-1)!;
-      if (definition.points !== 'path' || last.timeMs !== anchor.timeMs || last.price !== anchor.price)
-        this.fixed.push(anchor);
+      const last = this.fixed.at(-1)!,
+        next = modifiers.shift ? this.constrain(last, anchor, context) : anchor;
+      if (definition.points !== 'path' || last.timeMs !== next.timeMs || last.price !== next.price)
+        this.fixed.push(next);
       this.draft.points = [...this.fixed];
       if (typeof definition.points === 'number' && this.fixed.length === definition.points) this.commit();
       else if (this.fixed.length >= 1024) this.commit();
     }
     return true;
   }
-  move(p: DrawingPoint, context: DrawingContext): boolean {
+  move(p: DrawingPoint, context: DrawingContext, modifiers: DrawingModifiers = {}): boolean {
     if (!this.draft) return false;
     const anchor = this.anchor(p, context);
     if (this.gesture && this.gesture.mode !== 'freehand') {
@@ -287,7 +343,13 @@ export class DrawingController {
           ...context,
           tickSize: this.host.state().feed.instrument.tickSize,
         });
-      else this.draft.points[this.gesture.handle as number] = snapped;
+      else {
+        const index = this.gesture.handle as number,
+          points = this.gesture.original.points,
+          other = points[index === 0 ? 1 : index - 1];
+        this.draft.points[index] =
+          modifiers.shift && other ? this.constrain(other, snapped, context) : snapped;
+      }
     } else if (this.gesture?.mode === 'freehand') {
       if (
         Math.hypot(p.x - this.gesture.pointer.x, p.y - this.gesture.pointer.y) >= 3 &&
@@ -296,12 +358,16 @@ export class DrawingController {
         this.draft.points.push(anchor);
         this.gesture.pointer = p;
       }
-    } else this.draft.points = [...this.fixed, anchor];
+    } else
+      this.draft.points = [
+        ...this.fixed,
+        modifiers.shift ? this.constrain(this.fixed.at(-1)!, anchor, context) : anchor,
+      ];
     return true;
   }
-  up(p: DrawingPoint, context: DrawingContext): void {
+  up(p: DrawingPoint, context: DrawingContext, modifiers: DrawingModifiers = {}): void {
     if (!this.gesture || !this.draft) return;
-    this.move(p, context);
+    this.move(p, context, modifiers);
     if (this.gesture.mode === 'freehand' && this.draft.points.length < 2) {
       this.cancel();
       return;
@@ -329,7 +395,8 @@ export class DrawingController {
   private commit(): void {
     if (!this.draft) return;
     const draft = this.draft,
-      editing = this.gesture && this.gesture.mode !== 'freehand';
+      cloning = !!this.gesture?.clone,
+      editing = this.gesture && this.gesture.mode !== 'freehand' && !cloning;
     const revision = this.gesture?.revision ?? this.creationRevision;
     this.committing = true;
     try {

@@ -23,6 +23,7 @@ import type { ChartSwitch } from './chart-switch.ts';
 import { createGeometry } from './geometry.ts';
 import type { ChartApi, ChartOptions } from './chart.ts';
 import { createDrawingWorkbench } from './drawing-workbench.ts';
+import { DrawingTemplates, type DrawingTemplateStore } from './drawing-templates.ts';
 import { drawingWorkbenchStyles } from './drawing-workbench-style.ts';
 import { uiIcon as icon } from './ui-icons.ts';
 import { widgetStyles } from './widget-style.ts';
@@ -92,6 +93,11 @@ export interface ChartWidgetOptions extends ChartOptions {
   fonts?: WidgetFontSource;
   /** Optional application storage. Requires a storageKey namespace. */
   layoutStore?: WidgetLayoutStore;
+  /**
+   * Storage for drawing templates and saved tool defaults, such as an account service.
+   * Without it they use browser storage under `storageKey`, or last for the session.
+   */
+  drawingTemplateStore?: DrawingTemplateStore;
   /**
    * Starting grid and sync settings. Grids of more than one chart need `markets`; new
    * charts copy the active chart's market. A saved layout replaces this once it loads.
@@ -378,6 +384,14 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
   let active: Cell;
   let switcher: ChartSwitch;
   let workbench: ReturnType<typeof createDrawingWorkbench> | undefined;
+  let templates: DrawingTemplates | undefined;
+  /** Saved tool defaults for the registered tools, as `setDrawingOptions` takes them. */
+  const savedDefaults = (chart: ChartApi) => {
+    const tools = new Set(chart.drawingTools().map(t => t.type));
+    return Object.fromEntries(
+      Object.entries(templates?.defaults() ?? {}).filter(([type]) => tools.has(type)),
+    );
+  };
   const group = createChartGroup([], layout.sync);
   const multi = () => cells.length > 1;
   const isActive = (cell: Cell) => cell === active;
@@ -730,6 +744,9 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
       element.remove();
       throw error;
     }
+    // Later charts start with the tool defaults the user has now.
+    if (cells.length)
+      cell.chart.setDrawingOptions({ toolDefaults: active.chart.drawingState().options.toolDefaults });
     cells.push(cell);
     cell.unsubscribe = cell.chart.subscribe(state => {
       const previous = cell.state;
@@ -994,10 +1011,38 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     active = addCell(options.feed);
     switcher = createChartSwitch(active.chart, () => cells.map(cell => cell.chart));
     const chart = switcher.api;
+    const templateKey = options.storageKey ? JSON.stringify([options.storageKey, 'drawing-templates']) : null;
+    templates = new DrawingTemplates(
+      chart.drawingTools(),
+      options.drawingTemplateStore ??
+        (templateKey
+          ? {
+              load() {
+                try {
+                  return JSON.parse(doc.defaultView?.localStorage.getItem(templateKey) ?? 'null');
+                } catch {
+                  return null;
+                }
+              },
+              save(value) {
+                try {
+                  doc.defaultView?.localStorage.setItem(templateKey, JSON.stringify(value));
+                } catch {
+                  /* Templates still work for this session when browser storage is unavailable. */
+                }
+              },
+            }
+          : undefined),
+      error => report(`Drawing templates: ${error instanceof Error ? error.message : String(error)}`),
+    );
+    void templates.load().then(() => {
+      if (!disposed) attempt(() => chart.setDrawingOptions({ toolDefaults: savedDefaults(chart) }));
+    });
     workbench = createDrawingWorkbench(chart, {
       root,
       rail: $('.tool-rail'),
       panel,
+      templates,
       report,
     });
     // Stable styling hooks for host-specific chrome beyond the shared canvas theme.

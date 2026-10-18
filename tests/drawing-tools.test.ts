@@ -27,9 +27,9 @@ const drawing = (type: string, points = [point(20, 120), point(80, 180)], extras
 const paths = (primitives: DrawingPrimitive[]) => primitives.filter(p => p.kind === 'path');
 const texts = (primitives: DrawingPrimitive[]) => primitives.filter(p => p.kind === 'text');
 
-test('drawing catalog provides thirty usable tools with unique IDs and discoverable gestures', () => {
-  assert.equal(builtInDrawingTools.length, 30);
-  assert.equal(new Set(registry.list().map(tool => tool.type)).size, 30);
+test('drawing catalog provides usable tools with unique IDs and discoverable gestures', () => {
+  assert.equal(new Set(registry.list().map(tool => tool.type)).size, builtInDrawingTools.length);
+  assert.ok(builtInDrawingTools.length >= 32);
   assert.equal(registry.get('polyline')?.points, 'path');
   assert.equal(registry.get('brush')?.points, 'freehand');
   assert.equal(registry.get('fib-extension')?.points, 3);
@@ -147,7 +147,7 @@ test('rays clip to the correct plot edge in both directions and extended lines c
     { x: 514, y: 816 },
     { x: 514, y: 16 },
   ]);
-  const outside = registry.project(drawing('horizontal-ray', [point(110, 150)]), context);
+  const outside = paths(registry.project(drawing('horizontal-ray', [point(110, 150)]), context));
   assert.deepEqual(outside, [], 'a right-facing ray wholly to the right cannot point back into the chart');
   const extended = paths(
     registry.project(drawing('extended-line', [point(-20, 80), point(-10, 90)]), context),
@@ -158,13 +158,16 @@ test('rays clip to the correct plot edge in both directions and extended lines c
   ]);
 });
 
+const levelLines = (primitives: DrawingPrimitive[]) => paths(primitives).filter(p => !p.fill && !p.dash);
+
 test('Fibonacci prices are derived from anchors, including a separate extension origin', () => {
+  // Like familiar charting apps, a retracement counts from the second anchor (0) back to the first (1).
   const retracement = registry.project(
     drawing('fib-retracement', undefined, { levels: [0, 0.5, 1] }),
     context,
   );
   assert.deepEqual(
-    paths(retracement).map(p => p.points),
+    levelLines(retracement).map(p => p.points),
     [816, 516, 216].map(y => [
       { x: 214, y },
       { x: 814, y },
@@ -172,7 +175,16 @@ test('Fibonacci prices are derived from anchors, including a separate extension 
   );
   assert.deepEqual(
     texts(retracement).map(p => p.text),
-    ['0.0%  120.00', '50.0%  150.00', '100.0%  180.00'],
+    ['1 (120.00)', '0.5 (150.00)', '0 (180.00)'],
+  );
+  assert.equal(paths(retracement).filter(p => p.fill).length, 2, 'one background band between each level');
+  const reversed = registry.project(
+    drawing('fib-retracement', undefined, { levels: [0, 1], options: { reverse: true } }),
+    context,
+  );
+  assert.deepEqual(
+    texts(reversed).map(p => p.text),
+    ['0 (120.00)', '1 (180.00)'],
   );
   const extension = registry.project(
     drawing('fib-extension', [point(10, 120), point(30, 140), point(50, 110)], { levels: [0, 1, 1.5] }),
@@ -180,17 +192,47 @@ test('Fibonacci prices are derived from anchors, including a separate extension 
   );
   assert.deepEqual(
     texts(extension).map(p => p.text),
-    ['0.0%  110.00', '100.0%  130.00', '150.0%  140.00'],
+    ['0 (110.00)', '1 (130.00)', '1.5 (140.00)'],
   );
   assert.deepEqual(
-    paths(extension).map(p => p.points[0].y),
+    levelLines(extension).map(p => p.points[0].y),
     [916, 716, 616],
   );
   const preview = drawing('fib-retracement', undefined, { levels: [] });
   assert.equal(
-    paths(registry.project(preview, context)).length,
+    levelLines(registry.project(preview, context)).length,
     7,
     'empty preview levels use the tool defaults',
+  );
+});
+
+test('drawing options validate against tool settings and keep only non-default values', () => {
+  const ray = drawing('trendline', undefined, { options: { extendRight: true, extendLeft: false } });
+  assert.deepEqual(ray.options, { extendRight: true });
+  assert.equal(drawing('trendline', undefined, { options: { extendLeft: false } }).options, undefined);
+  assert.throws(
+    () => drawing('trendline', undefined, { options: { extendRight: 'yes' } }),
+    /INVALID_DRAWING_OPTIONS/,
+  );
+  assert.throws(
+    () => drawing('trendline', undefined, { options: { rightEnd: 'circle' } }),
+    /INVALID_DRAWING_OPTIONS/,
+  );
+  const extended = paths(registry.project(ray, context));
+  assert.equal(extended[0].points[1].x, 1014, 'extend right reaches the plot edge');
+  const arrows = paths(
+    registry.project(drawing('trendline', undefined, { options: { rightEnd: 'arrow' } }), context),
+  );
+  assert.equal(arrows.length, 2, 'an arrow end adds a head');
+  const info = texts(registry.project(drawing('info-line'), { ...context, tickSize: 0.5 }));
+  assert.match(info[0].text, /^\+60\.00 \(\+50\.00%\), 120 ticks\n/);
+  const stats = drawing('trendline', undefined, { options: { stats: 'selected' } });
+  assert.equal(texts(registry.project(stats, context)).length, 0);
+  assert.equal(texts(registry.project(stats, { ...context, selected: true })).length, 1);
+  const level = registry.project(drawing('horizontal-line', [point(50, 150)]), context);
+  assert.deepEqual(
+    level.filter(p => p.kind === 'axis'),
+    [{ kind: 'axis', axis: 'price', value: 150, color: '#a9c4ff' }],
   );
 });
 
@@ -220,7 +262,7 @@ test('parallel channels keep baseline times fixed and place the third anchor on 
 
 test('pitchfork median passes through the midpoint of its two fork anchors', () => {
   const fork = drawing('pitchfork', [point(20, 120), point(40, 180), point(80, 160)]);
-  const lines = paths(registry.project(fork, context));
+  const lines = paths(registry.project(fork, context)).filter(p => !p.fill);
   const [start, end] = lines[0].points,
     midpointX = 614,
     midpointY = 316;
@@ -228,7 +270,8 @@ test('pitchfork median passes through the midpoint of its two fork anchors', () 
   assert.equal(cross, 0);
   assert.equal(lines.length, 4);
   const normal = lines[0].points[0],
-    schiff = paths(registry.project({ ...fork, type: 'schiff-pitchfork' }, context))[0].points[0];
+    schiff = paths(registry.project({ ...fork, type: 'schiff-pitchfork' }, context)).filter(p => !p.fill)[0]
+      .points[0];
   assert.deepEqual(normal, { x: 214, y: 816 });
   assert.deepEqual(schiff, { x: 214, y: 516 });
 });
@@ -390,7 +433,8 @@ test('all built-ins tolerate partial and coincident previews without nonfinite g
         levels: [],
       };
       for (const primitive of registry.project(preview, context)) {
-        const coordinates = primitive.kind === 'path' ? primitive.points : [primitive.at];
+        const coordinates =
+          primitive.kind === 'path' ? primitive.points : primitive.kind === 'text' ? [primitive.at] : [];
         for (const p of coordinates)
           assert.ok(
             Number.isFinite(p.x) && Number.isFinite(p.y),

@@ -69,6 +69,8 @@ createChartWidget(container, {
 
 Methods may be synchronous or return promises. `load` returns the saved value, `null` or `undefined`. Values are chart documents, saved grid layouts (`WidgetWorkspace`) and the list of saved layouts (`WidgetWorkspaceIndex`); store them as opaque JSON. A pending load cannot overwrite newer edits, a different market or a disposed widget. Layout validation and v1/v2 migrations remain in the runtime. The demo also reads layouts saved under its previous storage key.
 
+`layoutStore` holds layouts only. Drawing templates and saved tool defaults have their own `drawingTemplateStore` option; see [Templates](drawing-suite.md#templates).
+
 ## Chart grids and saved layouts
 
 The **Layout** button in the header opens the grid presets, the sync checkboxes and the saved layouts. Grids need a `markets` catalog, because each extra chart creates its own feed. A new chart copies the active chart's market.

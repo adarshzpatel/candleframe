@@ -10,6 +10,10 @@ const paths: Record<string, string> = {
   ray: '<path d="m6 18 15-15"/><circle cx="5" cy="19" r="2"/>',
   'extended-line': '<path d="m3 21 18-18M7 13l4 4m2-10 4 4"/>',
   arrow: '<path d="M4 20 20 4m-9 0h9v9"/>',
+  'info-line':
+    '<path d="m5 19 9-9"/><circle cx="4" cy="20" r="1.5"/><circle cx="15" cy="9" r="1.5"/><rect x="13" y="13" width="8" height="7" rx="1"/><path d="M15 16h4"/>',
+  'trend-angle': '<path d="M4 19 19 6M4 19h16"/><path d="M11 19a7 7 0 0 0-2-5"/>',
+  xabcd: '<path d="m3 18 4-12 5 9 4-7 5 10"/><path d="M3 18 12 15M7 6l9 2" stroke-dasharray="2 2"/>',
   'horizontal-line': '<path d="M3 12h7m4 0h7"/><rect x="10" y="10" width="4" height="4" rx=".5"/>',
   'horizontal-ray': '<path d="M7 12h14"/><circle cx="5" cy="12" r="2"/>',
   'vertical-line': '<path d="M12 3v7m0 4v7"/><rect x="10" y="10" width="4" height="4" rx=".5"/>',
@@ -74,16 +78,16 @@ const paths: Record<string, string> = {
     '<path d="M5 3v18"/><rect x="8" y="5" width="12" height="14" rx="1"/><path d="M8 9.7h12M8 14.3h12M14 5v14"/>',
   layout: '<rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M12 4v16M3 12h9"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16v4Zm9-13 4 4"/>',
+  template:
+    '<rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><path d="M16.5 13v7M13 16.5h7"/>',
 };
 const groups: Record<string, string> = {
   Lines: 'trendline',
-  Channels: 'parallel-channel',
-  Fibonacci: 'fib-retracement',
+  'Fib & Gann': 'fib-retracement',
+  Patterns: 'xabcd',
+  Forecasting: 'long-position',
   Shapes: 'rectangle',
-  Freehand: 'brush',
   Annotations: 'text',
-  Measure: 'measure',
-  Positions: 'long-position',
 };
 export const uiIcon = (name: string, size = 20): string =>
   `<svg class="oc-icon" width="${size}" height="${size}" style="width:calc(${size}px * var(--theme-effects-iconScale,1));height:calc(${size}px * var(--theme-effects-iconScale,1));stroke-width:var(--theme-effects-iconStroke,1.5)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[groups[name] ?? name] ?? paths.trendline}</svg>`;
