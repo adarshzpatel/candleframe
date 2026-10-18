@@ -30,7 +30,7 @@ Vite prints the address, usually `http://127.0.0.1:5173/`. The paths below are r
 The full widget filling the window, with most options turned on. It shows:
 
 - a `markets` catalog with four sources: the trade simulation, live Binance Spot data, live [Hyperliquid perpetuals](../feeds/hyperliquid/) and a sample equity with weekend and overnight gaps,
-- the order book, `storageKey` autosave, the Inspect button and `autoscaleOnPan`,
+- `storageKey` autosave, the Inspect button and `autoscaleOnPan`; the order book stays closed until you press **Order book** in the header,
 - a custom `layoutStore` that also reads layouts saved by an older version of the demo,
 - a theme built with `createTheme('evergreen', ...)` and a saved appearance restored with `restoreTheme`.
 

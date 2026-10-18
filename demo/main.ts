@@ -74,7 +74,6 @@ const chart = createChartWidget(host, {
   theme: savedTheme ?? createTheme('evergreen', { chart: { watermarkText: 'candleframe' } }),
   indicators: [sma(20)],
   markets: sources,
-  orderBook: true,
   autoscaleOnPan: true,
   storageKey: 'demo',
   inspector: true,
