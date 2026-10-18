@@ -7,12 +7,11 @@
 export type WidgetFontSource = 'bundled' | string | false;
 
 const FACES = [
-  // Inter covers UI text and headings. `CandleFrame Editorial` keeps themes saved before
-  // the switch to one UI face on the same font.
+  // Inter covers UI text and headings.
   {
     file: 'inter-latin.woff2',
     url: () => new URL('./fonts/inter-latin.woff2', import.meta.url).href,
-    families: ['CandleFrame UI', 'CandleFrame Editorial'],
+    families: ['CandleFrame UI'],
     weight: '100 900',
   },
   // Paper Mono sets prices, axes and annotations the same way on every system.

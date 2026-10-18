@@ -267,7 +267,6 @@ export function colorRGBA(hex: string, alpha = 1): readonly [number, number, num
  */
 const retiredDefaults: { readonly [G in keyof ThemeTokens]?: Readonly<Record<string, unknown>> } = {
   typography: {
-    headingFamily: '"CandleFrame Editorial", Georgia, serif',
     titleSize: 23,
     panelTitleSize: 20,
     headingWeight: 400,
