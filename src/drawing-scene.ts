@@ -84,6 +84,57 @@ export function hitScene(
   });
 }
 
+/** The ids a scene treats as selected: one id, a list, or none. */
+type Selection = string | null | readonly string[];
+function selectedSet(selected: Selection): ReadonlySet<string> {
+  return new Set(selected === null ? [] : typeof selected === 'string' ? [selected] : selected);
+}
+function crosses(a: DrawingPoint, b: DrawingPoint, c: DrawingPoint, d: DrawingPoint): boolean {
+  const turn = (p: DrawingPoint, q: DrawingPoint, r: DrawingPoint) =>
+    Math.sign((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x));
+  return turn(a, b, c) !== turn(a, b, d) && turn(c, d, a) !== turn(c, d, b);
+}
+/** A screen rectangle, such as a selection box. */
+export interface DrawingRect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+/** True when any of the drawing's projected shapes touches the rectangle. */
+export function sceneTouchesRect(
+  primitives: DrawingPrimitive[],
+  drawing: Drawing,
+  rect: DrawingRect,
+  context?: Pick<DrawingContext, 'theme' | 'measureText'>,
+): boolean {
+  const inside = (p: DrawingPoint) =>
+    p.x >= rect.left && p.x <= rect.right && p.y >= rect.top && p.y <= rect.bottom;
+  const corners = [
+    { x: rect.left, y: rect.top },
+    { x: rect.right, y: rect.top },
+    { x: rect.right, y: rect.bottom },
+    { x: rect.left, y: rect.bottom },
+  ];
+  return primitives.some(primitive => {
+    if (primitive.kind === 'axis') return false;
+    if (primitive.kind === 'text') {
+      const b = textBox(primitive, drawing, context);
+      return (
+        b.x <= rect.right && b.x + b.width >= rect.left && b.y <= rect.bottom && b.y + b.height >= rect.top
+      );
+    }
+    const points = primitive.points;
+    if (points.some(inside)) return true;
+    const segments = points.slice(1).map((p, i) => [points[i], p]);
+    if (primitive.closed && points.length > 2) segments.push([points.at(-1)!, points[0]]);
+    return (
+      segments.some(([a, b]) => corners.some((c, i) => crosses(a, b, c, corners[(i + 1) % 4]))) ||
+      (!!primitive.closed && contains(corners[0], points))
+    );
+  });
+}
+
 export function drawingHandles(
   drawing: Drawing,
   registry: DrawingRegistry,
@@ -106,12 +157,16 @@ export function hitDrawings(
   registry: DrawingRegistry,
   context: DrawingContext,
   p: DrawingPoint,
-  selectedId: string | null,
+  selection: Selection,
 ): { drawing: Drawing; handle: number | string | null; cursor: string } | null {
   const g = context.geometry;
   if (p.x < g.left || p.x > g.left + g.plotWidth || p.y < g.top || p.y > g.top + g.plotHeight) return null;
-  const selected = drawings.find(d => d.id === selectedId);
-  if (selected?.visible && !selected.locked && registry.get(selected.type)) {
+  const ids = selectedSet(selection);
+  // Front to back, like the body test below.
+  for (let i = drawings.length - 1; i >= 0; i--) {
+    const selected = drawings[i];
+    if (!ids.has(selected.id) || !selected.visible || selected.locked || !registry.get(selected.type))
+      continue;
     const handle = drawingHandles(selected, registry, context).find(
       handle =>
         Math.hypot(handle.at.x - p.x, handle.at.y - p.y) <=
@@ -121,7 +176,7 @@ export function hitDrawings(
   }
   for (let i = drawings.length - 1; i >= 0; i--) {
     const d = drawings[i];
-    const scene = registry.project(d, { ...context, selected: d.id === selectedId });
+    const scene = registry.project(d, { ...context, selected: ids.has(d.id) });
     if (d.visible && hitScene(scene, d, p, 7, context))
       return { drawing: d, handle: null, cursor: d.locked ? 'default' : 'move' };
   }
@@ -162,11 +217,12 @@ export function renderDrawings(
   drawings: readonly Drawing[],
   registry: DrawingRegistry,
   context: DrawingContext,
-  selectedId: string | null,
-  options: { hoverId?: string | null; axis?: DrawingAxisPainter } = {},
+  selection: Selection,
+  options: { hoverId?: string | null; axis?: DrawingAxisPainter; marquee?: DrawingRect | null } = {},
 ): void {
   const g = context.geometry,
-    theme = context.theme ?? chartThemes.evergreen;
+    theme = context.theme ?? chartThemes.evergreen,
+    ids = selectedSet(selection);
   const tags: { drawing: Drawing; primitive: Extract<DrawingPrimitive, { kind: 'axis' }> }[] = [];
   ctx.save();
   ctx.beginPath();
@@ -174,7 +230,7 @@ export function renderDrawings(
   ctx.clip();
   for (const d of drawings) {
     if (!d.visible) continue;
-    for (const primitive of registry.project(d, { ...context, selected: d.id === selectedId })) {
+    for (const primitive of registry.project(d, { ...context, selected: ids.has(d.id) })) {
       if (primitive.kind === 'axis') {
         tags.push({ drawing: d, primitive });
         continue;
@@ -239,15 +295,27 @@ export function renderDrawings(
   }
   const editable = (id: string | null | undefined) =>
     drawings.find(d => d.id === id && d.visible && !d.locked && registry.get(d.type));
-  const hovered = options.hoverId !== selectedId ? editable(options.hoverId) : undefined;
+  const hovered = options.hoverId && !ids.has(options.hoverId) ? editable(options.hoverId) : undefined;
   if (hovered) paintHandles(ctx, hovered, registry, context, theme, true);
-  const selected = editable(selectedId);
-  if (selected) paintHandles(ctx, selected, registry, context, theme, false);
+  for (const id of ids) {
+    const selected = editable(id);
+    if (selected) paintHandles(ctx, selected, registry, context, theme, false);
+  }
+  const box = options.marquee;
+  if (box) {
+    ctx.strokeStyle = ctx.fillStyle = themeColor(theme, theme.chart.handleColor);
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.globalAlpha = 0.08;
+    ctx.fillRect(box.left, box.top, box.right - box.left, box.bottom - box.top);
+    ctx.globalAlpha = 0.9;
+    ctx.strokeRect(box.left + 0.5, box.top + 0.5, box.right - box.left, box.bottom - box.top);
+  }
   ctx.restore();
   const axis = options.axis;
   if (!axis) return;
-  // The selection's extent shades both axes, with a tag at every anchor, like the crosshair.
-  const shown = drawings.find(d => d.id === selectedId && d.visible);
+  // A single selection's extent shades both axes, with a tag at every anchor, like the crosshair.
+  const shown = ids.size === 1 ? drawings.find(d => ids.has(d.id) && d.visible) : undefined;
   if (shown && registry.get(shown.type)) {
     const color = shown.style.color,
       prices = shown.points.map(p => p.price),

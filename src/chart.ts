@@ -126,7 +126,8 @@ export interface ChartApi {
   /** Reports the hovered bar's open time while the pointer is over this plot, then `null`. */
   subscribeCrosshair(listener: (timeMs: number | null) => void): () => void;
   setTool(tool: string): void;
-  selectDrawing(id: string | null): void;
+  /** Selects one drawing, several (the last becomes `selected`), or none. Selection is view state. */
+  selectDrawing(id: string | readonly string[] | null): void;
   drawingState(): DrawingInteractionState;
   drawingTools(): readonly DrawingToolDefinition[];
   setDrawingOptions(options: DrawingOptionsPatch): void;
@@ -435,9 +436,20 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       },
     };
   }
-  /** Shift snaps angles; Alt, Ctrl or Command drags a copy. */
+  /** Shift snaps angles; Alt, Ctrl or Command drags a copy; Ctrl, Command or Shift clicks add to the selection. */
   function modifiers(event: PointerEvent): DrawingModifiers {
-    return { shift: event.shiftKey, clone: event.altKey || event.ctrlKey || event.metaKey };
+    return {
+      shift: event.shiftKey,
+      clone: event.altKey || event.ctrlKey || event.metaKey,
+      toggle: event.ctrlKey || event.metaKey || event.shiftKey,
+    };
+  }
+  function attemptDrawing(action: () => void): void {
+    try {
+      action();
+    } catch (error) {
+      options.onError?.(toChartError(error));
+    }
   }
   function cancelDrawing(): void {
     pendingTextEdit = null;
@@ -790,9 +802,10 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       drawings.visible(),
       runtime.drawingRegistry,
       drawingContext(),
-      drawings.selectionId(),
+      drawings.selectionIds(),
       {
         hoverId: drawings.hoverId,
+        marquee: drawings.marquee,
         axis: drawingAxis(ctx, g),
       },
     );
@@ -1398,7 +1411,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       }
       if (['Delete', 'Backspace'].includes(event.key) && drawings.selected) {
         event.preventDefault();
-        if (!drawings.selected.locked) runtime.execute({ type: 'drawing.remove', id: drawings.selected.id });
+        attemptDrawing(() => drawings.remove());
         return;
       }
       if (modifier && ['c', 'v', 'd', 'y'].includes(key)) {
@@ -1410,16 +1423,7 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
           else if (key === 'y') {
             cancelDrawing();
             runtime.execute({ type: 'history.redo' });
-          } else if (drawings.selected) {
-            const id = crypto.randomUUID();
-            runtime.execute({
-              type: 'drawing.duplicate',
-              id: drawings.selected.id,
-              newId: id,
-              offset: { timeMs: state.feed.intervalMs * 3, price: 0 },
-            });
-            drawings.select(id);
-          }
+          } else drawings.duplicate();
         } catch (error) {
           options.onError?.(toChartError(error));
         }
