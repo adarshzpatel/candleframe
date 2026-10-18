@@ -1,6 +1,6 @@
 # Working on CandleFrame
 
-This is a TypeScript/WebGL2 proof of concept. Read `README.md` for implemented behavior and `site/src/content/docs/` for the guides.
+CandleFrame is an agent-native charting engine and library, written in TypeScript and drawn with WebGL2. Every edit a person makes in the widget is a typed command, so an agent can make the same edit with the same validation and undo. Read `README.md` for implemented behavior and `site/src/content/docs/` for the guides.
 
 ## Commands
 
@@ -75,4 +75,4 @@ Use Node 24. The build includes type checking and emits the demo and plain JavaS
 - Treat custom indicator code as trusted host code. The current plugin contract is not a safe execution environment for user-supplied scripts.
 - Do not copy proprietary chart implementations or introduce license-key dependencies.
 
-The demo exposes `window.candleframe` for developer tools. Agents can use the same API in a host integration or instantiate `ChartRuntime` without a browser. There is no MCP server, remote control service or generated command schema yet.
+The demo exposes `window.candleframe` for developer tools. Agents use the same API in a host integration, or drive `ChartRuntime` without a browser. `src/command-schema.ts` describes every command as JSON Schema for tool definitions, and `examples/mcp-server.ts` serves a headless chart over MCP.
