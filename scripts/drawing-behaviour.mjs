@@ -267,73 +267,74 @@ try {
     await stored(),
   );
 
-  // Forecasting: a bars pattern copy moves without changing the bars it copied.
-  await page.evaluate(() => window.candleframe.execute({ type: 'drawing.clear' }));
-  await page.evaluate(() => window.candleframe.setTool('bars-pattern'));
-  await click(at(0.6, 0.5));
-  await click(at(0.72, 0.3));
-  const pattern = (await drawings()).at(-1);
-  check(
-    pattern?.type === 'bars-pattern' && typeof pattern.options?.sourceFrom === 'number',
-    'a bars pattern remembers the bars it copied',
-    pattern,
-  );
-  const cursorAt = async p => {
-    await page.mouse.move(p.x, p.y);
-    return host
-      .locator('.chart-host')
-      .first()
-      .evaluate(el => [el, ...el.querySelectorAll('*')].map(e => e.style.cursor).find(c => c) ?? '');
-  };
-  // The copy sits over the bars it copied; scan down the middle for a stroke to grab.
-  let grab;
-  for (let fy = 0.05; fy < 0.95 && !grab; fy += 0.005)
-    if ((await cursorAt(at(0.66, fy))) === 'move') grab = at(0.66, fy);
-  check(!!grab, 'the bars pattern copy can be grabbed');
-  if (grab) {
-    await page.mouse.move(grab.x, grab.y);
-    await page.mouse.down();
-    await page.mouse.move(grab.x + 60, grab.y - 80, { steps: 6 });
-    await page.mouse.up();
-    const moved = (await drawings()).at(-1);
+  {
+    // Forecasting: a bars pattern copy moves without changing the bars it copied.
+    await page.evaluate(() => window.candleframe.execute({ type: 'drawing.clear' }));
+    await page.evaluate(() => window.candleframe.setTool('bars-pattern'));
+    await click(at(0.6, 0.5));
+    await click(at(0.72, 0.3));
+    const pattern = (await drawings()).at(-1);
     check(
-      moved.points[0].timeMs > pattern.points[0].timeMs &&
-        JSON.stringify(moved.options) === JSON.stringify(pattern.options),
-      'dragging the copy moves it and keeps its source bars',
-      moved,
+      pattern?.type === 'bars-pattern' && typeof pattern.options?.sourceFrom === 'number',
+      'a bars pattern remembers the bars it copied',
+      pattern,
     );
-    // The end handle sits level with the start, 60px right and 80px up after the drag.
-    const end = { x: at(0.72, 0).x + 60, y: at(0, 0.5).y - 80 };
-    await page.mouse.move(end.x, end.y);
-    await page.mouse.down();
-    await page.mouse.move(end.x + 40, end.y + 50, { steps: 4 });
-    await page.mouse.up();
-    const stretched = (await drawings()).at(-1);
+    const cursorAt = async p => {
+      await page.mouse.move(p.x, p.y);
+      return host
+        .locator('.chart-host')
+        .first()
+        .evaluate(el => [el, ...el.querySelectorAll('*')].map(e => e.style.cursor).find(c => c) ?? '');
+    };
+    // The copy sits over the bars it copied; scan down the middle for a stroke to grab.
+    let grab;
+    for (let fy = 0.05; fy < 0.95 && !grab; fy += 0.005)
+      if ((await cursorAt(at(0.66, fy))) === 'move') grab = at(0.66, fy);
+    check(!!grab, 'the bars pattern copy can be grabbed');
+    if (grab) {
+      await page.mouse.move(grab.x, grab.y);
+      await page.mouse.down();
+      await page.mouse.move(grab.x + 60, grab.y - 80, { steps: 6 });
+      await page.mouse.up();
+      const moved = (await drawings()).at(-1);
+      check(
+        moved.points[0].timeMs > pattern.points[0].timeMs &&
+          JSON.stringify(moved.options) === JSON.stringify(pattern.options),
+        'dragging the copy moves it and keeps its source bars',
+        moved,
+      );
+      // The end handle sits level with the start, 60px right and 80px up after the drag.
+      const end = { x: at(0.72, 0).x + 60, y: at(0, 0.5).y - 80 };
+      await page.mouse.move(end.x, end.y);
+      await page.mouse.down();
+      await page.mouse.move(end.x + 40, end.y + 50, { steps: 4 });
+      await page.mouse.up();
+      const stretched = (await drawings()).at(-1);
+      check(
+        stretched.points[1].timeMs > moved.points[1].timeMs &&
+          stretched.points[1].price === moved.points[1].price &&
+          stretched.points[0].timeMs === moved.points[0].timeMs,
+        'the end handle stretches the copy in time only',
+        stretched,
+      );
+      await page.screenshot({ path: `${out}/bars-pattern-moved.png` });
+    }
+    await page.evaluate(() => window.candleframe.setTool('anchored-vwap'));
+    const vwapClick = at(0.62, 0.15);
+    await click(vwapClick);
+    const vwap = (await drawings()).at(-1),
+      clicked = await page.evaluate(p => window.candleframe.priceAt(p.x, p.y), vwapClick),
+      interval = await page.evaluate(() => window.candleframe.inspect().feed.intervalMs);
     check(
-      stretched.points[1].timeMs > moved.points[1].timeMs &&
-        stretched.points[1].price === moved.points[1].price &&
-        stretched.points[0].timeMs === moved.points[0].timeMs,
-      'the end handle stretches the copy in time only',
-      stretched,
+      vwap?.type === 'anchored-vwap' &&
+        vwap.points[0].timeMs % interval === 0 &&
+        Math.abs(vwap.points[0].price - clicked.price) > 1,
+      'anchored VWAP snaps its anchor onto the bar under the click',
+      { vwap, clicked },
     );
-    await page.screenshot({ path: `${out}/bars-pattern-moved.png` });
+    await page.evaluate(() => window.candleframe.execute({ type: 'drawing.clear' }));
+    await page.evaluate(key => localStorage.removeItem(key), templateKey);
   }
-  await page.evaluate(() => window.candleframe.setTool('anchored-vwap'));
-  const vwapClick = at(0.62, 0.15);
-  await click(vwapClick);
-  const vwap = (await drawings()).at(-1),
-    clicked = await page.evaluate(p => window.candleframe.priceAt(p.x, p.y), vwapClick),
-    interval = await page.evaluate(() => window.candleframe.inspect().feed.intervalMs);
-  check(
-    vwap?.type === 'anchored-vwap' &&
-      vwap.points[0].timeMs % interval === 0 &&
-      Math.abs(vwap.points[0].price - clicked.price) > 1,
-    'anchored VWAP snaps its anchor onto the bar under the click',
-    { vwap, clicked },
-  );
-  await page.evaluate(() => window.candleframe.execute({ type: 'drawing.clear' }));
-  await page.evaluate(key => localStorage.removeItem(key), templateKey);
-
   // The fixed Gann square keeps its price-per-time ratio when a corner is dragged.
   await page.evaluate(() => window.candleframe.execute({ type: 'drawing.clear' }));
   await page.evaluate(() => window.candleframe.setTool('gann-square-fixed'));
@@ -357,84 +358,88 @@ try {
     { square: square?.points, resized: resized?.points },
   );
   await page.screenshot({ path: `${out}/gann-square-fixed.png` });
-  // Channel and cycle handles: place with real clicks, then drag the tool's own handles.
-  const chartHost = host.locator('.chart-host').first();
-  const cursorAt = async p => {
-    await page.mouse.move(p.x, p.y);
-    return chartHost.evaluate(el => [el, ...el.querySelectorAll('*')].map(e => e.style.cursor).find(Boolean));
-  };
-  const place = async (type, clicks) => {
-    await page.evaluate(() => window.candleframe.execute({ type: 'drawing.clear' }));
-    await page.evaluate(t => window.candleframe.setTool(t), type);
-    for (const p of clicks) await click(p);
-    return (await drawings()).at(-1);
-  };
-  const drag = async (from, to) => {
-    await page.mouse.move(from.x, from.y);
-    await page.mouse.down();
-    await page.mouse.move(to.x, to.y, { steps: 6 });
-    await page.mouse.up();
-    return (await drawings()).at(-1);
-  };
-  const same = (a, b) => a.timeMs === b.timeMs && a.price === b.price;
+  {
+    // Channel and cycle handles: place with real clicks, then drag the tool's own handles.
+    const chartHost = host.locator('.chart-host').first();
+    const cursorAt = async p => {
+      await page.mouse.move(p.x, p.y);
+      return chartHost.evaluate(el =>
+        [el, ...el.querySelectorAll('*')].map(e => e.style.cursor).find(Boolean),
+      );
+    };
+    const place = async (type, clicks) => {
+      await page.evaluate(() => window.candleframe.execute({ type: 'drawing.clear' }));
+      await page.evaluate(t => window.candleframe.setTool(t), type);
+      for (const p of clicks) await click(p);
+      return (await drawings()).at(-1);
+    };
+    const drag = async (from, to) => {
+      await page.mouse.move(from.x, from.y);
+      await page.mouse.down();
+      await page.mouse.move(to.x, to.y, { steps: 6 });
+      await page.mouse.up();
+      return (await drawings()).at(-1);
+    };
+    const same = (a, b) => a.timeMs === b.timeMs && a.price === b.price;
 
-  const end = at(0.8, 0.4);
-  const regression = await place('regression-trend', [at(0.55, 0.4), end]);
-  check(regression?.points.length === 2, 'two clicks place a regression trend', regression);
-  // The handle sits on the fitted base line at the last bar in range, so find it by its cursor.
-  let grip;
-  for (let y = plot.y + 4; y < plot.y + plot.height * 0.75 && !grip; y += 3)
-    if ((await cursorAt({ x: end.x - 3, y })) === 'ew-resize') grip = { x: end.x - 3, y };
-  check(!!grip, 'the regression handle sits on its base line');
-  if (grip) {
-    const moved = await drag(grip, { x: grip.x - 60, y: grip.y + 40 });
+    const end = at(0.8, 0.4);
+    const regression = await place('regression-trend', [at(0.55, 0.4), end]);
+    check(regression?.points.length === 2, 'two clicks place a regression trend', regression);
+    // The handle sits on the fitted base line at the last bar in range, so find it by its cursor.
+    let grip;
+    for (let y = plot.y + 4; y < plot.y + plot.height * 0.75 && !grip; y += 3)
+      if ((await cursorAt({ x: end.x - 3, y })) === 'ew-resize') grip = { x: end.x - 3, y };
+    check(!!grip, 'the regression handle sits on its base line');
+    if (grip) {
+      const moved = await drag(grip, { x: grip.x - 60, y: grip.y + 40 });
+      check(
+        moved.points[1].timeMs < regression.points[1].timeMs &&
+          moved.points[1].price === regression.points[1].price &&
+          same(moved.points[0], regression.points[0]),
+        'dragging a regression handle moves its anchor in time only',
+        moved.points,
+      );
+    }
+
+    const [f1, f2, f3] = [at(0.55, 0.6), at(0.8, 0.45), at(0.7, 0.3)];
+    const flat = await place('flat-top-bottom', [f1, f2, f3]);
+    check(flat?.points.length === 3, 'three clicks place a flat top/bottom', flat);
+    const flatEnd = { x: f2.x, y: f3.y };
+    check((await cursorAt(flatEnd)) === 'ns-resize', 'the flat line has a vertical handle at each end');
+    const lowered = await drag(flatEnd, { x: flatEnd.x + 30, y: flatEnd.y + 40 });
     check(
-      moved.points[1].timeMs < regression.points[1].timeMs &&
-        moved.points[1].price === regression.points[1].price &&
-        same(moved.points[0], regression.points[0]),
-      'dragging a regression handle moves its anchor in time only',
-      moved.points,
+      lowered.points[2].price < flat.points[2].price &&
+        lowered.points[2].timeMs === flat.points[2].timeMs &&
+        same(lowered.points[0], flat.points[0]) &&
+        same(lowered.points[1], flat.points[1]),
+      'dragging the flat line moves only its price',
+      lowered.points,
     );
+
+    const disjoint = await place('disjoint-channel', [f1, f2, at(0.55, 0.3)]);
+    const mirrorStart = { x: f1.x, y: at(0.55, 0.3).y };
+    check((await cursorAt(mirrorStart)) === 'ns-resize', 'the mirrored line has a handle at its start');
+    const shifted = await drag(mirrorStart, { x: mirrorStart.x + 20, y: mirrorStart.y - 30 });
+    check(
+      shifted.points[2].price > disjoint.points[2].price &&
+        shifted.points[2].timeMs === disjoint.points[0].timeMs,
+      'dragging the mirrored line shifts it and pins it to the first anchor time',
+      shifted.points,
+    );
+
+    const [c1, c2] = [at(0.55, 0.7), at(0.62, 0.5)];
+    const cycles = await place('time-cycles', [c1, c2]);
+    const cycleEnd = { x: c2.x, y: c1.y };
+    check((await cursorAt(cycleEnd)) === 'ew-resize', 'the time cycle end handle sits on the baseline');
+    const widened = await drag(cycleEnd, { x: cycleEnd.x + 30, y: cycleEnd.y - 50 });
+    check(
+      widened.points[1].timeMs > cycles.points[1].timeMs && same(widened.points[0], cycles.points[0]),
+      'dragging the time cycle end widens the cycle',
+      widened.points,
+    );
+    await page.screenshot({ path: `${out}/time-cycles.png` });
+    await page.evaluate(() => window.candleframe.execute({ type: 'drawing.clear' }));
   }
-
-  const [f1, f2, f3] = [at(0.55, 0.6), at(0.8, 0.45), at(0.7, 0.3)];
-  const flat = await place('flat-top-bottom', [f1, f2, f3]);
-  check(flat?.points.length === 3, 'three clicks place a flat top/bottom', flat);
-  const flatEnd = { x: f2.x, y: f3.y };
-  check((await cursorAt(flatEnd)) === 'ns-resize', 'the flat line has a vertical handle at each end');
-  const lowered = await drag(flatEnd, { x: flatEnd.x + 30, y: flatEnd.y + 40 });
-  check(
-    lowered.points[2].price < flat.points[2].price &&
-      lowered.points[2].timeMs === flat.points[2].timeMs &&
-      same(lowered.points[0], flat.points[0]) &&
-      same(lowered.points[1], flat.points[1]),
-    'dragging the flat line moves only its price',
-    lowered.points,
-  );
-
-  const disjoint = await place('disjoint-channel', [f1, f2, at(0.55, 0.3)]);
-  const mirrorStart = { x: f1.x, y: at(0.55, 0.3).y };
-  check((await cursorAt(mirrorStart)) === 'ns-resize', 'the mirrored line has a handle at its start');
-  const shifted = await drag(mirrorStart, { x: mirrorStart.x + 20, y: mirrorStart.y - 30 });
-  check(
-    shifted.points[2].price > disjoint.points[2].price &&
-      shifted.points[2].timeMs === disjoint.points[0].timeMs,
-    'dragging the mirrored line shifts it and pins it to the first anchor time',
-    shifted.points,
-  );
-
-  const [c1, c2] = [at(0.55, 0.7), at(0.62, 0.5)];
-  const cycles = await place('time-cycles', [c1, c2]);
-  const cycleEnd = { x: c2.x, y: c1.y };
-  check((await cursorAt(cycleEnd)) === 'ew-resize', 'the time cycle end handle sits on the baseline');
-  const widened = await drag(cycleEnd, { x: cycleEnd.x + 30, y: cycleEnd.y - 50 });
-  check(
-    widened.points[1].timeMs > cycles.points[1].timeMs && same(widened.points[0], cycles.points[0]),
-    'dragging the time cycle end widens the cycle',
-    widened.points,
-  );
-  await page.screenshot({ path: `${out}/time-cycles.png` });
-  await page.evaluate(() => window.candleframe.execute({ type: 'drawing.clear' }));
 } finally {
   await browser.close();
   server?.kill();
