@@ -1,0 +1,36 @@
+---
+/**
+ * Caret's page head: a breadcrumb of the sidebar group, the title, and the page description
+ * as a lede, so every guide opens by saying what it covers.
+ */
+import type { StarlightRouteData } from '@astrojs/starlight/route-data';
+
+// Starlight's PAGE_TITLE_ID; the constants module is not exported.
+const PAGE_TITLE_ID = '_top';
+const { entry, sidebar } = Astro.locals.starlightRoute;
+type Entry = StarlightRouteData['sidebar'][number];
+const groupOf = (entries: Entry[]): string | undefined => {
+  for (const e of entries) {
+    if (e.type === 'group') {
+      if (e.entries.some(child => child.type === 'link' && child.isCurrent)) return e.label;
+      const nested = groupOf(e.entries);
+      if (nested) return nested;
+    }
+  }
+};
+// A group's first page often shares its name (Data feeds / Data feeds); skip the crumb then.
+const found = groupOf(sidebar);
+const group = found === entry.data.title ? undefined : found;
+---
+
+{
+  group && (
+    <nav class="cf-crumbs" aria-label="Breadcrumb">
+      <span>{group}</span>
+      <span aria-hidden="true">/</span>
+      <span aria-current="page">{entry.data.title}</span>
+    </nav>
+  )
+}
+<h1 id={PAGE_TITLE_ID}>{entry.data.title}</h1>
+{entry.data.description && <p class="cf-lede">{entry.data.description}</p>}

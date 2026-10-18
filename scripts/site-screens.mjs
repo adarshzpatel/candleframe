@@ -79,10 +79,44 @@ try {
   }
 
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, colorScheme: 'dark' });
+  // The header's Auto / Light / Dark switch, and the landing page's questions.
+  await page.goto(url);
+  await page.locator('.header starlight-theme-select button[data-value="light"]').click();
+  const theme = await page.evaluate(() => [
+    document.documentElement.dataset.theme,
+    localStorage.getItem('starlight-theme'),
+  ]);
+  check(
+    theme[0] === 'light' && theme[1] === 'light',
+    'the theme switch turns the page light and remembers it',
+    theme,
+  );
+  await page.reload();
+  check(
+    (await page.evaluate(() => document.documentElement.dataset.theme)) === 'light',
+    'light mode survives a reload',
+  );
+  await page.locator('.header starlight-theme-select button[data-value="auto"]').click();
+  const question = page.locator('.cf-faq details').first();
+  await question.locator('summary').click();
+  check(await question.evaluate(d => d.open), 'a question opens');
+  await question.screenshot({ path: `${out}/faq-open.png` });
   for (const path of ['feeds/overview/', 'indicators/build-an-indicator/', 'agents/drive-the-chart/']) {
     const response = await page.goto(new URL(path, url).href);
     check(response?.ok(), `${path} loads`);
     await page.screenshot({ path: `${out}/${path.replaceAll('/', '-').replace(/-$/, '')}.png` });
+  }
+  // A guide with callouts and tables, full length in light mode, and a guide at phone width.
+  for (const [name, path, viewport, colorScheme] of [
+    ['guide-light', 'agents/mcp-server/', { width: 1440, height: 1000 }, 'light'],
+    ['guide-phone', 'feeds/overview/', { width: 390, height: 844 }, 'dark'],
+  ]) {
+    const guide = await browser.newPage({ viewport, colorScheme, deviceScaleFactor: 2 });
+    await guide.goto(new URL(path, url).href);
+    const overflow = await guide.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+    check(!overflow, `${name}: no horizontal scroll`);
+    await guide.screenshot({ path: `${out}/${name}.png`, fullPage: name === 'guide-light' });
+    await guide.close();
   }
   for (const path of ['llms.txt', 'llms-full.txt', 'feeds/overview.md']) {
     const response = await page.goto(new URL(path, url).href);

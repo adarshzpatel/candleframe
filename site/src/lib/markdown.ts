@@ -33,6 +33,10 @@ export function toMarkdown(doc: Doc): string {
   body = body
     .replace(/^import .*$\n?/gm, '')
     .replace(/^<LiveChart \/>\n?/gm, '')
+    // Layout wrappers on the landing page, and its questions as headings.
+    .replace(/^\s*<\/?div[^>]*>\n?/gm, '')
+    .replace(/^\s*<\/?details>\n?/gm, '')
+    .replace(/^\s*<summary>(.*)<\/summary>\n?/gm, '\n### $1\n')
     .replace(/^\s*<\/?CardGrid>\n?/gm, '')
     .replace(/^\s*<Card title="([^"]+)"[^>]*>\n?/gm, '\n### $1\n\n')
     .replace(/^\s*<\/Card>\n?/gm, '\n')

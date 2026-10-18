@@ -17,8 +17,23 @@ export default defineConfig({
       favicon: '/favicon.svg',
       social: [{ icon: 'github', label: 'GitHub', href: repo }],
       editLink: { baseUrl: `${repo}/edit/main/site/` },
-      customCss: ['./src/styles/custom.css'],
-      sidebar,
+      // The look follows Caret (caretui.rashmitaparmanik.com): Schibsted Grotesk, Paper Mono and
+      // its Neutral palette. Tokens are in custom.css, code colors in ec.config.mjs.
+      customCss: ['@fontsource-variable/schibsted-grotesk', './src/styles/custom.css'],
+      components: {
+        Hero: './src/components/Hero.astro',
+        PageTitle: './src/components/PageTitle.astro',
+        SiteTitle: './src/components/SiteTitle.astro',
+        ThemeSelect: './src/components/ThemeSelect.astro',
+      },
+      sidebar: [
+        { label: 'Overview', link: '/' },
+        // Each group shows how many pages it holds, like a file tree.
+        ...sidebar.map(group => ({
+          ...group,
+          badge: { text: String(group.items.length), class: 'cf-count' },
+        })),
+      ],
     }),
   ],
   vite: {

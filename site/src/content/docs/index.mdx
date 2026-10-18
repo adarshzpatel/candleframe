@@ -1,21 +1,19 @@
 ---
 title: CandleFrame
 description: A framework-free WebGL2 trading chart for the browser and for agents.
-template: splash
+tableOfContents: false
 hero:
   tagline: A WebGL2 trading chart with no dependencies. 13 chart types, 85 drawing tools, order-flow indicators, and a typed command API that people and agents drive the same way.
   actions:
     - text: Get started
       link: getting-started/installation/
-      icon: right-arrow
+      variant: primary
     - text: Open the full demo
       link: demo/
-      icon: external
-      variant: minimal
+      variant: secondary
     - text: GitHub
       link: https://github.com/adarshzpatel/candleframe
-      icon: github
-      variant: minimal
+      variant: secondary
 ---
 
 import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
@@ -25,34 +23,44 @@ import LiveChart from '../../components/LiveChart.astro';
 
 ## What you get
 
+<div class="cf-sheet">
 <CardGrid>
-  <Card title="13 chart types" icon="seti:svg">
+  <Card title="13 chart types">
     Candles, hollow candles, Heikin Ashi, OHLC, HLC and high-low bars, columns, line, line with markers, step
     line, area, baseline and footprint.
   </Card>
-  <Card title="85 drawing tools" icon="pencil">
+  <Card title="85 drawing tools">
     Trend lines, channels, pitchforks, Fibonacci and Gann tools, patterns, forecasts, shapes, notes and
     long/short positions, with templates, groups and undo.
   </Card>
-  <Card title="Indicators you can write" icon="puzzle">
+  <Card title="Indicators you can write">
     SMA, EMA, Bollinger Bands, RSI, MACD, CVD, volume and delta profiles, big trades, absorption and
     aggression. Add your own with one `calculate` function.
   </Card>
-  <Card title="Bring any data" icon="random">
+  <Card title="Bring any data">
     A feed is one small adapter: history, live candles and optional depth. Static arrays, REST, WebSockets, or
     trade streams turned into tick and range bars.
   </Card>
-  <Card title="Built for agents" icon="rocket">
+  <Card title="Built for agents">
     Every edit is a JSON command with a JSON Schema. Preview, batch, retry with idempotency keys, and query
     candles and indicator values. Runs headless in Node.
   </Card>
-  <Card title="No framework, no dependencies" icon="approve-check">
+  <Card title="No framework, no dependencies">
     WebGL2 draws the geometry, Canvas2D the text. The widget is a shadow-DOM component that mounts into any
     page. MIT licensed.
   </Card>
 </CardGrid>
+</div>
 
-## Five lines to a chart
+<div class="cf-split">
+<div>
+
+## From install to a chart
+
+Install from GitHub. The install step builds the library. Swap the simulated feed for [your own data](feeds/overview/) when you are ready.
+
+</div>
+<div>
 
 ```sh
 npm install github:adarshzpatel/candleframe
@@ -62,17 +70,27 @@ npm install github:adarshzpatel/candleframe
 import { createChartWidget } from 'candleframe/widget';
 import { createSimulatedFeed, sma } from 'candleframe/core';
 
-createChartWidget(document.querySelector<HTMLElement>('#chart')!, {
+const host = document.querySelector<HTMLElement>('#chart')!;
+createChartWidget(host, {
   feed: createSimulatedFeed({ symbol: 'BTC/USD', interval: '1m' }),
   indicators: [sma(20)],
 });
 ```
 
-Swap the simulated feed for [your own data](feeds/overview/) when you are ready.
+</div>
+</div>
+
+<div class="cf-split">
+<div>
 
 ## Agents use the same API
 
 What a person does through the toolbar, an agent does with commands. A batch is one undo step, and `preview` dry-runs it first.
+
+The docs ship as plain Markdown for coding agents too. Start from [`llms.txt`](llms.txt).
+
+</div>
+<div>
 
 ```ts
 chart.execute([
@@ -84,10 +102,58 @@ const rsi = indicators.find(i => i.kind === 'rsi')?.outputs.value;
 console.log(candles.at(-1)?.close, rsi?.at(-1));
 ```
 
-The docs ship as plain Markdown for coding agents too: start from [`llms.txt`](llms.txt).
+</div>
+</div>
+
+<div class="cf-split">
+<div>
+
+## Questions
+
+</div>
+<div class="cf-faq">
+
+<details>
+<summary>What is CandleFrame?</summary>
+
+A trading chart for web pages. WebGL2 draws the candles and drawings, Canvas2D draws the text, and nothing else gets installed with it. Use the full widget with its toolbar, the bare chart, or the headless runtime in Node.
+
+</details>
+
+<details>
+<summary>How do I install it?</summary>
+
+Run `npm install github:adarshzpatel/candleframe`. The package builds itself on install. It is not on the npm registry yet.
+
+</details>
+
+<details>
+<summary>Does it work with React, Vue or Svelte?</summary>
+
+Yes. The widget mounts into any element and cleans up with `dispose()`. The [framework guide](guides/frameworks/) shows React, Vue, Svelte and Angular.
+
+</details>
+
+<details>
+<summary>Where does the market data come from?</summary>
+
+From you. A feed is a small adapter with a history call and a live subscription. A simulated feed and a Binance adapter come with the library, and the [feed guides](feeds/overview/) cover REST, WebSockets and trade streams.
+
+</details>
+
+<details>
+<summary>Can my coding agent drive it?</summary>
+
+Yes. Every change is a JSON command checked against a JSON Schema, and the repo ships an MCP server. Point the agent at [`llms.txt`](llms.txt) and the [agent guides](agents/overview/).
+
+</details>
+
+</div>
+</div>
 
 ## Where to go next
 
+<div class="cf-sheet">
 <CardGrid>
   <LinkCard
     title="Embed the widget"
@@ -110,3 +176,4 @@ The docs ship as plain Markdown for coding agents too: start from [`llms.txt`](l
     description="Commands, preview, query and the MCP server."
   />
 </CardGrid>
+</div>

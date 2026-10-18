@@ -1,48 +1,1018 @@
-/* Evergreen in dark mode and Paper in light, the chart's own palettes (src/theme-palettes.ts). */
-:root {
-  --sl-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --sl-color-accent-low: #2c2814;
-  --sl-color-accent: #c9a93c;
-  --sl-color-accent-high: #e6d08e;
-  --sl-color-white: #eff5f2;
-  --sl-color-gray-1: #cad6d0;
-  --sl-color-gray-2: #afbdb6;
-  --sl-color-gray-3: #909e97;
-  --sl-color-gray-4: #495e54;
-  --sl-color-gray-5: #1b2f26;
-  --sl-color-gray-6: #12251d;
-  --sl-color-black: #02120b;
-}
-:root[data-theme='light'] {
-  --sl-color-accent-low: #e3e3f7;
-  --sl-color-accent: #5050c5;
-  --sl-color-accent-high: #2e2e86;
-  --sl-color-white: #1c1e22;
-  --sl-color-gray-1: #43454a;
-  --sl-color-gray-2: #585b60;
-  --sl-color-gray-3: #707378;
-  --sl-color-gray-4: #bbbec2;
-  --sl-color-gray-5: #e1e3e7;
-  --sl-color-gray-6: #f6f8fc;
-  --sl-color-gray-7: #f6f8fc;
-  --sl-color-black: #ffffff;
+/*
+ * The site follows Caret's design rules and Neutral theme (caretui.rashmitaparmanik.com):
+ * warm grey paper, graphite ink, an amber accent used only to mark attention, hairlines
+ * before shadows, Schibsted Grotesk for the interface and Paper Mono for code.
+ *
+ * --cf-* are Caret's role tokens. Starlight's own variables are mapped onto them once, below.
+ * Starlight's styles sit in cascade layers, so these unlayered rules win without !important.
+ */
+
+@font-face {
+  font-family: 'Paper Mono';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url('../assets/fonts/paper-mono-wght.woff2') format('woff2-variations');
 }
 
-.live-chart {
+:root {
+  color-scheme: dark;
+  --cf-page: oklch(19.5% 0.01 95);
+  --cf-surface: oklch(22.8% 0.01 95);
+  --cf-sunken: oklch(16.5% 0.01 95);
+  --cf-hover: oklch(27.2% 0.01 95);
+  --cf-pressed: oklch(31.5% 0.01 95);
+  --cf-selected: oklch(29.2% 0.01 95);
+  --cf-ink: oklch(95.5% 0.007 260);
+  --cf-ink-2: oklch(80.8% 0.013 260);
+  --cf-ink-3: oklch(70.6% 0.011 260);
+  --cf-on-ink: oklch(19.5% 0.01 95);
+  --cf-line: oklch(31.3% 0.014 95);
+  --cf-line-strong: oklch(37.3% 0.014 95);
+  --cf-border-control: oklch(54.7% 0.008 260);
+  --cf-accent: oklch(80% 0.143 78);
+  --cf-on-accent: oklch(20% 0.04 78);
+  --cf-accent-soft: oklch(30% 0.063 78);
+  --cf-accent-strong: oklch(80% 0.143 78);
+  --cf-focus: oklch(80% 0.143 78);
+  --cf-link: oklch(69.2% 0.16 256);
+  --cf-link-hover: oklch(76.2% 0.123 256);
+  --cf-danger: oklch(71% 0.16 27);
+  --cf-danger-soft: oklch(28.5% 0.055 27);
+  --cf-danger-line: oklch(57.1% 0.16 27);
+  --cf-success: oklch(67.9% 0.16 150);
+  --cf-success-soft: oklch(28.5% 0.055 150);
+  --cf-success-line: oklch(54.6% 0.15 150);
+  --cf-warning: oklch(70.7% 0.16 48);
+  --cf-warning-soft: oklch(28.5% 0.055 48);
+  --cf-warning-line: oklch(56.8% 0.155 48);
+  --cf-info: oklch(69.2% 0.16 245);
+  --cf-info-soft: oklch(28.5% 0.055 245);
+  --cf-info-line: oklch(55.6% 0.14 245);
+  --cf-btn-primary: oklch(95.5% 0.007 260);
+  --cf-btn-primary-hover: oklch(88.5% 0.007 260);
+  --cf-btn-primary-ledge: oklch(65.5% 0.007 260);
+  --cf-on-btn-primary: oklch(19.5% 0.01 95);
+  --cf-btn-secondary-hl: oklch(100% 0 0 / 0.06);
+  --cf-scrim: oklch(0% 0 0 / 0.6);
+  --cf-e-float: 0 6px 16px -6px oklch(0% 0 0 / 0.45);
+  --cf-e-modal:
+    0 0 0 1px oklch(100% 0 0 / 0.06), 0 16px 40px -12px oklch(0% 0 0 / 0.5),
+    0 4px 12px -4px oklch(0% 0 0 / 0.3);
+}
+:root[data-theme='light'] {
+  color-scheme: light;
+  --cf-page: oklch(96.6% 0.006 95);
+  --cf-surface: oklch(99.2% 0.003 95);
+  --cf-sunken: oklch(93.6% 0.006 95);
+  --cf-hover: oklch(94.4% 0.006 95);
+  --cf-pressed: oklch(90.5% 0.006 95);
+  --cf-selected: oklch(92.4% 0.006 95);
+  --cf-ink: oklch(21% 0.014 260);
+  --cf-ink-2: oklch(39.4% 0.013 260);
+  --cf-ink-3: oklch(49.8% 0.011 260);
+  --cf-on-ink: oklch(98.5% 0.003 95);
+  --cf-line: oklch(89.2% 0.009 95);
+  --cf-line-strong: oklch(83.2% 0.009 95);
+  --cf-border-control: oklch(61.8% 0.008 260);
+  --cf-accent: oklch(80% 0.158 78);
+  --cf-accent-soft: oklch(94% 0.05 78);
+  --cf-accent-strong: oklch(62.2% 0.123 78);
+  --cf-focus: oklch(62.2% 0.123 78);
+  --cf-link: oklch(52.3% 0.16 256);
+  --cf-link-hover: oklch(45.3% 0.155 256);
+  --cf-danger: oklch(53.9% 0.16 27);
+  --cf-danger-soft: oklch(95% 0.025 27);
+  --cf-danger-line: oklch(64.5% 0.16 27);
+  --cf-success: oklch(50.5% 0.139 150);
+  --cf-success-soft: oklch(95% 0.04 150);
+  --cf-success-line: oklch(61.4% 0.16 150);
+  --cf-warning: oklch(53.4% 0.145 48);
+  --cf-warning-soft: oklch(95% 0.027 48);
+  --cf-warning-line: oklch(64.2% 0.16 48);
+  --cf-info: oklch(51.8% 0.13 245);
+  --cf-info-soft: oklch(95% 0.026 245);
+  --cf-info-line: oklch(62.7% 0.158 245);
+  --cf-btn-primary: oklch(28% 0.014 260);
+  --cf-btn-primary-hover: oklch(34% 0.014 260);
+  --cf-btn-primary-ledge: oklch(11% 0.014 260);
+  --cf-on-btn-primary: oklch(98.5% 0.003 95);
+  --cf-btn-secondary-hl: oklch(100% 0 0 / 0.6);
+  --cf-scrim: oklch(21% 0.014 260 / 0.4);
+  --cf-e-float: 0 6px 16px -6px oklch(21% 0.014 260 / 0.12);
+  --cf-e-modal: 0 16px 40px -12px oklch(21% 0.014 260 / 0.2), 0 4px 12px -4px oklch(21% 0.014 260 / 0.1);
+}
+
+:root {
+  --cf-font-ui: 'Schibsted Grotesk Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --cf-font-mono: 'Paper Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --cf-r-inline: 4px;
+  --cf-r-control: 8px;
+  --cf-r-card: 12px;
+  --cf-r-dialog: 16px;
+  --cf-d-instant: 90ms;
+  --cf-d-quick: 160ms;
+  --cf-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+
+  /* Starlight, mapped onto the tokens above. */
+  --sl-font: var(--cf-font-ui);
+  --sl-font-mono: var(--cf-font-mono);
+  --sl-color-white: var(--cf-ink);
+  --sl-color-gray-1: var(--cf-ink);
+  --sl-color-gray-2: var(--cf-ink-2);
+  --sl-color-gray-3: var(--cf-ink-3);
+  --sl-color-gray-4: var(--cf-border-control);
+  --sl-color-gray-5: var(--cf-line);
+  --sl-color-gray-6: var(--cf-surface);
+  --sl-color-gray-7: var(--cf-hover);
+  --sl-color-black: var(--cf-page);
+  --sl-color-accent-low: var(--cf-accent-soft);
+  --sl-color-accent: var(--cf-accent);
+  --sl-color-accent-high: var(--cf-accent-strong);
+  --sl-color-text: var(--cf-ink-2);
+  --sl-color-text-accent: var(--cf-link);
+  --sl-color-text-invert: var(--cf-on-ink);
+  --sl-color-bg: var(--cf-page);
+  --sl-color-bg-nav: var(--cf-page);
+  --sl-color-bg-sidebar: var(--cf-page);
+  --sl-color-bg-inline-code: var(--cf-sunken);
+  --sl-color-bg-accent: var(--cf-accent);
+  --sl-color-hairline-light: var(--cf-line);
+  --sl-color-hairline: var(--cf-line);
+  --sl-color-hairline-shade: var(--cf-line);
+  --sl-color-backdrop-overlay: var(--cf-scrim);
+  --sl-shadow-sm: none;
+  --sl-shadow-md: none;
+  --sl-shadow-lg: var(--cf-e-modal);
+
+  --sl-text-body: 0.9375rem;
+  --sl-text-body-sm: 0.8125rem;
+  --sl-text-code: 0.78125rem;
+  --sl-text-code-sm: 0.75rem;
+  --sl-text-h1: 2.5rem;
+  --sl-text-h2: 1.75rem;
+  --sl-text-h3: 1.125rem;
+  --sl-text-h4: 0.9375rem;
+  --sl-text-h5: 0.9375rem;
+  --sl-line-height: 1.6;
+  --sl-line-height-headings: 1.15;
+
+  --sl-nav-height: 3.5rem;
+  --sl-sidebar-width: 16.875rem;
+  --sl-sidebar-pad-x: 0.75rem;
+  --sl-content-width: 46rem;
+  --sl-content-pad-x: 1.5rem;
+  --sl-menu-button-size: 2.25rem;
+
+  --sl-badge-default-border: transparent;
+  --sl-badge-default-bg: transparent;
+  --sl-badge-default-text: var(--cf-ink-3);
+}
+/* The landing page is a wide sheet, as in Caret's showcase. */
+:root[data-has-hero] {
+  --sl-content-width: 56rem;
+}
+
+body {
+  background: var(--cf-page);
+  color: var(--cf-ink-2);
+  font-size: var(--sl-text-body);
+  -webkit-font-smoothing: antialiased;
+}
+::selection {
+  background: var(--cf-accent-soft);
+  color: var(--cf-ink);
+}
+:focus-visible {
+  outline: 1px solid var(--cf-focus);
+  outline-offset: 2px;
+}
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  text-wrap: balance;
+}
+p,
+li,
+dd,
+figcaption {
+  text-wrap: pretty;
+}
+.cf-arrow {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ── Header ─────────────────────────────────────────────── */
+
+header.header {
+  border-bottom: 1px solid var(--cf-line);
+  background: var(--cf-page);
+}
+/* The phone menu button, as a Caret icon button instead of a floating white disc. */
+.sl-menu-button {
+  width: 36px;
+  height: 36px;
+  top: 10px;
+  padding: 9px;
+  border: 1px solid var(--cf-line-strong);
+  border-radius: var(--cf-r-inline);
+  background: var(--cf-surface);
+  color: var(--cf-ink);
+  box-shadow: none;
+}
+:root[data-theme='light'] .sl-menu-button {
+  background: var(--cf-surface);
+  color: var(--cf-ink);
+}
+.sl-menu-button:has(~ :popover-open),
+:root[data-theme='light'] .sl-menu-button:has(~ :popover-open) {
+  background: var(--cf-pressed);
+}
+.cf-site-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--cf-ink);
+  font-size: 1.0625rem;
+  font-weight: 620;
+  letter-spacing: -0.015em;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.cf-mark {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+.cf-mark rect {
+  fill: var(--cf-accent);
+}
+.cf-mark-line {
+  fill: none;
+  stroke: var(--cf-on-accent);
+  stroke-width: 1.5;
+}
+.cf-mark-fill {
+  fill: var(--cf-on-accent);
+}
+.cf-version {
+  border: 1px solid var(--cf-line-strong);
+  border-radius: var(--cf-r-inline);
+  padding: 0 5px;
+  color: var(--cf-ink-3);
+  font-family: var(--cf-font-mono);
+  font-size: 0.6875rem;
+  font-weight: 400;
+  line-height: 1rem;
+  letter-spacing: 0;
+}
+
+/* Search, drawn as Caret's quick-search well. */
+site-search button[data-open-modal] {
+  height: 2rem;
+  max-width: 20rem;
+  border: 1px solid var(--cf-line-strong);
+  border-radius: var(--cf-r-control);
+  background: transparent;
+  color: var(--cf-ink-3);
+  font-size: 0.875rem;
+  padding-inline: 8px 4px;
+  gap: 6px;
+  transition: border-color var(--cf-d-instant) ease;
+}
+site-search button[data-open-modal]:hover {
+  border-color: var(--cf-border-control);
+  color: var(--cf-ink-2);
+}
+site-search button[data-open-modal] svg {
+  width: 14px;
+  height: 14px;
+}
+site-search button[data-open-modal] > kbd {
+  margin-inline-start: auto;
+  gap: 2px;
+  background: none;
+  border: 0;
+}
+site-search button[data-open-modal] kbd kbd {
+  min-width: 18px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--cf-line-strong);
+  border-radius: var(--cf-r-inline);
+  background: var(--cf-surface);
+  color: var(--cf-ink-3);
+  font-family: var(--cf-font-mono);
+  font-size: 0.6875rem;
+  padding: 0 4px;
+}
+site-search dialog {
+  border: 1px solid var(--cf-line);
+  border-radius: var(--cf-r-dialog);
+  background: var(--cf-surface);
+  box-shadow: var(--cf-e-modal);
+}
+.social-icons::after {
+  border-color: var(--cf-line);
+  height: 1.25rem;
+}
+.social-icons a {
+  color: var(--cf-ink-3);
+}
+.social-icons a:hover {
+  color: var(--cf-ink);
+}
+
+/* Caret's Seg: a sunken track holding a raised face for the current choice. */
+.cf-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--cf-line);
+  border-radius: var(--cf-r-control);
+  background: var(--cf-sunken);
+}
+.cf-seg button {
+  height: 24px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--cf-r-inline);
+  background: transparent;
+  color: var(--cf-ink-3);
+  font: 550 0.8125rem/1 var(--cf-font-ui);
+  cursor: pointer;
+  transition:
+    background-color var(--cf-d-instant) ease,
+    color var(--cf-d-instant) ease;
+}
+.cf-seg button:hover {
+  color: var(--cf-ink);
+}
+.cf-seg button[aria-checked='true'] {
+  background: var(--cf-surface);
+  color: var(--cf-ink);
+  box-shadow: 0 0 0 1px var(--cf-line-strong);
+}
+
+/* ── Sidebar: a file tree ───────────────────────────────── */
+
+.sidebar-pane {
+  border-inline-end: 1px solid var(--cf-line);
+}
+.sidebar-content {
+  padding-top: 12px;
+}
+.sidebar-content ul {
+  --sl-sidebar-item-padding-inline: 8px;
+}
+.sidebar-content .top-level > li + li {
+  margin-top: 4px;
+}
+.sidebar-content a {
+  position: relative;
+  border-radius: var(--cf-r-inline);
+  color: var(--cf-ink-2);
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+  padding: 4px 8px;
+  transition:
+    background-color var(--cf-d-instant) ease,
+    color var(--cf-d-instant) ease;
+}
+.sidebar-content a.large {
+  font-size: 0.875rem;
+  font-weight: 550;
+  color: var(--cf-ink);
+}
+.sidebar-content a:hover {
+  background: var(--cf-hover);
+  color: var(--cf-ink);
+}
+.sidebar-content a[aria-current='page'],
+.sidebar-content a[aria-current='page']:hover,
+.sidebar-content a[aria-current='page']:focus {
+  background: var(--cf-selected);
+  color: var(--cf-ink);
+  font-weight: 620;
+}
+/* The current page also gets the accent mark, laid over the tree's thread. */
+.sidebar-content ul ul a[aria-current='page']::before {
+  content: '';
+  position: absolute;
+  inset-block: 6px;
+  inset-inline-start: -9px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--cf-accent-strong);
+}
+.sidebar-content summary {
+  flex-direction: row-reverse;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: var(--cf-r-inline);
+}
+.sidebar-content summary:hover {
+  background: var(--cf-hover);
+}
+.sidebar-content summary .caret {
+  width: 14px;
+  height: 14px;
+  color: var(--cf-ink-3);
+}
+.sidebar-content .group-label .large {
+  font-size: 0.875rem;
+  font-weight: 550;
+  color: var(--cf-ink);
+}
+.sidebar-content .sl-badge.cf-count {
+  border: 0;
+  background: none;
+  padding: 0 0 0 4px;
+  color: var(--cf-ink-3);
+  font-family: var(--cf-font-ui);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+.sidebar-content ul ul {
+  margin-block: 2px 8px;
+  margin-inline-start: 13px;
+}
+.sidebar-content ul ul li {
+  margin-inline-start: 0;
+  padding-inline-start: 8px;
+  border-inline-start: 1px solid var(--cf-line);
+}
+
+/* ── Page head ──────────────────────────────────────────── */
+
+.content-panel {
+  padding-inline: var(--sl-content-pad-x);
+}
+.content-panel + .content-panel {
+  border-top: 0;
+  padding-top: 0;
+}
+main > .content-panel:first-of-type {
+  padding-top: 2.5rem;
+}
+.cf-crumbs {
+  display: flex;
+  gap: 6px;
+  color: var(--cf-ink-3);
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+}
+.cf-crumbs [aria-current] {
+  color: var(--cf-ink);
+  font-weight: 550;
+}
+#_top,
+.cf-hero h1 {
+  margin-top: 0.75rem;
+  color: var(--cf-ink);
+  font-size: 2.5rem;
+  line-height: 2.75rem;
+  font-weight: 620;
+  letter-spacing: -0.035em;
+}
+.cf-lede {
+  max-width: 38rem;
+  margin-top: 0.75rem !important;
+  color: var(--cf-ink-2);
+  font-size: 0.9375rem;
+  line-height: 1.5rem;
+}
+
+/* ── Prose ──────────────────────────────────────────────── */
+
+.sl-markdown-content {
+  color: var(--cf-ink-2);
+  line-height: 1.5rem;
+}
+.sl-markdown-content :is(h2, h3, h4, h5, h6) {
+  color: var(--cf-ink);
+  font-weight: 620;
+}
+.sl-markdown-content h2 {
+  margin-top: 3rem;
+  font-size: 1.75rem;
+  line-height: 2rem;
+  letter-spacing: -0.03em;
+}
+.sl-markdown-content h3 {
+  margin-top: 2rem;
+  font-size: 1.125rem;
+  line-height: 1.5rem;
+  letter-spacing: -0.015em;
+}
+.sl-markdown-content h4 {
+  font-size: 0.9375rem;
+  line-height: 1.25rem;
+  letter-spacing: -0.01em;
+}
+.sl-markdown-content :is(strong, b) {
+  color: var(--cf-ink);
+  font-weight: 620;
+}
+.sl-markdown-content a:not(:where(.not-content *)) {
+  color: var(--cf-link);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in oklch, var(--cf-link) 40%, transparent);
+  transition: text-decoration-color var(--cf-d-instant) ease;
+}
+.sl-markdown-content a:not(:where(.not-content *)):hover {
+  color: var(--cf-link-hover);
+  text-decoration-color: currentColor;
+}
+.sl-markdown-content :not(pre) > code {
+  border: 1px solid var(--cf-line);
+  border-radius: var(--cf-r-inline);
+  background: var(--cf-sunken);
+  color: var(--cf-ink);
+  font-size: 0.8125em;
+  padding: 1px 4px;
+}
+.sl-markdown-content hr {
+  border-color: var(--cf-line);
+}
+.sl-markdown-content blockquote {
+  border-inline-start: 2px solid var(--cf-line-strong);
+  color: var(--cf-ink-2);
+}
+.sl-markdown-content :is(ul, ol) li::marker {
+  color: var(--cf-ink-3);
+}
+
+/* Tables: hairline rows, quiet headers, numbers that line up. */
+.sl-markdown-content table {
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+  font-variant-numeric: tabular-nums;
+}
+.sl-markdown-content :is(th, td) {
+  border: 0;
+  border-bottom: 1px solid var(--cf-line);
+  padding: 8px 12px;
+}
+.sl-markdown-content th {
+  background: none;
+  color: var(--cf-ink-3);
+  font-weight: 550;
+  text-align: start;
+}
+.sl-markdown-content tr:nth-child(2n) {
+  background: none;
+}
+.sl-markdown-content tbody tr:hover {
+  background: var(--cf-hover);
+}
+
+/* Asides as Caret callouts: a status tint, a status edge, the title in the status color. */
+.starlight-aside {
+  border: 1px solid var(--sl-color-asides-border);
+  border-radius: var(--cf-r-card);
+  padding: 12px 16px;
+  color: var(--cf-ink-2);
+}
+.starlight-aside--note {
+  --sl-color-asides-text-accent: var(--cf-info);
+  --sl-color-asides-border: var(--cf-info-line);
+  background: var(--cf-info-soft);
+}
+.starlight-aside--tip {
+  --sl-color-asides-text-accent: var(--cf-success);
+  --sl-color-asides-border: var(--cf-success-line);
+  background: var(--cf-success-soft);
+}
+.starlight-aside--caution {
+  --sl-color-asides-text-accent: var(--cf-warning);
+  --sl-color-asides-border: var(--cf-warning-line);
+  background: var(--cf-warning-soft);
+}
+.starlight-aside--danger {
+  --sl-color-asides-text-accent: var(--cf-danger);
+  --sl-color-asides-border: var(--cf-danger-line);
+  background: var(--cf-danger-soft);
+}
+.starlight-aside__title {
+  font-size: 0.9375rem;
+  line-height: 1.25rem;
+  font-weight: 620;
+}
+.starlight-aside__icon {
+  width: 16px;
+  height: 16px;
+  font-size: 16px;
+}
+
+/* ── On this page, pagination, footer ───────────────────── */
+
+starlight-toc h2,
+mobile-starlight-toc .toggle {
+  color: var(--cf-ink);
+  font-size: 0.8125rem;
+  font-weight: 620;
+}
+starlight-toc a {
+  position: relative;
+  color: var(--cf-ink-3);
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+}
+starlight-toc a:hover {
+  color: var(--cf-ink);
+}
+starlight-toc a[aria-current='true'] {
+  color: var(--cf-ink);
+  font-weight: 550;
+}
+starlight-toc a[aria-current='true']::before {
+  content: '';
+  position: absolute;
+  inset-block: 6px;
+  inset-inline-start: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--cf-accent-strong);
+}
+.right-sidebar {
+  border-inline-start: 1px solid var(--cf-line);
+}
+
+.pagination-links a {
+  border: 1px solid var(--cf-line);
+  border-radius: var(--cf-r-card);
+  padding: 12px 16px;
+  color: var(--cf-ink-3);
+  font-size: 0.8125rem;
+  box-shadow: none;
+  transition:
+    background-color var(--cf-d-instant) ease,
+    border-color var(--cf-d-instant) ease;
+}
+.pagination-links a:hover {
+  border-color: var(--cf-line-strong);
+  background: var(--cf-hover);
+}
+.pagination-links .link-title {
+  color: var(--cf-ink);
+  font-size: 0.9375rem;
+  line-height: 1.25rem;
+  font-weight: 620;
+}
+.pagination-links svg {
+  width: 16px;
+  height: 16px;
+  color: var(--cf-ink-3);
+}
+footer .meta,
+footer .meta a {
+  color: var(--cf-ink-3);
+  font-size: 0.8125rem;
+}
+
+/* A shell block with no title still gets a label in its bar, as in Caret's terminal. */
+.expressive-code .frame.is-terminal .header .title:empty::before {
+  content: 'Terminal';
+}
+
+/* ── Landing ────────────────────────────────────────────── */
+
+.cf-hero {
+  padding-block: 1rem 0.5rem;
+}
+.cf-hero h1 {
+  margin-top: 0;
+}
+.cf-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 1.25rem;
+}
+
+/* Caret's keyed buttons: 36px tall on a 2px ledge, which the press travels down into. */
+.cf-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  margin-bottom: 2px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: var(--cf-r-inline);
+  font: 550 0.875rem/1.25rem var(--cf-font-ui);
+  text-decoration: none;
+  transition:
+    transform var(--cf-d-instant) ease,
+    box-shadow var(--cf-d-instant) ease,
+    background-color var(--cf-d-instant) ease;
+}
+.cf-button.primary {
+  background: var(--cf-btn-primary);
+  color: var(--cf-on-btn-primary);
+  box-shadow: 0 2px 0 var(--cf-btn-primary-ledge);
+}
+.cf-button.primary:hover {
+  background: var(--cf-btn-primary-hover);
+  color: var(--cf-on-btn-primary);
+}
+.cf-button.secondary {
+  border-color: var(--cf-line-strong);
+  background: var(--cf-surface);
+  color: var(--cf-ink);
+  box-shadow:
+    inset 0 1px 0 var(--cf-btn-secondary-hl),
+    0 2px 0 var(--cf-line-strong);
+}
+.cf-button.secondary:hover {
+  background: var(--cf-hover);
+  color: var(--cf-ink);
+}
+.cf-button:active {
+  transform: translateY(2px);
+  box-shadow: none;
+}
+
+/*
+ * A drafting sheet: a hairline frame with a registration mark on each corner. The marks are
+ * two masked layers, a fill in the page color that cuts the frame line, then the outline.
+ */
+.cf-sheet {
+  --cf-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 9'%3E%3Crect x='.5' y='.5' width='8' height='8' fill='none' stroke='%23000'/%3E%3C/svg%3E");
+  --cf-mark-fill: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 9'%3E%3Crect width='9' height='9'/%3E%3C/svg%3E");
+  position: relative;
+  border: 1px solid var(--cf-line);
+}
+.cf-sheet::before,
+.cf-sheet::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  z-index: 1;
+  pointer-events: none;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 9px 9px;
+  mask-size: 9px 9px;
+  -webkit-mask-position:
+    left top,
+    right top,
+    left bottom,
+    right bottom;
+  mask-position:
+    left top,
+    right top,
+    left bottom,
+    right bottom;
+}
+.cf-sheet::before {
+  background: var(--cf-page);
+  -webkit-mask-image: var(--cf-mark-fill), var(--cf-mark-fill), var(--cf-mark-fill), var(--cf-mark-fill);
+  mask-image: var(--cf-mark-fill), var(--cf-mark-fill), var(--cf-mark-fill), var(--cf-mark-fill);
+}
+.cf-sheet::after {
+  background: var(--cf-line-strong);
+  -webkit-mask-image: var(--cf-mark), var(--cf-mark), var(--cf-mark), var(--cf-mark);
+  mask-image: var(--cf-mark), var(--cf-mark), var(--cf-mark), var(--cf-mark);
+}
+.sl-markdown-content .cf-sheet {
+  margin-top: 1.5rem;
+}
+
+/* The live chart sheet, with a label strip along the bottom like a Caret specimen. */
+.cf-live {
+  margin: 2.5rem 0 0;
+}
+.cf-live-chart {
   height: min(560px, 72vh);
-  margin-block: 2rem 1rem;
-  border: 1px solid var(--sl-color-gray-5);
-  border-radius: 0.5rem;
+}
+.cf-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 36px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--cf-line);
+  color: var(--cf-ink-3);
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+}
+.cf-strip a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  color: var(--cf-ink-2);
+  font-weight: 550;
+  text-decoration: none;
+}
+.cf-strip a:hover {
+  color: var(--cf-ink);
+}
+
+/* Cards and link cards inside a sheet become its cells, split by hairlines. */
+.cf-sheet .card-grid {
+  gap: 0;
+  grid-template-columns: 1fr;
+}
+.cf-sheet .card-grid > * {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--cf-line);
+  background: transparent;
+  box-shadow: none;
+}
+.cf-sheet .card-grid > :last-child {
+  border-bottom: 0;
+}
+.cf-sheet .card {
+  gap: 6px;
+  padding: 20px;
+}
+.cf-sheet .card .title {
+  color: var(--cf-ink);
+  font-size: 0.9375rem;
+  line-height: 1.25rem;
+  font-weight: 620;
+  letter-spacing: -0.01em;
+}
+.cf-sheet .card .body {
+  color: var(--cf-ink-2);
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+}
+.cf-sheet .sl-link-card {
+  padding: 16px 20px;
+  align-items: center;
+  transition: background-color var(--cf-d-instant) ease;
+}
+.cf-sheet .sl-link-card:hover {
+  background: var(--cf-hover);
+}
+.cf-sheet .sl-link-card .title {
+  color: var(--cf-ink);
+  font-size: 0.9375rem;
+  line-height: 1.25rem;
+  font-weight: 620;
+}
+.cf-sheet .sl-link-card .description {
+  color: var(--cf-ink-3);
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+}
+.cf-sheet .sl-link-card .stack {
+  gap: 2px;
+}
+.cf-sheet .sl-link-card .icon {
+  width: 16px;
+  height: 16px;
+  color: var(--cf-ink-3);
+}
+@media (min-width: 50rem) {
+  .cf-sheet .card-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .cf-sheet .card-grid > * {
+    border-inline-end: 1px solid var(--cf-line);
+  }
+  .cf-sheet .card-grid > :nth-child(2n) {
+    border-inline-end: 0;
+  }
+  .cf-sheet .card-grid > :nth-last-child(-n + 2):nth-child(2n + 1),
+  .cf-sheet .card-grid > :nth-last-child(-n + 2):nth-child(2n + 1) ~ * {
+    border-bottom: 0;
+  }
+}
+@media (min-width: 72rem) {
+  .cf-sheet .card-grid:has(> .card) {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .cf-sheet .card-grid:has(> .card) > * {
+    border-inline-end: 1px solid var(--cf-line);
+    border-bottom: 1px solid var(--cf-line);
+  }
+  .cf-sheet .card-grid:has(> .card) > :nth-child(3n) {
+    border-inline-end: 0;
+  }
+  .cf-sheet .card-grid:has(> .card) > :nth-last-child(-n + 3):nth-child(3n + 1),
+  .cf-sheet .card-grid:has(> .card) > :nth-last-child(-n + 3):nth-child(3n + 1) ~ * {
+    border-bottom: 0;
+  }
+}
+
+/* Link cards are whole-cell links: the title reads as a heading, not underlined text. */
+.sl-markdown-content .sl-link-card a {
+  color: var(--cf-ink);
+  text-decoration: none;
+}
+
+/* A section with its title on the left and the material on the right. */
+.cf-split {
+  display: grid;
+  gap: 1rem 2.5rem;
+  margin-top: 4rem !important;
+}
+.cf-split > * {
+  margin: 0 !important;
+  min-width: 0;
+}
+.cf-split h2 {
+  margin-top: 0 !important;
+}
+.cf-split > :first-child > * + * {
+  margin-top: 0.75rem;
+}
+.cf-split > :last-child > * + * {
+  margin-top: 1rem;
+}
+@media (min-width: 50rem) {
+  .cf-split {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.75fr);
+  }
+}
+
+/* Questions: one hairline panel of rows that open in place. */
+.cf-faq {
+  border: 1px solid var(--cf-line);
+  border-radius: var(--cf-r-card);
   overflow: hidden;
 }
-.live-chart-caption {
-  margin-top: 0;
-  font-size: var(--sl-text-sm);
-  color: var(--sl-color-gray-3);
-  text-align: center;
+.cf-faq details {
+  margin: 0 !important;
+  padding: 0;
+  border-inline-start: 0;
 }
-@media (max-width: 50rem) {
-  .live-chart {
-    height: 480px;
+.cf-faq details + details {
+  border-top: 1px solid var(--cf-line);
+}
+.cf-faq summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  padding: 12px 12px 12px 16px;
+  color: var(--cf-ink);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 550;
+  cursor: pointer;
+  list-style: none;
+  transition: background-color var(--cf-d-instant) ease;
+}
+.cf-faq summary::-webkit-details-marker,
+.cf-faq summary::before {
+  display: none !important;
+}
+.cf-faq details[open] > summary {
+  margin: 0;
+}
+.cf-faq summary:hover {
+  background: var(--cf-hover);
+}
+.cf-faq summary::after {
+  content: '';
+  width: 14px;
+  height: 14px;
+  flex: none;
+  background: var(--cf-ink-3);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  transition: transform var(--cf-d-quick) var(--cf-ease-out);
+}
+.cf-faq details[open] summary::after {
+  transform: rotate(180deg);
+}
+.cf-faq details > :not(summary) {
+  margin: 0;
+  padding: 0 16px 14px;
+  color: var(--cf-ink-2);
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cf-button:active {
+    transform: none;
   }
 }

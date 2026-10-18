@@ -1,0 +1,16 @@
+---
+/** The mark, the name and the library version, as in Caret's sidebar head. */
+import pkg from '../../../package.json';
+
+const { siteTitle, siteTitleHref } = Astro.locals.starlightRoute;
+---
+
+<a href={siteTitleHref} class="cf-site-title">
+  <svg class="cf-mark" viewBox="0 0 20 20" aria-hidden="true">
+    <rect width="20" height="20" rx="4" />
+    <path d="M5 5h4v4H5zM11 5h4v4h-4zM5 11h4v4H5z" class="cf-mark-line" />
+    <path d="M11 11h4v4h-4z" class="cf-mark-fill" />
+  </svg>
+  <span translate="no">{siteTitle}</span>
+  <span class="cf-version">v{pkg.version}</span>
+</a>

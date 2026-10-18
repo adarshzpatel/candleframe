@@ -1,0 +1,71 @@
+---
+/**
+ * Caret's segmented Auto / Light / Dark switch in place of Starlight's select. It keeps
+ * Starlight's storage key, so the inline theme script in the head still applies the choice
+ * before first paint.
+ */
+const options = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+];
+---
+
+<starlight-theme-select class="cf-seg" role="radiogroup" aria-label="Color theme">
+  {
+    options.map(({ value, label }) => (
+      <button type="button" role="radio" aria-checked="false" data-value={value}>
+        {label}
+      </button>
+    ))
+  }
+</starlight-theme-select>
+
+<script>
+  type Theme = 'auto' | 'dark' | 'light';
+  const storageKey = 'starlight-theme';
+  const parse = (value: unknown): Theme => (value === 'dark' || value === 'light' ? value : 'auto');
+  const load = (): Theme => {
+    try {
+      return parse(localStorage.getItem(storageKey));
+    } catch {
+      return 'auto';
+    }
+  };
+  const system = () => (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+
+  function apply(theme: Theme) {
+    document.documentElement.dataset.theme = theme === 'auto' ? system() : theme;
+    try {
+      localStorage.setItem(storageKey, theme === 'auto' ? '' : theme);
+    } catch {}
+    for (const button of document.querySelectorAll<HTMLButtonElement>('starlight-theme-select button')) {
+      const on = button.dataset.value === theme;
+      button.setAttribute('aria-checked', String(on));
+      button.tabIndex = on ? 0 : -1;
+    }
+  }
+
+  matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+    if (load() === 'auto') apply('auto');
+  });
+
+  class ThemeSelect extends HTMLElement {
+    connectedCallback() {
+      apply(load());
+      const buttons = [...this.querySelectorAll<HTMLButtonElement>('button')];
+      for (const button of buttons) button.addEventListener('click', () => apply(parse(button.dataset.value)));
+      // Arrow keys move the choice, as in any radio group.
+      this.addEventListener('keydown', event => {
+        const step = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 0;
+        if (!step) return;
+        event.preventDefault();
+        const index = buttons.findIndex(b => b.getAttribute('aria-checked') === 'true');
+        const next = buttons[(index + step + buttons.length) % buttons.length];
+        apply(parse(next.dataset.value));
+        next.focus();
+      });
+    }
+  }
+  customElements.define('starlight-theme-select', ThemeSelect);
+</script>

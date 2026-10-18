@@ -1,0 +1,33 @@
+---
+/**
+ * Caret's page hero: a left-aligned title, one paragraph and keyed buttons. Replaces Starlight's
+ * centered splash hero and reads the same `hero` frontmatter.
+ */
+// Starlight's PAGE_TITLE_ID; the constants module is not exported.
+const PAGE_TITLE_ID = '_top';
+
+const { data } = Astro.locals.starlightRoute.entry;
+const { title = data.title, tagline, actions = [] } = data.hero || {};
+const external = (href: string) => /^https?:/.test(href) || href.startsWith('demo/');
+---
+
+<div class="cf-hero not-content">
+  <h1 id={PAGE_TITLE_ID} data-page-title set:html={title} />
+  {tagline && <p class="cf-lede" set:html={tagline} />}
+  {
+    actions.length > 0 && (
+      <div class="cf-actions">
+        {actions.map(({ link, text, variant }) => (
+          <a class:list={['cf-button', variant === 'primary' ? 'primary' : 'secondary']} href={link}>
+            {text}
+            {external(link) && (
+              <svg class="cf-arrow" viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M5 11l6-6M6 5h5v5" />
+              </svg>
+            )}
+          </a>
+        ))}
+      </div>
+    )
+  }
+</div>
