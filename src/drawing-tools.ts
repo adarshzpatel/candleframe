@@ -603,8 +603,7 @@ function projectPosition(d: Drawing, c: DrawingContext): DrawingPrimitive[] {
       : Math.min(g.top + g.plotHeight - padding, y + size + padding + 5);
   const signed = (value: number) => `${value < 0 ? '−' : '+'}${c.formatPrice(Math.abs(value))}`;
   const percent = (value: number) => `${((value / entryPrice) * 100).toFixed(2)}%`;
-  const ticks = (value: number) =>
-    c.tickSize ? `  ·  ${Math.round(Math.abs(value) / c.tickSize)} ticks` : '';
+  const ticks = (value: number) => (c.tickSize ? ` · ${Math.round(Math.abs(value) / c.tickSize)} ticks` : '');
   const pill = { align: 'center' as const, color: ink, radius: 4 };
   const font = `${size}px ${c.theme?.typography.annotationFamily ?? 'monospace'}`;
   const measure = (value: string) =>
@@ -618,36 +617,35 @@ function projectPosition(d: Drawing, c: DrawingContext): DrawingPrimitive[] {
   const level = (name: string, price: number, distance: number) => {
     const head = `${name} ${c.formatPrice(price)}`,
       tail = `${signed(distance)} (${percent(Math.abs(distance))})${ticks(distance)}`,
-      line = `${head}  ·  ${tail}`;
+      line = `${head} · ${tail}`;
     return measure(line) > g.plotWidth ? `${head}\n${tail}` : line;
   };
-  const side = d.type === 'long-position' ? 'LONG' : 'SHORT';
-  const summary = `${side} ${c.formatPrice(entryPrice)}  ·  R/R ${metrics.ratio.toFixed(2)}`;
-  const scene = [...region(target, gain), ...region(stop, loss), path([entry, { x: right, y: entry.y }])];
-  let status = '',
+  const quantity = option<number>(d, 'quantity'),
+    scene = [...region(target, gain), ...region(stop, loss), path([entry, { x: right, y: entry.y }])];
+  let pnl = 0,
+    closed = false,
     statusColor: string | undefined;
   if (c.candles) {
     const outcome = positionOutcome(d, c.candles);
-    if (outcome.state === 'pending') status = 'Waiting for entry';
-    else {
-      const pnl = outcome.pnl!,
-        color = pnl >= 0 ? gain : loss,
+    if (outcome.state !== 'pending') {
+      const color = outcome.pnl! >= 0 ? gain : loss,
         from = { x: g.x(outcome.fillMs!), y: entry.y },
         to = { x: g.x(outcome.exitMs!), y: g.y(outcome.exitPrice!) };
+      pnl = outcome.pnl! * quantity;
+      closed = outcome.state !== 'open';
       statusColor = color;
       // A second fill over the level region shows how far the trade has travelled so far.
       scene.push(
         path(rectangle(from, to), { closed: true, fill: color, width: 0 }),
         path([from, to], { color: c.theme?.palette.text ?? '#e6edf3', width: 1, dash: [4, 4], opacity: 0.7 }),
       );
-      const name =
-        outcome.state === 'open' ? 'Open P&L' : outcome.state === 'target' ? 'Target hit' : 'Stopped';
-      status = `${name} ${signed(pnl)} (${pnl < 0 ? '−' : '+'}${percent(Math.abs(pnl))})`;
     }
   }
   const targetLabel = level('Target', targetPrice, metrics.reward),
     stopLabel = level('Stop', stopPrice, -metrics.risk),
-    center = status ? `${summary}\n${status}` : summary;
+    center =
+      `${closed ? 'Closed' : 'Open'} PnL: ${pnl ? signed(pnl) : c.formatPrice(0)}, Qty: ${quantity}\n` +
+      `Risk/reward ratio: ${Number(metrics.ratio.toFixed(2))}`;
   return [
     ...scene,
     text(fit(targetLabel, outside(target.y)), targetLabel, { ...pill, background: gain }),
@@ -702,6 +700,19 @@ const tool = (
 
 const position = (type: 'long-position' | 'short-position', label: string): DrawingToolDefinition =>
   tool(type, label, 'Forecasting', 'Projection', 3, projectPosition, {
+    // Scales the PnL shown on the entry label.
+    settings: [
+      {
+        key: 'quantity',
+        label: 'Quantity',
+        kind: 'number',
+        default: 1,
+        min: 0,
+        max: 1e9,
+        step: 1,
+        section: 'Position',
+      },
+    ],
     hint: 'Click to place. Drag target, stop or width handles to adjust.',
     validate: validatePosition(type === 'long-position'),
     editableProperties: true,

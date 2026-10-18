@@ -279,10 +279,10 @@ test('pitchfork median passes through the midpoint of its two fork anchors', () 
 test('position plans require ordered prices and display independently computed risk/reward', () => {
   const long = drawing('long-position', [point(20, 140), point(60, 180), point(60, 120)]);
   const scene = registry.project(long, context);
-  assert.ok(texts(scene).some(p => p.text === 'LONG 140.00  ·  R/R 2.00'));
+  assert.ok(texts(scene).some(p => p.text === 'Open PnL: 0.00, Qty: 1\nRisk/reward ratio: 2'));
   assert.equal(paths(scene).filter(p => p.fill).length, 2);
   const short = drawing('short-position', [point(20, 160), point(60, 130), point(60, 170)]);
-  assert.ok(texts(registry.project(short, context)).some(p => p.text === 'SHORT 160.00  ·  R/R 3.00'));
+  assert.ok(texts(registry.project(short, context)).some(p => p.text.endsWith('Risk/reward ratio: 3')));
   assert.throws(() => drawing('long-position', short.points), /INVALID_POSITION_PRICES/);
   assert.throws(() => drawing('short-position', long.points), /INVALID_POSITION_PRICES/);
   assert.throws(
@@ -294,8 +294,8 @@ test('position plans require ordered prices and display independently computed r
 test('position labels show distance, percent and ticks for each level', () => {
   const long = drawing('long-position', [point(20, 140), point(60, 180), point(60, 120)]);
   const labels = texts(registry.project(long, { ...context, tickSize: 0.25 })).map(p => p.text);
-  assert.ok(labels.includes('Target 180.00  ·  +40.00 (28.57%)  ·  160 ticks'));
-  assert.ok(labels.includes('Stop 120.00  ·  −20.00 (14.29%)  ·  80 ticks'));
+  assert.ok(labels.includes('Target 180.00 · +40.00 (28.57%) · 160 ticks'));
+  assert.ok(labels.includes('Stop 120.00 · −20.00 (14.29%) · 80 ticks'));
 });
 
 test('position outcomes replay candles from fill to the first level reached', () => {
@@ -326,8 +326,14 @@ test('position outcomes replay candles from fill to the first level reached', ()
     ...context,
     candles: [candle(20, 138, 142), candle(30, 141, 160, 155)],
   });
-  assert.ok(texts(scene).some(p => p.text.endsWith('\nOpen P&L +15.00 (+10.71%)')));
+  assert.ok(texts(scene).some(p => p.text === 'Open PnL: +15.00, Qty: 1\nRisk/reward ratio: 2'));
   assert.equal(paths(scene).filter(p => p.fill).length, 3);
+  const sized = { ...long, options: { quantity: 3 } };
+  const stopped = registry.project(sized, {
+    ...context,
+    candles: [candle(20, 138, 142), candle(30, 110, 141)],
+  });
+  assert.ok(texts(stopped).some(p => p.text === 'Closed PnL: −60.00, Qty: 3\nRisk/reward ratio: 2'));
 });
 
 test('positions remain editable near the price floor and when their time extent runs backwards', () => {
