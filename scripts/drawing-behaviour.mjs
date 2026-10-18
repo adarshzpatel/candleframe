@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Drives drawing interactions through real pointer and keyboard input on the offline demo:
 // rail families, Alt hotkeys, Shift angle snapping, Alt-drag cloning, double-click settings,
-// remembered tool defaults and templates across reloads. Prints ok/FAIL per check and saves
+// remembered tool defaults and templates across reloads, favourites and interval visibility. Prints ok/FAIL per check and saves
 // screenshots of the menus.
 //
 //   node scripts/drawing-behaviour.mjs                                 # starts Vite on 5196
@@ -267,6 +267,151 @@ try {
     await stored(),
   );
   await page.evaluate(key => localStorage.removeItem(key), templateKey);
+
+  // Favourites: stars in the family menus, the floating toolbar, dragging, the rail toggle
+  // and persistence across reloads.
+  const favouriteKey = JSON.stringify(['demo', 'drawing-favourites']);
+  const favouritesStored = () =>
+    page.evaluate(key => JSON.parse(localStorage.getItem(key) ?? 'null'), favouriteKey);
+  await page.evaluate(key => localStorage.removeItem(key), favouriteKey);
+  await load();
+  const favouriteBar = host.locator('.drawing-favourites');
+  const favouriteToggle = host.locator('.drawing-favourites-toggle');
+  check(
+    (await favouriteBar.isHidden()) && (await favouriteToggle.isDisabled()),
+    'without favourites the toolbar is hidden and its toggle disabled',
+  );
+  await host.locator('.drawing-group-more').first().click();
+  const trendRow = host.locator('.drawing-tool-row', { hasText: 'Trend line' }).first();
+  await trendRow.hover();
+  await trendRow.locator('.drawing-tool-star').click();
+  check(
+    (await trendRow.locator('.drawing-tool-star').getAttribute('aria-checked')) === 'true',
+    'the star marks a tool as a favourite',
+  );
+  check(await host.locator('.drawing-flyout').isVisible(), 'starring keeps the menu open');
+  await host.locator('.drawing-flyout').screenshot({ path: `${out}/favourite-stars.png` });
+  // Keyboard: ArrowRight moves from a tool to its star; Enter toggles it.
+  await host.locator('.drawing-tool-item', { hasText: 'Horizontal line' }).first().focus();
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Escape');
+  check(
+    JSON.stringify((await favouritesStored())?.tools) === '["trendline","horizontal-line"]',
+    'favourites are stored under the widget storage key',
+    await favouritesStored(),
+  );
+  check(
+    (await favouriteBar.locator('.drawing-favourite').count()) === 2,
+    'the toolbar lists both favourites',
+  );
+  await favouriteBar.getByRole('button', { name: 'Horizontal line' }).click();
+  check((await state()).tool === 'horizontal-line', 'clicking a favourite picks its tool');
+  check(
+    (await favouriteBar.getByRole('button', { name: 'Horizontal line' }).getAttribute('aria-pressed')) ===
+      'true',
+    'the active tool is highlighted in the toolbar',
+  );
+  await page.evaluate(() => window.candleframe.setTool('cursor'));
+  await page.screenshot({ path: `${out}/favourites-toolbar.png` });
+  const grip = favouriteBar.locator('.drawing-favourites-grip');
+  const barBefore = await favouriteBar.boundingBox();
+  const gripBox = await grip.boundingBox();
+  await page.mouse.move(gripBox.x + gripBox.width / 2, gripBox.y + gripBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(gripBox.x - 200, gripBox.y + 160, { steps: 6 });
+  await page.mouse.up();
+  const barAfter = await favouriteBar.boundingBox();
+  check(
+    Math.abs(barAfter.x - (barBefore.x - 200 - gripBox.width / 2)) <= 2 &&
+      Math.abs(barAfter.y - (barBefore.y + 160 - gripBox.height / 2)) <= 2,
+    'dragging the grip moves the toolbar',
+    { barBefore, barAfter },
+  );
+  await grip.focus();
+  await page.keyboard.press('ArrowRight');
+  check(
+    Math.round((await favouriteBar.boundingBox()).x - barAfter.x) === 10,
+    'arrow keys on the grip move the toolbar',
+  );
+  const barPosition = (await favouritesStored())?.position;
+  await favouriteToggle.click();
+  check(
+    (await favouriteBar.isHidden()) && (await favouriteToggle.getAttribute('aria-pressed')) === 'false',
+    'the rail toggle hides the toolbar',
+  );
+  await load();
+  check(await favouriteBar.isHidden(), 'the hidden toolbar stays hidden after a reload');
+  await favouriteToggle.click();
+  const reloaded = await favouriteBar.boundingBox();
+  check(
+    (await favouriteBar.locator('.drawing-favourite').count()) === 2 &&
+      Math.abs(reloaded.x - barAfter.x - 10) <= 1 &&
+      barPosition?.x !== undefined,
+    'favourites and the toolbar position survive a reload',
+    { reloaded, barAfter, barPosition },
+  );
+  await page.evaluate(key => localStorage.removeItem(key), favouriteKey);
+  await load();
+
+  // Visibility: a drawing limited to one-minute charts stays listed with a hint on 5m, and
+  // the settings panel's Visibility section brings it back.
+  await page.evaluate(() => window.candleframe.execute({ type: 'drawing.clear' }));
+  const feedInfo = await page.evaluate(() => window.candleframe.inspect().feed);
+  check(feedInfo.interval === '1m', 'the demo starts on one-minute candles', feedInfo.interval);
+  const limited = await drawLine([0.55, 0.45], [0.75, 0.55]);
+  await page.evaluate(
+    id =>
+      window.candleframe.execute({
+        type: 'drawing.update',
+        id,
+        patch: { visibility: { minutes: { enabled: true, from: 1, to: 1 } } },
+      }),
+    limited.id,
+  );
+  // An interval with its own saved document would replace the carried-over drawings.
+  await page.evaluate(
+    key => localStorage.removeItem(key),
+    JSON.stringify(['demo', feedInfo.id, feedInfo.instrument.symbol, '5m']),
+  );
+  await host.locator('#interval').evaluate(picker => {
+    picker.value = '5m';
+    picker.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await page.waitForFunction(() => window.candleframe.inspect().feed.interval === '5m');
+  await page.waitForFunction(() => window.candleframe.inspect().candleCount > 50);
+  await sleep(300);
+  const carried = (await drawings()).find(d => d.id === limited.id);
+  check(!!carried, 'the limited drawing carries over to 5m', await drawings());
+  await host.locator('.drawing-objects-button').click();
+  const hiddenHint = host.locator('.drawing-object-row.off-interval .drawing-object-hint');
+  check((await hiddenHint.textContent()) === 'Hidden on 5m', 'Objects lists the hidden drawing with a hint');
+  await host.locator('.drawing-object-panel').screenshot({ path: `${out}/objects-hidden-hint.png` });
+  const p0 = at(0.65, 0.5);
+  await click(p0);
+  check((await state()).selected === null, 'a drawing hidden on the interval cannot be clicked');
+  await host.locator('.drawing-object-row.off-interval .drawing-object-name').click();
+  await host.locator('.drawing-settings-button').click();
+  const visibilitySection = host.locator('.drawing-visibility');
+  check(await visibilitySection.isVisible(), 'the settings panel has a Visibility section');
+  check(
+    (await visibilitySection.locator('.drawing-visibility-note').textContent()) === 'Hidden on 5m',
+    'the Visibility section says the drawing is hidden here',
+  );
+  await host.locator('.drawing-settings').screenshot({ path: `${out}/visibility-settings.png` });
+  const minutesTo = visibilitySection.getByLabel('Minutes to');
+  await minutesTo.fill('15');
+  await minutesTo.press('Enter');
+  await sleep(150);
+  check(
+    JSON.stringify((await drawings()).find(d => d.id === limited.id)?.visibility) ===
+      '{"minutes":{"enabled":true,"from":1,"to":15}}',
+    'editing the range updates the drawing',
+    (await drawings()).find(d => d.id === limited.id),
+  );
+  check((await hiddenHint.count()) === 0, 'the drawing is shown again on 5m');
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => window.candleframe.execute({ type: 'drawing.clear' }));
 } finally {
   await browser.close();
   server?.kill();
