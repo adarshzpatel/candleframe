@@ -21,8 +21,7 @@ Read these files before writing code:
 
 - `src/types.ts`: `FeedAdapter`, `FeedConnection`, `FeedDescriptor`, `FeedEvent`, `Candle`, `Instrument`.
 - `src/runtime.ts`: `validateDescriptor`, `validCandle` and the `receive` method. These are the rules your events must pass.
-- `src/order-book.ts`: the depth rules.
-- `src/binance-feed.ts`: a complete live adapter with REST history, a socket, reconnects and depth.
+- `src/binance-feed.ts`: a complete live adapter with REST history, a socket and reconnects.
 - `src/static-feed.ts`: a minimal adapter with paging.
 
 ## Gather this first
@@ -39,7 +38,6 @@ Do not write code until you have an answer for each row. Ask the human for anyth
 | Alignment and sessions | Whether every interval has a bar. A 24-hour market that always prints a bar fits `gaps: false`. Markets with sessions, weekends, holidays, or minutes with no trades and no bar need `gaps: true`. |
 | Corrections | Whether the exchange revises closed bars, and how you can tell a newer version of a bar from an older one (an event time, a sequence, a cumulative volume). |
 | Live updates | Whether the socket sends candles or only trades. Whether it sends the forming bar on every trade or only closed bars. |
-| Depth format | Full books in every message, or a snapshot plus incremental updates. The sequence fields. Whether quantities are absolute or changes. The number of levels, at most 2,048 per side. |
 
 ## Build in this order
 
@@ -54,7 +52,6 @@ Return a `FeedAdapter` whose `connect` returns a connection with no-op methods. 
 - `instrument`: `symbol` in the chart's form (`BTC/USDT`), `name`, `base`, `quote`, `tickSize`, `pricePrecision`, `quantityPrecision`. Use your best known values. Step 3 can correct them with an `instrument` event.
 - `interval` and `intervalMs`: `intervalMs` must be exactly `intervalToMs(interval)`.
 - `simulated: false`.
-- `depth`: `{ kind: 'none', levels: 0 }` until step 6.
 - `gaps`: from the table above.
 
 Check: `new ChartRuntime(createAcmeFeed('BTC/USDT', '1m'))` does not throw.
@@ -63,7 +60,7 @@ Check: `new ChartRuntime(createAcmeFeed('BTC/USDT', '1m'))` does not throw.
 
 In `connect`, fetch the newest page of candles, convert them, and emit one `candles.history`. Sort ascending and remove duplicate times before you emit.
 
-Check: after `runtime.start()` and the request, `runtime.inspect()` shows `candleCount > 0`, `streams.candles.status === 'live'` and `error === null`.
+Check: after `runtime.start()` and the request, `runtime.inspect()` shows `candleCount > 0`, `stream.status === 'live'` and `error === null`.
 
 ### 3. Live candles
 
@@ -86,23 +83,13 @@ Check: an update with the last bar's time changes `latestCandle` without changin
 - `setPaused(true)`: close the socket, clear timers, abort requests. `setPaused(false)`: start again and reload history. The runtime drops every event while paused, and the widget's Reconnect button calls `setPaused(true)` then `setPaused(false)`.
 - `dispose()`: close everything and never call `emit` again.
 
-Check: pause closes the socket. Resume opens a new one and the candles stream returns to `live`. After `dispose()`, no request or emit happens.
+Check: pause closes the socket. Resume opens a new one and the stream returns to `live`. After `dispose()`, no request or emit happens.
 
 ### 5. History paging
 
 Add `loadOlder(beforeMs)`. Fetch bars that end before `beforeMs` and emit `{ type: 'candles.prepend', candles, exhausted }`. Set `exhausted: true` when the page is shorter than the page size, or when the API has nothing older. On failure emit `{ type: 'candles.prepend', candles: [], error: message }`.
 
 Check: `runtime.loadOlderHistory()` returns `true`, then `candleCount` grows and `olderHistory.status` is `idle` or `exhausted`.
-
-### 6. Depth
-
-Skip this step if the API has no order book.
-
-- Full book in every message: declare `{ kind: 'snapshots', levels: N }`. Emit `depth.snapshot` with an increasing `sequence`. `requestSnapshot()` can wait for the next message.
-- Snapshot plus updates: declare `{ kind: 'sequenced', levels: N }`. Emit one `depth.snapshot`, then `depth.delta` with `sequence = previousSequence + 1`. `requestSnapshot()` must fetch or request a new snapshot.
-- Quantities must be absolute. 0 removes a level. If the exchange sends changes, keep a local book and emit the results.
-
-Check: after a snapshot, `streams.depth.status === 'live'` and `state().book` holds the levels. A delta with a skipped sequence makes depth `stale` and calls `requestSnapshot()`.
 
 ## Invariants the runtime checks
 
@@ -111,34 +98,23 @@ Descriptor errors throw a `ChartError` from `new ChartRuntime`, `createChart`, `
 | Code | Cause |
 | --- | --- |
 | `UNSUPPORTED_INTERVAL` | `interval` does not parse. Valid forms are 1 to 9,999 of `s`, `m`, `h`, `d`, `w`, or 1 to 999,999 of `t`, `r`, `mr`. |
-| `INVALID_FEED` | `intervalMs !== intervalToMs(interval)`. A tick, range or momentum interval without `gaps: true`. Empty `id`. Non-string `label`. Non-boolean `simulated` or `gaps`. A `depth` other than `{ kind: 'none', levels: 0 }` or `snapshots` / `sequenced` with 1 to 2,048 levels. |
+| `INVALID_FEED` | `intervalMs !== intervalToMs(interval)`. A tick, range or momentum interval without `gaps: true`. Empty `id`. Non-string `label`. Non-boolean `simulated` or `gaps`. |
 | `INVALID_INSTRUMENT` | `symbol`, `name`, `base` or `quote` is not a string of 1 to 127 characters. `tickSize` is not finite and positive. A precision is not an integer from 0 to 12. |
 
-Event errors do not throw into your adapter. The runtime sets the stream's status to `error`, with a message that starts with the code. Read it from `runtime.state().streams.candles.message` (or `.depth`) and from `runtime.state().error`. The next accepted event on that stream sets it back to `live`.
+Event errors do not throw into your adapter. The runtime sets the stream's status to `error`, with a message that starts with the code. Read it from `runtime.state().stream.message` and from `runtime.state().error`. The next accepted event sets it back to `live`.
 
-| Code | Stream | Cause |
-| --- | --- | --- |
-| `INVALID_HISTORY` | candles | `candles.history` is empty, holds more than 100,000 bars, holds an invalid bar, or times do not strictly ascend. |
-| `INVALID_CANDLE` | candles | A `candle` fails the candle rules below. |
-| `MISSING_HISTORY` | candles | A `candle` arrived before any `candles.history`. |
-| `UNKNOWN_CORRECTION` | candles | A `candle` is older than the last bar and its time is not loaded. |
-| `CANDLE_GAP` | candles | Without `gaps`, a new `candle` does not start exactly `intervalMs` after the last bar. Message: `CANDLE_GAP: reconnect to refresh history`. |
-| `INVALID_INSTRUMENT` | candles | An `instrument` event breaks the instrument rules. |
-| `INSTRUMENT_MISMATCH` | candles | An `instrument` event changes `symbol`, `base` or `quote`. |
-| `INVALID_DEPTH` | depth | A price is repeated within a side, or is not positive. A quantity is negative or not finite. |
-| `INVALID_SEQUENCE` | depth | A sequence is not a non-negative safe integer. |
-| `DEPTH_LIMIT` | depth | More than 2,048 levels on a side. |
-| `CROSSED_BOOK` | depth | The best bid is at or above the best ask. |
-| `INVALID_HEATMAP_GRID` | depth | A `heatmap.history` grid is invalid. Only checked when the runtime has `heatmap: true`. |
-
-After any depth error, the runtime also calls `requestSnapshot()`.
+| Code | Cause |
+| --- | --- |
+| `INVALID_HISTORY` | `candles.history` is empty, holds more than 100,000 bars, holds an invalid bar, or times do not strictly ascend. |
+| `INVALID_CANDLE` | A `candle` fails the candle rules below. |
+| `MISSING_HISTORY` | A `candle` arrived before any `candles.history`. |
+| `UNKNOWN_CORRECTION` | A `candle` is older than the last bar and its time is not loaded. |
+| `CANDLE_GAP` | Without `gaps`, a new `candle` does not start exactly `intervalMs` after the last bar. Message: `CANDLE_GAP: reconnect to refresh history`. |
+| `INVALID_INSTRUMENT` | An `instrument` event breaks the instrument rules. |
+| `INSTRUMENT_MISMATCH` | An `instrument` event changes `symbol`, `base` or `quote`. |
 
 Some events are dropped without an error:
 
-- A depth delta at or below the current sequence, as a duplicate.
-- A depth delta that skips a sequence. Depth becomes `stale` with "Depth sequence gap. Requesting a snapshot." and the runtime calls `requestSnapshot()`.
-- A depth snapshot with a lower sequence than the current book.
-- Every depth event when the descriptor declares `depth.kind: 'none'`.
 - A `candles.prepend` the runtime did not request.
 - Every event while paused, and every event from a replaced or disposed connection.
 
@@ -219,10 +195,6 @@ const kline = (i: number, volume: number) => ({
     k: { t: T0 + i * MINUTE, T: T0 + i * MINUTE + 59_999, s: 'BTCUSDT', i: '1m', o: '100', h: '110', l: '90', c: '105', v: String(volume) },
   },
 });
-const book = (sequence: number) => ({
-  stream: 'btcusdt@depth20',
-  data: { lastUpdateId: sequence, bids: [['99', '2']], asks: [['101', '3']] },
-});
 
 // 3. A fake network: answers REST by path and records every request.
 const requests: string[] = [];
@@ -247,7 +219,7 @@ test('the feed satisfies the runtime contract', async t => {
   const runtime = new ChartRuntime(createBinanceFeed({ symbol: 'BTC/USDT', interval: '1m' }, { fetch: fakeFetch, createSocket }));
   t.after(() => runtime.dispose());
   runtime.start();
-  assert.equal(runtime.state().streams.candles.status, 'loading');
+  assert.equal(runtime.state().stream.status, 'loading');
 
   // History.
   await settle();
@@ -255,7 +227,7 @@ test('the feed satisfies the runtime contract', async t => {
   await settle();
   let state = runtime.inspect();
   assert.equal(state.error, null);
-  assert.equal(state.streams.candles.status, 'live');
+  assert.equal(state.stream.status, 'live');
   assert.equal(state.candleCount, 3);
   assert.equal(state.feed.instrument.tickSize, 0.1, 'instrument metadata applied');
 
@@ -265,11 +237,6 @@ test('the feed satisfies the runtime contract', async t => {
   sockets[0].receive(kline(3, 1));
   assert.equal(runtime.inspect().candleCount, 4);
   assert.equal(runtime.state().error, null);
-
-  // Depth.
-  sockets[0].receive(book(100));
-  assert.equal(runtime.state().streams.depth.status, 'live');
-  assert.deepEqual(runtime.state().book.bids, [[99, 2]]);
 
   // Paging.
   assert.equal(runtime.loadOlderHistory(), true);
@@ -283,7 +250,7 @@ test('the feed satisfies the runtime contract', async t => {
   await settle();
   sockets.at(-1)!.open();
   await settle();
-  assert.equal(runtime.state().streams.candles.status, 'live');
+  assert.equal(runtime.state().stream.status, 'live');
 
   // Dispose stops everything.
   runtime.dispose();
@@ -308,7 +275,6 @@ Add tests for the cases that broke real adapters:
 - A bar that skips an interval leads to a history reload, and `state().error` stays `null`.
 - An older version of the forming bar, sent after a newer one, does not roll it back.
 - A failed REST request marks the stream `error` or `stale`, then recovers on retry.
-- A depth delta with a skipped sequence leads to `requestSnapshot()`, and the next snapshot brings depth back to `live`.
 - A reply that arrives after `dispose()` does not reach the runtime.
 
 To test the runtime's rules on their own, emit events by hand from a scripted adapter:
@@ -325,11 +291,10 @@ const scripted: FeedAdapter = {
     interval: '1m',
     intervalMs: 60_000,
     simulated: false,
-    depth: { kind: 'none', levels: 0 },
   },
   connect(next) {
     emit = next;
-    return { setPaused() {}, requestSnapshot() {}, dispose() {} };
+    return { setPaused() {}, dispose() {} };
   },
 };
 
@@ -350,7 +315,7 @@ Report each item as done, with the test that covers it.
 - [ ] `new ChartRuntime(feed)` does not throw for every symbol and interval you support.
 - [ ] `intervalMs === intervalToMs(interval)`. Tick and range intervals declare `gaps: true`.
 - [ ] Candle times are UTC milliseconds at the bar's open, aligned to the interval unless `gaps: true`.
-- [ ] History loads with `error === null` and `streams.candles.status === 'live'`.
+- [ ] History loads with `error === null` and `stream.status === 'live'`.
 - [ ] The forming bar updates in place. The next bar appends. No `CANDLE_GAP`, `UNKNOWN_CORRECTION` or `INVALID_CANDLE` in normal operation.
 - [ ] Updates received before history are merged, not dropped.
 - [ ] A missed interval reloads history.
@@ -360,7 +325,6 @@ Report each item as done, with the test that covers it.
 - [ ] `setPaused(true)` stops all network work. `setPaused(false)` reloads history.
 - [ ] `dispose()` closes sockets, clears timers, aborts requests, and nothing emits afterwards.
 - [ ] `loadOlder` returns bars that end before `beforeMs`, sets `exhausted`, and reports failures with `error`.
-- [ ] Depth uses absolute quantities, contiguous sequences for deltas, and answers `requestSnapshot()`. Or the descriptor declares `depth: { kind: 'none', levels: 0 }`.
 - [ ] `npx tsc --noEmit` passes and the headless tests pass.
 
 ## Prompt for the agent
@@ -374,16 +338,15 @@ Inputs:
 - API docs: [LINKS]
 - Symbols: [CHART SYMBOLS AND THEIR EXCHANGE IDS, e.g. BTC/USDT = BTCUSDT]
 - Intervals: [e.g. 1m, 5m, 15m, 1h, 4h, 1d]
-- Order book: [yes, full snapshots | yes, snapshot plus deltas | no]
 - File: [e.g. src/feeds/acme-feed.ts], exported as [createAcmeFeed(symbol, interval, transport?)]
 
 Follow https://adarshzpatel.github.io/candleframe/agents/build-a-feed/ exactly:
 1. Before coding, answer every row of "Gather this first". Ask me about anything the
-   API docs do not settle. Do not guess timestamp units, tick sizes or sequence rules.
-2. Read src/types.ts, src/runtime.ts (validateDescriptor, validCandle, receive),
-   src/order-book.ts and src/binance-feed.ts in the candleframe package.
+   API docs do not settle. Do not guess timestamp units, tick sizes or correction rules.
+2. Read src/types.ts, src/runtime.ts (validateDescriptor, validCandle, receive) and
+   src/binance-feed.ts in the candleframe package.
 3. Build in the order: descriptor, history, live candles, status and reconnects,
-   paging, depth. Run each step's check before the next.
+   paging. Run each step's check before the next.
 4. Accept an optional transport { fetch, createSocket } so tests can replace the network.
 5. Write node:test tests that drive the adapter through ChartRuntime with a fake
    fetch and a fake socket, following the "Verify headlessly" pattern. Cover every item

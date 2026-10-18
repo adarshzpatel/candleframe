@@ -70,13 +70,13 @@ The overrides have five groups:
 | --- | --- |
 | `palette` | The semantic colors: background, surfaces, borders, text, accent, positive and negative, grid, crosshair, six indicator slots, drawing and watermark |
 | `typography` | UI, heading, number and annotation font families, text sizes and weights |
-| `layout` | Spacing scale, toolbar and footer heights, rail, controls, order book rows, summary and dialogs |
+| `layout` | Spacing scale, toolbar and footer heights, rail, controls, summary and dialogs |
 | `effects` | Corners, borders, focus rings, icon stroke and scale, hover and selected opacity, shadows |
-| `chart` | Plot insets, axes, grid, candles and wicks, volume, line and area types, last price, crosshair, watermark, drawing handles and the heatmap |
+| `chart` | Plot insets, axes, grid, candles and wicks, volume, line and area types, last price, crosshair, watermark and drawing handles |
 
 Palette colors must be six-digit hex. Color tokens in the other groups also accept a palette reference such as `@positive`. A reference stays linked, so changing the palette later recolors everything that points at it. A hex value stays fixed.
 
-`createTheme` throws a `ChartError` for unknown tokens, values out of range and malformed colors. The chart keeps its current theme when that happens.
+`createTheme` throws a `ChartError` for unknown tokens, values out of range and malformed colors. The chart keeps its current theme when that happens. Tokens that later versions retired are ignored instead, so older saved themes still load.
 
 The watermark is empty by default. Set `chart.watermarkText` to show one.
 
@@ -133,7 +133,7 @@ Built-in indicators draw in the palette's indicator slots, `indicator` to `indic
 
 ## Style the widget's HTML
 
-The widget exposes CSS shadow parts for host-specific tweaks to its HTML controls, such as `toolbar`, `footer`, `dialog` and `order-book`:
+The widget exposes CSS shadow parts for host-specific tweaks to its HTML controls, such as `toolbar`, `footer`, `dialog` and `chart-panel`:
 
 ```css
 .candleframe-widget::part(toolbar) {

@@ -20,9 +20,7 @@ Use Node 24. The build includes type checking and emits the demo and plain JavaS
 | --- | --- |
 | Public types and commands | `src/types.ts` |
 | Data lifecycle, documents, revisions, undo | `src/runtime.ts` |
-| Snapshot/delta sequencing | `src/order-book.ts` |
-| Bounded depth history and gaps | `src/heatmap.ts` |
-| GPU batching, texture uploads and restoration | `src/webgl-renderer.ts` |
+| GPU batching and context restoration | `src/webgl-renderer.ts` |
 | Shared coordinates and autoscaling | `src/geometry.ts` |
 | Input events, overlays and chart lifecycle | `src/chart.ts` |
 | Indicator example | `src/indicators.ts` |
@@ -64,14 +62,14 @@ Use Node 24. The build includes type checking and emits the demo and plain JavaS
 - Hover updates paint only the cursor canvas. Drawing previews paint only annotations. Market updates and animations repaint all layers, and PNG capture explicitly refreshes the WebGL backbuffer.
 - Make user edits through `execute` or `restoreDocument`. Use `inspect` and `exportDocument` for owned copies. Never mutate borrowed subscription state.
 - Keep scale animation in the view. Documents hold exact target ranges; candles, axes and hit tests share the displayed geometry. Cancel pending pan motion before replacing feeds or applying host commands, and honor reduced motion.
-- Change markets with `replaceFeed`; increment the generation before disposing old callbacks. Candle and depth health must stay independent.
+- Change markets with `replaceFeed`; increment the generation before disposing old callbacks.
 - Drawing gestures commit once on completion; previews and selection belong to the view. Reuse projected primitives for hit testing. v3 documents preserve unavailable plugin records. See `docs/drawing-suite.md`.
-- Keep the demo heatmap disabled. Documents identify source, symbol and interval; manual price scales persist through ticks.
+- Documents identify source, symbol and interval; manual price scales persist through ticks.
 - Check `documentRevision` for agent edits based on prior inspection. Streaming data has a separate revision and does not invalidate a settings edit.
 - Preserve CPU state during GPU loss. A missing WebGL2 context must produce a visible error.
-- Maintain bounded history and reject sequence gaps. Stale depth is unknown data, not zero liquidity.
-- Keep full market values on the CPU. GPU coordinates and normalized texture bytes are rendering representations.
-- Use focused correctness tests for sequencing, corrections, retention and commands. Visually check rendering changes through the browser.
+- Maintain bounded history. A feed that misses candles reloads history instead of sending a gap.
+- Keep full market values on the CPU. GPU coordinates are rendering representations.
+- Use focused correctness tests for corrections, gaps, retention and commands. Visually check rendering changes through the browser.
 - Label synthetic data explicitly. Never claim browser or benchmark validation based only on unit tests.
 - Treat custom indicator code as trusted host code. The current plugin contract is not a safe execution environment for user-supplied scripts.
 - Do not copy proprietary chart implementations or introduce license-key dependencies.

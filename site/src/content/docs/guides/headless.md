@@ -89,7 +89,7 @@ for (const indicator of latest.indicators) console.log(indicator.kind, indicator
 | `indicators` | Include indicator values. | `true` |
 | `raw` | Return the feed's bars instead of Heikin Ashi bars when that chart type is on. | `false` |
 
-`inspect()` returns a full copy of the state: the feed descriptor, stream health, `documentRevision`, the latest candle, the order book's top levels, undo availability, the document and each indicator's latest value. It also lists what you can add: `capabilities.commands`, `capabilities.drawingTools` and `indicatorKinds`. Agents should call it first.
+`inspect()` returns a full copy of the state: the feed descriptor, stream health, `documentRevision`, the latest candle, undo availability, the document and each indicator's latest value. It also lists what you can add: `capabilities.commands`, `capabilities.drawingTools` and `indicatorKinds`. Agents should call it first.
 
 ## Save and restore documents
 
@@ -113,7 +113,7 @@ runtime.restoreDocument(JSON.parse(json));
 
 ```ts
 const stop = runtime.subscribe(state => {
-  console.log(state.candles.length, state.streams.candles.status, state.documentRevision);
+  console.log(state.candles.length, state.stream.status, state.documentRevision);
 });
 stop();
 ```

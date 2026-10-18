@@ -3,7 +3,7 @@ title: Embed the widget
 description: Mount the complete chart UI with createChartWidget, configure its markets, storage and panels, and control it from your code.
 ---
 
-`createChartWidget` mounts a complete chart workbench in one element: symbol and interval pickers, chart types, indicators, 85 drawing tools, layouts, PNG export and an optional order book. This page shows how to configure it and drive it from your application.
+`createChartWidget` mounts a complete chart workbench in one element: symbol and interval pickers, chart types, indicators, 85 drawing tools, layouts and PNG export. This page shows how to configure it and drive it from your application.
 
 ```ts
 import { createChartWidget, createSimulatedFeed, sma } from 'candleframe';
@@ -11,7 +11,6 @@ import { createChartWidget, createSimulatedFeed, sma } from 'candleframe';
 const chart = createChartWidget(host, {
   feed: createSimulatedFeed(),
   indicators: [sma(20)],
-  orderBook: true,
   storageKey: 'main-chart',
 });
 ```
@@ -31,7 +30,6 @@ The widget lives in an open shadow root. It carries its own styles, so you impor
 | `indicators` | Indicator plugins to start with, such as `sma(20)`. | None |
 | `indicatorDefinitions` | Extra indicator kinds for the Indicators menu, `indicator.add` and saved layouts. | Built-ins only |
 | `theme` | A preset id such as `'midnight'`, or a theme from `createTheme`. See [Themes](../theming/). | Graphite, or Paper when the system prefers light |
-| `orderBook` | Shows the order book panel at mount. Needs a feed with depth. | `false` |
 | `storageKey` | Saves layouts and appearance in `localStorage` under this namespace, and shows the Save and Revert buttons. | Session only |
 | `layoutStore` | Your own storage for layouts. Needs `storageKey`. See [Save layouts](../layouts/). | `localStorage` |
 | `layout` | The starting grid and sync settings, such as `{ preset: '2x2' }`. Grids need `markets`. | One chart |
@@ -75,10 +73,6 @@ const chart = createChartWidget(host, {
 Set `customIntervals` on a source to let users type their own lengths. With `customIntervals: ['time', 'tick']`, a user can enter `3m` or `700 ticks` in the interval picker. Your `createFeed` then receives that interval.
 
 Each source, symbol and interval keeps its own drawings and indicators. When the user switches market, the widget loads the document saved for the new one. Switching only the interval carries the current drawings over if nothing is saved for the new interval yet.
-
-## Order book
-
-`orderBook: true` opens the order book panel beside the chart. It reads depth events from the feed, so it only has rows when the feed's descriptor declares depth. The simulation, the Binance feed and the Hyperliquid feed all do. In widgets 850 pixels wide or narrower, the panel starts closed and opens over the chart from the Order book button.
 
 ## Control the widget from code
 

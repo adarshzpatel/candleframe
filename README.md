@@ -13,7 +13,7 @@ npm ci
 npm run dev
 ```
 
-Open the URL printed by Vite. The demo opens on a real-time trade simulation that works offline without credentials: individual prints arrive at irregular times, in bursts and lulls, with heavy-tailed sizes and shifting buy and sell aggression, and they build the candles, order flow and book. Select **Binance** in the source picker for public spot candles and top-20 depth snapshots, or **Hyperliquid** for public perpetuals candles and top-20 depth. Exchange availability depends on your network and region; connection errors are visible and never replaced by simulated data.
+Open the URL printed by Vite. The demo opens on a real-time trade simulation that works offline without credentials: individual prints arrive at irregular times, in bursts and lulls, with heavy-tailed sizes and shifting buy and sell aggression, and they build the candles and order flow. Select **Binance** in the source picker for public spot candles, or **Hyperliquid** for public perpetuals candles. Exchange availability depends on your network and region; connection errors are visible and never replaced by simulated data.
 
 ```sh
 npm test
@@ -33,14 +33,11 @@ The build creates the static demo in `dist/` and ES modules with TypeScript decl
 - Toggle volume. **Indicators** adds SMA, EMA, Bollinger Bands, RSI or MACD; oscillators get their own panes. Hover an indicator in the chart legend to hide it, change its settings or remove it. Order-flow indicators: **CVD** draws cumulative volume delta as candles in its own pane. **Volume profile** shows volume (POC and value area) and delta at each price against the price axis, for the visible bars, with POC as a solid line and VAH/VAL dotted. **Last 10 sessions** also draws a fixed-range volume and delta profile over each of the last ten days. Set **Range** to **Today** or **Current session** to draw only that profile, over its own bars. They read optional `buyVolume`, `footprint` and `deltaRange` candle fields. The simulation provides all three; Binance provides `buyVolume`, so CVD is exact there and the profiles spread each bar evenly over its range. **Log** switches the price axis to a log scale. Choose from 30 drawing tools in the left toolbar: lines, channels, Fibonacci tools, shapes, annotations, freehand, measurements and position plans. Select and move drawings, edit handles, style, lock, hide, duplicate and reorder them in Objects. Undo/redo preserves market data and scales. See the [drawing suite guide](docs/drawing-suite.md).
 - Layouts autosave per source, symbol and interval and load again on reload or a market switch. Export opens a PNG preview and download link.
 - **Layout** in the header splits the view into up to 8 charts (side by side, stacked, 1 + 2, 2 × 2, 3 × 2, 4 × 2). Click a chart or press Alt + 1 to 8 to choose the one the toolbar controls. Checkboxes sync symbol, interval, crosshair, time and date range across charts. Save named layouts and switch between them; the open one comes back after a reload.
-- Toggle the integrated order book. Stale depth is dimmed independently of the candle stream.
 - Open **Inspect state** in the footer for the same semantic state available to an embedding app or agent. Embedders turn it on with `inspector: true`.
-
-The heatmap has been removed from the demo. The engine retains an experimental opt-in heatmap implementation, disabled by default, with no history or texture allocation in the demo.
 
 ## Embed the chart
 
-Use `createChartWidget` for the complete UI, including market controls, drawings, layouts, export and the optional order book. Only a sized container and feed are required; styles and panels are instance-owned.
+Use `createChartWidget` for the complete UI, including market controls, drawings, layouts and export. Only a sized container and feed are required; styles and panels are instance-owned.
 
 ```ts
 import { createChartWidget, createSimulatedFeed, sma } from 'candleframe';
@@ -48,7 +45,6 @@ import { createChartWidget, createSimulatedFeed, sma } from 'candleframe';
 const chart = createChartWidget(document.querySelector('#chart'), {
   feed: createSimulatedFeed(),
   indicators: [sma(20)],
-  orderBook: true,
   storageKey: 'my-primary-chart',
 });
 // The host element needs an explicit height, for example 600px.
@@ -103,7 +99,7 @@ Without a `theme`, charts start in Graphite, or Paper when the system asks for l
 
 ## Current scope
 
-The PoC implements candles, volume, five indicators with separate panes, log and linear price scales, session gaps, history paging, a 30-tool drawing suite with undo/redo, order-book reconstruction, independent stream health, market switching, multi-chart grids with sync, axis scaling, layout persistence and named layouts, structured commands and GPU restoration. WebGL2 draws geometry; Canvas2D draws text and overlays; HTML supplies accessible controls and a candle table.
+The PoC implements candles, volume, five indicators with separate panes, log and linear price scales, session gaps, history paging, a 30-tool drawing suite with undo/redo, stream health, market switching, multi-chart grids with sync, axis scaling, layout persistence and named layouts, structured commands and GPU restoration. WebGL2 draws geometry; Canvas2D draws text and overlays; HTML supplies accessible controls and a candle table.
 
 Interfaces remain experimental. Scripting and broker execution are not implemented. Rendering and calculations run on the main thread. No comparative performance claim has been established.
 

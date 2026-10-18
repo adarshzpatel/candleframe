@@ -170,7 +170,6 @@ export function createTradeBarFeed(instrument: Instrument, interval: Interval, s
       intervalMs: intervalToMs(interval),
       simulated: false,
       gaps: true,
-      depth: { kind: 'none', levels: 0 },
     },
     connect(emit) {
       let disposed = false;
@@ -202,7 +201,7 @@ export function createTradeBarFeed(instrument: Instrument, interval: Interval, s
           } else for (const candle of result.changed) send({ type: 'candle', candle });
         }
 
-        send({ type: 'stream.status', stream: 'candles', status: 'loading', message: 'Loading trades' });
+        send({ type: 'stream.status', status: 'loading', message: 'Loading trades' });
         // Subscribe first and queue, so no trade falls between the snapshot and the stream.
         unsubscribe = source.subscribe(trade => {
           if (run !== generation) return;
@@ -224,7 +223,7 @@ export function createTradeBarFeed(instrument: Instrument, interval: Interval, s
           },
           error => {
             if (run === generation)
-              send({ type: 'stream.status', stream: 'candles', status: 'error', message: String(error) });
+              send({ type: 'stream.status', status: 'error', message: String(error) });
           },
         );
       }
@@ -237,7 +236,6 @@ export function createTradeBarFeed(instrument: Instrument, interval: Interval, s
           if (paused) stop();
           else start();
         },
-        requestSnapshot() {},
         dispose() {
           disposed = true;
           stop();

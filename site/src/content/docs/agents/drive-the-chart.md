@@ -81,7 +81,7 @@ In a single synchronous script nothing can change between `inspect` and `execute
 | `documentRevision` | Revision of the document. Pass it to `preview` and `execute`. |
 | `dataRevision` | Revision of the market data. It rises with every feed update. |
 | `symbol`, `feed` | The market. `feed` has `instrument`, `interval`, `intervalMs` and `gaps`. |
-| `streams` | Health of the `candles` and `depth` streams. |
+| `stream` | Health of the feed's candle stream: `status`, `message` and `receivedAtMs`. |
 | `paused` | Whether the feed is paused. |
 | `candleCount`, `firstCandleTimeMs`, `latestCandle` | What data is loaded. |
 | `document` | The saved-layout document: viewport, price scale, chart type, layers, indicators, drawings. |
@@ -176,7 +176,7 @@ Leave `expectedRevision` out only when you do not care about edits made since yo
 The chart has two revisions:
 
 - `documentRevision` counts changes to the document: commands, undo, redo, restores and `replaceFeed`.
-- `dataRevision` counts market data updates from the feed, such as history, ticks and depth.
+- `dataRevision` counts market data updates from the feed, such as history and ticks.
 
 Live ticks raise `dataRevision` only. Streaming data never invalidates a revision you read.
 
@@ -201,7 +201,7 @@ const stop = runtime.subscribe(state => {
 stop();
 ```
 
-The state includes `document`, `candles`, `indicators`, `streams`, `paused`, `history`, both revisions and `error`. The listener receives the runtime's own objects. Do not mutate them. `inspect()` and `exportDocument()` return copies you can keep.
+The state includes `document`, `candles`, `indicators`, `stream`, `paused`, `history`, both revisions and `error`. The listener receives the runtime's own objects. Do not mutate them. `inspect()` and `exportDocument()` return copies you can keep.
 
 ## Save and restore
 

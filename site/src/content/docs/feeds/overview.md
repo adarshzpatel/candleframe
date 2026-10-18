@@ -30,7 +30,6 @@ const adapter: FeedAdapter = {
     interval: '1m',
     intervalMs: 60_000,
     simulated: false,
-    depth: { kind: 'none', levels: 0 },
   },
   connect(emit) {
     emit({
@@ -39,7 +38,6 @@ const adapter: FeedAdapter = {
     });
     return {
       setPaused() {},
-      requestSnapshot() {},
       dispose() {},
     };
   },
@@ -48,7 +46,7 @@ const adapter: FeedAdapter = {
 
 An adapter describes one market at one interval. To show another symbol or interval, the host creates a new adapter and swaps it in. The adapter never changes its own descriptor.
 
-`connect` must return right away. Do network work asynchronously and report it through `emit`. If `connect` throws, the runtime marks both streams as `error` with the thrown message.
+`connect` must return right away. Do network work asynchronously and report it through `emit`. If `connect` throws, the runtime marks the stream as `error` with the thrown message.
 
 ## The descriptor
 
@@ -62,7 +60,6 @@ An adapter describes one market at one interval. To show another symbol or inter
 | `interval` | `Interval` | Such as `1m`, `4h`, `1d`, `500t`, `10r`. See [intervals](../trade-bars/#intervals). |
 | `intervalMs` | `number` | Must equal `intervalToMs(interval)`. Tick and range intervals use `TRADE_BAR_SLOT_MS` (1). |
 | `simulated` | `boolean` | True for generated data. Without a `markets` entry for the feed, the widget labels it "Simulated". |
-| `depth` | `{ kind, levels }` | `{ kind: 'none', levels: 0 }`, or `kind: 'snapshots'` or `'sequenced'` with `levels` from 1 to 2048. |
 | `gaps` | `boolean`, optional | True when history may skip intervals. Required for tick and range intervals. |
 
 `Instrument` holds the market metadata:
@@ -75,8 +72,6 @@ An adapter describes one market at one interval. To show another symbol or inter
 | `quantityPrecision` | Integer from 0 to 12. Decimals shown on volumes. |
 
 A descriptor that breaks these rules throws `INVALID_FEED`, `INVALID_INSTRUMENT` or `UNSUPPORTED_INTERVAL`.
-
-`depth.kind` and `depth.levels` describe the order book for the host. The widget shows "Top 20 levels / side" for `snapshots` and "80 levels / side" for `sequenced`. The runtime applies `depth.snapshot` and `depth.delta` events the same way for both kinds. With `kind: 'none'` it ignores every depth event and reports the depth stream as `unavailable`.
 
 ### What `gaps: true` means
 
@@ -98,28 +93,24 @@ If a gapless market can have intervals with no trades, either fill them with fla
 | Method | Called when | What the adapter does |
 | --- | --- | --- |
 | `setPaused(paused)` | The user pauses or resumes, or the widget's Reconnect button runs (pause, then resume). | Pause: stop sockets and timers. Resume: reload history and restart. |
-| `requestSnapshot()` | The depth book is stale or failed validation. | Send a fresh `depth.snapshot`. No-op for feeds without depth. |
 | `dispose()` | The host replaces the feed or disposes the chart. | Close sockets, abort requests, clear timers. Never emit again. |
 | `loadOlder(beforeMs)`, optional | The view nears the first loaded bar, or the host calls `loadOlderHistory()`. | Emit `candles.prepend` with bars ending before `beforeMs`. |
 
-The runtime drops every event while it is paused, so anything sent between `setPaused(true)` and `setPaused(false)` is lost. On resume the runtime sets both streams to `loading` and waits for data. Re-emit `candles.history` on resume. A single `candle` event is only safe if no bar boundary passed while paused, otherwise it fails with `CANDLE_GAP`.
+The runtime drops every event while it is paused, so anything sent between `setPaused(true)` and `setPaused(false)` is lost. On resume the runtime sets the stream to `loading` and waits for data. Re-emit `candles.history` on resume. A single `candle` event is only safe if no bar boundary passed while paused, otherwise it fails with `CANDLE_GAP`.
 
 The runtime also ignores events from a connection it has replaced or disposed. That protects the chart, but your adapter should still stop its own work in `dispose`, or it will leak sockets and timers.
 
 ## Feed events
 
-`emit` takes a `FeedEvent`. Each event belongs to the `candles` stream or the `depth` stream.
+`emit` takes a `FeedEvent`.
 
-| Event | Stream | Payload | Effect |
-| --- | --- | --- | --- |
-| `candles.history` | candles | `candles: Candle[]` | Replaces all loaded candles. Sets candles to `live`. Re-enables paging. |
-| `candle` | candles | `candle: Candle` | Replaces the loaded bar with the same `timeMs`, or appends a new bar. |
-| `candles.prepend` | candles | `candles`, `exhausted?`, `error?` | Adds older bars in reply to `loadOlder`. |
-| `instrument` | candles | `instrument: Instrument` | Updates tick size and precision after the feed fetches real metadata. |
-| `stream.status` | either | `stream`, `status`, `message?` | Reports `loading`, `stale` or `error` for one stream. |
-| `depth.snapshot` | depth | `book: DepthSnapshot` | Replaces the order book. |
-| `depth.delta` | depth | `book: DepthDelta` | Applies changes to the order book. |
-| `heatmap.history` | depth | `grid`, `columns` | Loads past depth columns for the heatmap layer. |
+| Event | Payload | Effect |
+| --- | --- | --- |
+| `candles.history` | `candles: Candle[]` | Replaces all loaded candles. Sets the stream to `live`. Re-enables paging. |
+| `candle` | `candle: Candle` | Replaces the loaded bar with the same `timeMs`, or appends a new bar. |
+| `candles.prepend` | `candles`, `exhausted?`, `error?` | Adds older bars in reply to `loadOlder`. |
+| `instrument` | `instrument: Instrument` | Updates tick size and precision after the feed fetches real metadata. |
+| `stream.status` | `status`, `message?` | Reports `loading`, `stale` or `error`. |
 
 ### Candles
 
@@ -152,7 +143,7 @@ The runtime checks every candle it receives. A candle is valid when:
 
 ### History
 
-`candles.history` must hold 1 to 100,000 valid candles with strictly ascending times. Otherwise the candles stream fails with `INVALID_HISTORY`. The runtime keeps the newest `maxCandles` (default 10,000). Send history first: a `candle` before any history fails with `MISSING_HISTORY`.
+`candles.history` must hold 1 to 100,000 valid candles with strictly ascending times. Otherwise the stream fails with `INVALID_HISTORY`. The runtime keeps the newest `maxCandles` (default 10,000). Send history first: a `candle` before any history fails with `MISSING_HISTORY`.
 
 You can send `candles.history` again at any time, for example after a reconnect. It replaces the loaded bars, keeps drawings and indicators, and keeps the user's view unless they are following the latest bar.
 
@@ -172,71 +163,31 @@ A `candle` event either corrects a loaded bar or appends a new one.
 
 ### Stream health
 
-Each stream has a `StreamHealth` in `runtime.state().streams`, with a `status`, a `message` and `receivedAtMs` (the last time the stream went live).
+The feed's health is a `StreamHealth` in `runtime.state().stream`, with a `status`, a `message` and `receivedAtMs` (the last time the stream went live).
 
 | Status | Set by |
 | --- | --- |
 | `loading` | The runtime at start, after `replaceFeed` and on resume. Feeds send it while connecting. |
-| `live` | The runtime, after it accepts data on that stream. Feeds cannot send it. |
-| `stale` | Feeds, when updates stop arriving. The runtime, on a depth sequence gap. |
+| `live` | The runtime, after it accepts data. Feeds cannot send it. |
+| `stale` | Feeds, when updates stop arriving. |
 | `error` | Feeds, for failures. The runtime, when an event breaks a rule. |
 | `paused` | The runtime, while paused. |
-| `unavailable` | The runtime, for the depth stream of a feed with `depth.kind: 'none'`. |
 
 ```ts
 import type { FeedEvent } from 'candleframe/core';
 
 const reconnecting: FeedEvent = {
   type: 'stream.status',
-  stream: 'candles',
   status: 'stale',
   message: 'Connection lost; reconnecting',
 };
 ```
 
-A rejected event never throws into your adapter. The runtime sets that stream to `error` with a message that starts with the error code, such as `CANDLE_GAP: reconnect to refresh history`. `state().error` joins the messages of all failed streams. The next accepted event on the stream sets it back to `live`. The widget shows a notice with the message for any stream that is `stale` or `error`, with a Reconnect button.
-
-### Order book depth
-
-Levels are `[price, quantity]` pairs with absolute quantities. A quantity of 0 removes the level.
-
-```ts
-import type { DepthDelta, DepthSnapshot } from 'candleframe/core';
-
-const snapshot: DepthSnapshot = {
-  sequence: 100,
-  bids: [[99.5, 4], [99.25, 10]],
-  asks: [[100, 3], [100.25, 8]],
-};
-const delta: DepthDelta = {
-  sequence: 101,
-  previousSequence: 100,
-  bids: [[99.5, 0]], // removes 99.5
-  asks: [[100, 5]], // sets 100 to 5
-};
-```
-
-The runtime's `OrderBook` enforces these rules:
-
-- Prices are unique within a side and positive. Quantities are 0 or more. Otherwise `INVALID_DEPTH`.
-- Sequences are non-negative safe integers. Otherwise `INVALID_SEQUENCE`.
-- Each side holds at most 2,048 levels. Otherwise `DEPTH_LIMIT`.
-- The best bid must be below the best ask. Otherwise `CROSSED_BOOK`.
-- A snapshot with a lower sequence than the current book is ignored.
-- A delta applies only when `previousSequence` equals the current sequence and `sequence` is one more. A delta at or below the current sequence is ignored as a duplicate.
-- Any other delta is a gap. The runtime marks depth `stale` with "Depth sequence gap. Requesting a snapshot." and calls `requestSnapshot()`. Deltas stay blocked until a snapshot arrives.
-
-When a depth event fails validation, the runtime sets depth to `error` and also calls `requestSnapshot()`. Depth problems never touch the candles stream.
-
-A feed whose source sends full books every time (like Binance partial depth) only needs `depth.snapshot` with an increasing sequence. A feed with an incremental source sends one snapshot, then deltas.
-
-### Heatmap
-
-`heatmap.history` loads past order book columns for the heatmap layer. The runtime ignores it unless it was created with `heatmap: true`. Each column is a `Float32Array` with one quantity per price row of the grid. The grid needs 1 to 1,024 rows, a finite `minPrice`, and a positive `binSize` and `intervalMs`, or the depth stream fails with `INVALID_HEATMAP_GRID`. After history loads, the runtime adds a column from the live book on each depth update.
+A rejected event never throws into your adapter. The runtime sets the stream to `error` with a message that starts with the error code, such as `CANDLE_GAP: reconnect to refresh history`, and `state().error` repeats it. The next accepted event sets the stream back to `live`. While the stream is `stale` or `error`, the widget shows a notice with the message and a Reconnect button.
 
 ### Instrument updates
 
-A feed can start with a guessed instrument and correct it once it fetches real metadata. The `instrument` event replaces tick size, precision and name. The `symbol`, `base` and `quote` must match the descriptor, otherwise the candles stream fails with `INSTRUMENT_MISMATCH`.
+A feed can start with a guessed instrument and correct it once it fetches real metadata. The `instrument` event replaces tick size, precision and name. The `symbol`, `base` and `quote` must match the descriptor, otherwise the stream fails with `INSTRUMENT_MISMATCH`.
 
 ## History paging
 
@@ -270,7 +221,7 @@ import { createSimulatedFeed } from 'candleframe/core';
 chart.replaceFeed(createSimulatedFeed({ symbol: 'ETH/USD', interval: '5m' }));
 ```
 
-`replaceFeed` validates the new descriptor before it changes anything, so a bad adapter leaves the old market running. Then it disposes the old connection, clears candles and the order book, and connects the new adapter. Indicators, layers, the chart type and the log scale setting carry over. If the new feed has the same `id` and `instrument.symbol` (an interval switch), drawings and undo history carry over too. Otherwise they reset.
+`replaceFeed` validates the new descriptor before it changes anything, so a bad adapter leaves the old market running. Then it disposes the old connection, clears the candles and connects the new adapter. Indicators, layers, the chart type and the log scale setting carry over. If the new feed has the same `id` and `instrument.symbol` (an interval switch), drawings and undo history carry over too. Otherwise they reset.
 
 In the widget, list your markets with the `markets` option. Each source has a `createFeed` factory that returns a new, unconnected adapter for a selection:
 
@@ -325,7 +276,6 @@ export function createPollingFeed(symbol: string, interval: Interval): FeedAdapt
       interval,
       intervalMs,
       simulated: false,
-      depth: { kind: 'none', levels: 0 },
     },
     connect(emit) {
       let disposed = false;
@@ -355,7 +305,7 @@ export function createPollingFeed(symbol: string, interval: Interval): FeedAdapt
       async function start() {
         stop();
         const run = generation;
-        send({ type: 'stream.status', stream: 'candles', status: 'loading', message: 'Loading history' });
+        send({ type: 'stream.status', status: 'loading', message: 'Loading history' });
         try {
           const candles = await get(`limit=${PAGE}`);
           if (!active(run)) return;
@@ -364,7 +314,7 @@ export function createPollingFeed(symbol: string, interval: Interval): FeedAdapt
           timer = setTimeout(poll, 5000, run);
         } catch (error) {
           if (!active(run)) return;
-          send({ type: 'stream.status', stream: 'candles', status: 'error', message: String(error) });
+          send({ type: 'stream.status', status: 'error', message: String(error) });
           timer = setTimeout(start, 10_000);
         }
       }
@@ -381,7 +331,7 @@ export function createPollingFeed(symbol: string, interval: Interval): FeedAdapt
           }
         } catch (error) {
           if (!active(run)) return;
-          send({ type: 'stream.status', stream: 'candles', status: 'stale', message: String(error) });
+          send({ type: 'stream.status', status: 'stale', message: String(error) });
         }
         timer = setTimeout(poll, 5000, run);
       }
@@ -394,7 +344,6 @@ export function createPollingFeed(symbol: string, interval: Interval): FeedAdapt
           if (paused) stop();
           else void start();
         },
-        requestSnapshot() {},
         loadOlder(beforeMs) {
           const run = generation;
           get(`endTime=${beforeMs - 1}&limit=${PAGE}`).then(

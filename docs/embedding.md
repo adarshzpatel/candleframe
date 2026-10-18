@@ -10,7 +10,6 @@ container.style.height = '600px';
 const chart = createChartWidget(container, {
   feed: createSimulatedFeed(),
   indicators: [sma(20)],
-  orderBook: true,
   storageKey: 'terminal-main-chart',
 });
 
@@ -21,7 +20,7 @@ chart.exportDocument();
 chart.dispose(); // Unmounts controls, observers, subscriptions and the engine.
 ```
 
-Give the container a nonzero width and height. A useful minimum is 360 by 420 CSS pixels. The widget fills its container, adapts controls to its width and observes plot size changes. At widths of 850 pixels or less, the order book starts closed and opens as a dismissible panel over the chart. Wider embeds can show it alongside the chart. Depth rows adapt to the available height so both bids and asks stay visible around the midpoint. The toolbar, drawing picker, object properties, help, notifications and PNG preview stay inside the widget.
+Give the container a nonzero width and height. A useful minimum is 360 by 420 CSS pixels. The widget fills its container, adapts controls to its width and observes plot size changes. The toolbar, drawing picker, object properties, help, notifications and PNG preview stay inside the widget.
 
 The widget owns an open shadow root. Host CSS cannot accidentally restyle its buttons or hide its canvases. Multiple widgets have separate drawing selections, menus, history, session saves and lifecycles. Use `createChart` when the application supplies its own controls.
 
@@ -47,7 +46,7 @@ const chart = createChartWidget(container, {
 
 Factories synchronously return disconnected `FeedAdapter` instances. Adapters own asynchronous history, sockets, recovery and disposal. The widget validates source, symbol and interval before replacing the current feed. A factory error retains the previous market. Host calls to `replaceFeed` update the controls too. Changing source or symbol clears drawings; changing the interval preserves time/price anchors.
 
-The optional order book uses the adapter's depth events. Indicator controls reflect the supplied plugins. Drawing tools from `drawingTools` appear in the same picker as built-ins. Existing chart callbacks are composed with internal UI callbacks.
+Indicator controls reflect the supplied plugins. Drawing tools from `drawingTools` appear in the same picker as built-ins. Existing chart callbacks are composed with internal UI callbacks.
 
 ## Layout storage
 
@@ -172,7 +171,7 @@ chart.setTheme(createTheme('paper', {
   name: 'My product',
   palette: { accent: '#7152a3' },
   typography: { uiFamily: 'Arial, sans-serif', axisSize: 12 },
-  layout: { spacingScale: 0.85, bookWidth: 250, controlHeight: 28 },
+  layout: { spacingScale: 0.85, railWidth: 38, controlHeight: 28 },
   effects: { radius: 4, iconStroke: 1.75 },
   chart: { candleUp: '@accent', gridOpacity: 0.5, crosshairDash: [2, 5] },
 }));
@@ -180,7 +179,7 @@ chart.setTheme(createTheme('paper', {
 
 Use `createTheme(base, overrides)` to merge partial overrides. Direct `ChartTheme` objects still require a complete palette; older palette-only objects inherit compact defaults. `getTheme()` returns the complete version-1 portable theme. Colors accept six-digit hex values. Chart and effect colors also accept palette references such as `@positive`, which remain linked when the palette changes. Invalid themes are rejected before changing the view. `onThemeChange(theme)` receives an owned copy after a change. `RenderFrame.theme` gives renderer adapters the resolved theme; `DrawingContext.theme` exposes it to drawing plugins.
 
-Themes cover fonts, text sizes, spacing, control and panel sizes, borders, corners, icon weight, opacity, shadows, grids, candles and wicks, volume, axes, crosshairs, price labels, watermarks, drawing chrome, heatmap ramps and PNG exports. New drawing defaults follow the theme unless the user has changed those defaults. Existing drawing colors stay intact. Indicators retain their explicit `color` unless they opt into `themeColor: 'indicator'`, as the included SMA does.
+Themes cover fonts, text sizes, spacing, control and panel sizes, borders, corners, icon weight, opacity, shadows, grids, candles and wicks, volume, axes, crosshairs, price labels, watermarks, drawing chrome and PNG exports. New drawing defaults follow the theme unless the user has changed those defaults. Existing drawing colors stay intact. Indicators retain their explicit `color` unless they opt into `themeColor: 'indicator'`, as the included SMA does.
 
 Themes belong to the view, so switching one leaves the market, viewport, drawings, revision and undo history unchanged. The widget saves its appearance separately when `storageKey` is provided, as the differences from its preset, so default changes in later versions still apply. It restores that choice on mount unless an explicit `theme` option is supplied. Without a namespace, changes last for the widget session. Custom `layoutStore` adapters still handle chart layouts only; browser appearance storage is optional and failure does not prevent switching themes.
 

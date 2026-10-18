@@ -20,7 +20,7 @@ const host = document.querySelector<HTMLElement>('#chart')!;
 const chart = createChartWidget(host, { feed: createSimulatedFeed() });
 ```
 
-`createSimulatedFeed()` generates BTC/USD one-minute candles and an order book in the browser. It needs no network or API key, so it is the quickest way to see the chart work.
+`createSimulatedFeed()` generates BTC/USD one-minute candles in the browser. It needs no network or API key, so it is the quickest way to see the chart work.
 
 The widget renders inside its own shadow root. You do not import any CSS, and your page styles cannot leak into its buttons.
 
@@ -92,6 +92,6 @@ chart.dispose();
 
 ## Next
 
-- [Embed the widget](../../guides/widget/) covers market pickers, saved layouts, the order book and the rest of the options.
+- [Embed the widget](../../guides/widget/) covers market pickers, saved layouts and the rest of the options.
 - [Framework integrations](../../guides/frameworks/) shows the mount and dispose pattern for React, Vue and Svelte.
 - [Data feeds](../../feeds/overview/) explains how to connect a live source.

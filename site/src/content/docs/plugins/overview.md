@@ -37,7 +37,7 @@ Order entry is its own entry point, `candleframe/trading`, kept out of the chart
 
 These are interfaces the chart calls, not plugins in the menu sense, but they are how you connect CandleFrame to the rest of your app.
 
-- A `FeedAdapter` has a `descriptor` and a `connect(emit)` method that pushes candles and depth. See [Feeds](../../feeds/overview/).
+- A `FeedAdapter` has a `descriptor` and a `connect(emit)` method that pushes candles. See [Feeds](../../feeds/overview/).
 - A theme is a built-in id such as `'graphite'`, or a theme object made with `createTheme(base, overrides)`. See [Theming](../../guides/theming/).
 - The widget saves layouts, drawing templates and favourite tools to browser storage under `storageKey`. The three store options send them to your own backend instead. See [Layouts](../../guides/layouts/).
 
@@ -47,7 +47,7 @@ These are interfaces the chart calls, not plugins in the menu sense, but they ar
 
 ### Renderer
 
-`renderer` replaces the WebGL2 pass. A `ChartRenderer` has a `name`, `mount(canvas, invalidate, onStatus)`, `render(frame)` returning `RendererStats`, and `dispose()`. The default is `WebGL2Renderer`. The renderer draws candles, volume, indicator series, fills and the heatmap. Drawings, indicator dots, profiles, axes and host overlays are painted on a separate Canvas 2D layer and are not part of it. Most apps never need this. The `heatmap` field of `RenderFrame` uses a type that is not exported.
+`renderer` replaces the WebGL2 pass. A `ChartRenderer` has a `name`, `mount(canvas, invalidate, onStatus)`, `render(frame)` returning `RendererStats`, and `dispose()`. The default is `WebGL2Renderer`. The renderer draws candles, volume, indicator series and fills. Drawings, indicator dots, profiles, axes and host overlays are painted on a separate Canvas 2D layer and are not part of it. Most apps never need this.
 
 ## Put them together
 
@@ -113,7 +113,7 @@ Plugins cannot:
 
 - Draw arbitrary graphics from an indicator. Indicators return numbers and choose from the built-in styles. Profile-style indicators configure the built-in profile, bubble and flow-signal renderers. They cannot add their own.
 - Compute asynchronously. `calculate` returns its array synchronously. Fetch data elsewhere and put it on the candles, or on a feed.
-- See anything but candles. Indicators get no order book, drawings or other charts.
+- See anything but candles. Indicators get no drawings or other charts.
 - Handle pointer events in a drawing tool, or give it an icon. The chart owns input, and custom tools use the trend line icon.
 - Add buttons or panels to the widget. Build your UI around the widget and drive it with [commands](../../reference/commands/).
 
