@@ -63,7 +63,7 @@ try {
 
 - Methods throw. `execute`, `query`, `restoreDocument`, `replaceFeed`, feed and indicator factories, `createChart` and `createChartWidget` throw a `ChartError` for bad input.
 - `preview` never throws. It returns `{ ok: false, error }`, where `error` is the JSON shape.
-- Feed data errors do not throw. When a feed sends bad data, the runtime sets that stream's status to `error` and stores the message in `streams.candles.message` or `streams.depth.message`. `inspect().error` and the subscribed state's `error` join these messages. The message starts with the code.
+- Feed data errors do not throw. When a feed sends bad data, the runtime sets the stream's status to `error` and stores the message in `stream.message`. `inspect().error` and the subscribed state's `error` repeat it. The message starts with the code.
 - Renderer failures do not throw. The chart shows the message over the plot. See [Rendering](#rendering).
 - Errors from pointer and keyboard actions in a chart, such as editing a drawing, go to the `onError` option of `createChart` and `createChartWidget`. The widget also shows them as a notice.
 
@@ -80,7 +80,7 @@ Each table lists the codes for one area with what triggers them. Codes come from
 | `INVALID_IDEMPOTENCY_KEY` | The key is not a string of 1 to 128 characters. |
 | `INVALID_BATCH` | The batch is not an array, has more than 500 commands, or contains `history.undo`, `history.redo` or `feed.pause`. |
 | `INVALID_COMMAND` | A command field has the wrong type, such as a non-boolean `enabled`, `visible` or `paused`, or an `indicator.add` without a `kind`. |
-| `UNKNOWN_COMMAND` | The command `type` is not one of the 25 command types. |
+| `UNKNOWN_COMMAND` | The command `type` is not one of the 24 command types. |
 | `INVALID_QUERY` | `query()` got a non-object, a `limit` outside 1 to 5,000, or a non-finite `fromMs` or `toMs`. |
 | `DISPOSED` | The runtime was disposed. Create a new one. |
 | `INVALID_OPTION` | A constructor option is out of range: `maxCandles` (100 to 100,000), the simulated feed's `speed` (0.1 to 1,000), or a static feed's `initialBars` or `pageSize`. |
@@ -93,10 +93,8 @@ Each table lists the codes for one area with what triggers them. Codes come from
 | `INVALID_VIEWPORT` | The time range is not 3 to 2,200 bars wide. `details` has `bars`, `minBars` and `maxBars`. |
 | `INVALID_PRICE_SCALE` | `minPrice` is not positive, `maxPrice` is not at least one tick above it, or `log` is not a boolean. |
 | `INVALID_LAYER` | Unknown layer name, or `visible` is not a boolean. `details.allowed` lists the layers. |
-| `HEATMAP_DISABLED` | You tried to show the heatmap layer on a chart created without `heatmap: true`. |
 | `INVALID_CHART_TYPE` | Unknown chart type. `details.chartTypes` lists the valid ids. |
 | `INVALID_FOOTPRINT` | Footprint settings are not an object, have an unknown key, or have a value of the wrong type. |
-| `INVALID_INTENSITY` | Heatmap intensity is outside 0.2 to 2. |
 
 ### Documents and layouts
 
@@ -107,7 +105,7 @@ Each table lists the codes for one area with what triggers them. Codes come from
 | `SYMBOL_MISMATCH` | The document is for another symbol. |
 | `MARKET_MISMATCH` | The document is for another feed id or interval. |
 | `LEGACY_MARKET_MISMATCH` | A version 1 document can only load on the simulated BTC/USD 1-minute market. |
-| `INVALID_LAYERS` | `layers` is missing or one of its four flags is not a boolean. |
+| `INVALID_LAYERS` | `layers` is missing or one of its three flags is not a boolean. |
 | `INVALID_INDICATORS` | `indicators` is not an array of at most 16 entries, or an entry lacks a valid `id`, `kind` or `visible`. |
 | `DUPLICATE_INDICATOR_ID` | Two indicators share an id. |
 | `INVALID_DRAWINGS` | `drawings` is not an array, or holds more than 100 drawings. A `drawing.add` past 100 drawings also fails with this code. |
@@ -170,7 +168,7 @@ A drawing whose `type` is not registered is not an error. The runtime keeps it a
 
 ### Feeds and market data
 
-Errors in data a feed sends mark the stream as `error` instead of throwing. See [Where errors appear](#where-errors-appear).
+Errors in data a feed sends mark the candle stream as `error` instead of throwing. See [Where errors appear](#where-errors-appear).
 
 | Code | Meaning |
 | --- | --- |
@@ -182,13 +180,6 @@ Errors in data a feed sends mark the stream as `error` instead of throwing. See 
 | `MISSING_HISTORY` | A live candle arrived before any history. |
 | `CANDLE_GAP` | A live candle skipped one or more intervals on a feed without `gaps`. Reconnect to refresh history. |
 | `UNKNOWN_CORRECTION` | A candle is older than the latest one and matches no loaded bar. |
-| `INVALID_DEPTH` | Depth levels have duplicate or non-positive prices, or negative quantities. |
-| `DEPTH_LIMIT` | The book has more than 2,048 levels on a side. |
-| `CROSSED_BOOK` | The best bid is at or above the best ask. |
-| `INVALID_SEQUENCE` | A depth sequence number is not a non-negative safe integer. |
-| `INVALID_HEATMAP_GRID` | The heatmap grid has bad rows, bin size or interval. |
-| `INVALID_HEATMAP_COLUMN` | A heatmap column has a bad time or values. |
-| `OUT_OF_ORDER_DEPTH` | A heatmap column is older than the latest one. |
 | `UNSUPPORTED_INTERVAL` | The interval string does not parse, or the simulated feed got an interval under 1 minute. |
 | `INVALID_SEED` | The simulated feed's seed is not a finite number. |
 | `UNSUPPORTED_SYMBOL` | The simulated feed has no preset for this symbol. |

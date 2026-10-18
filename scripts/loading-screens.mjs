@@ -88,7 +88,7 @@ try {
   await pickSource('simulated');
   await page.waitForFunction(() => window.candleframe.inspect().candleCount > 0);
   await pickSource('hyperliquid');
-  await page.waitForFunction(() => window.candleframe.inspect().streams.candles.status === 'error', null, {
+  await page.waitForFunction(() => window.candleframe.inspect().stream.status === 'error', null, {
     timeout: 15000,
   });
   await sleep(300);

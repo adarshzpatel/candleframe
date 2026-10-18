@@ -27,7 +27,7 @@ function fixture() {
           volume: 1,
         })),
       });
-      return { setPaused() {}, requestSnapshot() {}, dispose() {} };
+      return { setPaused() {}, dispose() {} };
     },
   });
   runtime.start();
@@ -209,7 +209,7 @@ test('cancel, conflicting commands and market replacement discard previews witho
   const { runtime: r, controller: d, context: ctx, emit } = fixture();
   d.setTool('triangle');
   d.down(a, ctx);
-  emit({ type: 'depth.snapshot', book: { sequence: 1, bids: [[99, 1]], asks: [[101, 1]] } });
+  emit({ type: 'stream.status', status: 'stale', message: 'Waiting for candle updates' });
   assert.equal(d.interacting, true);
   r.execute({ type: 'layer.set', layer: 'volume', visible: false });
   assert.equal(d.interacting, false);

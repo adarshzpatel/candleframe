@@ -30,11 +30,10 @@ function fixture() {
             pricePrecision: 2,
             quantityPrecision: 3,
           },
-          depth: { kind: 'snapshots', levels: 20 },
         },
         connect() {
           counts.connections++;
-          return { dispose() {}, setPaused() {}, requestSnapshot() {} };
+          return { dispose() {}, setPaused() {} };
         },
       };
     },

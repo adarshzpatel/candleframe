@@ -71,11 +71,11 @@ test('legacy palettes acquire visual defaults and partial themes merge without l
 
 test('resolved token groups and arrays are owned and immutable', () => {
   const dash = [2, 7],
-    layout = { bookWidth: 300 };
+    layout = { railWidth: 50 };
   const resolved = createTheme('paper', { layout, chart: { crosshairDash: dash } });
   dash[0] = 40;
-  layout.bookWidth = 400;
-  assert.equal(resolved.layout.bookWidth, 300);
+  layout.railWidth = 60;
+  assert.equal(resolved.layout.railWidth, 50);
   assert.deepEqual(resolved.chart.crosshairDash, [2, 7]);
   assert.ok(Object.isFrozen(resolved.chart.crosshairDash));
   assert.ok(Object.isFrozen(resolved.typography));
@@ -142,6 +142,16 @@ test('appearances saved in full drop values that were defaults at the time', () 
   assert.equal(restored.chart.candleBodyRatio, themeTokenDefaults.chart.candleBodyRatio);
   assert.equal(restored.typography.titleSize, themeTokenDefaults.typography.titleSize);
   assert.deepEqual(restored, resolveTheme('graphite'));
+});
+
+test('themes that carry retired tokens still load and drop them', () => {
+  const older = JSON.parse(JSON.stringify(resolveTheme('graphite')));
+  older.layout.bookWidth = 250;
+  older.effects.bookFillOpacity = 0.1;
+  older.chart.heatmapPeak = '#fabf57';
+  assert.deepEqual(restoreTheme(older), resolveTheme('graphite'));
+  assert.deepEqual(resolveTheme(older), resolveTheme('graphite'));
+  assert.throws(() => resolveTheme({ ...older, layout: { panelWidth: 1 } }), /UNKNOWN_THEME_TOKEN/);
 });
 
 test('themes saved before the extra indicator slots borrow them from a preset of their mode', () => {

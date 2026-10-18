@@ -98,7 +98,6 @@ export interface WidgetLayoutStore {
 export interface ChartWidgetOptions extends ChartOptions {
   /** Factories return disconnected adapters; the selected adapter owns its connection. */
   markets?: readonly WidgetMarketSource[];
-  orderBook?: boolean;
   /**
    * Enables browser persistence in this namespace, with Save and Revert buttons. Without
    * it, drawings and settings last for the session and those buttons stay hidden.
@@ -147,7 +146,6 @@ interface Cell {
   stats?: RendererStats;
   hovering: boolean;
   price: Intl.NumberFormat;
-  quantity: Intl.NumberFormat;
   timeFormats: TimeFormats;
   /** Market key whose saved document has loaded; autosave waits for it. */
   loadedKey: string | null;
@@ -230,11 +228,10 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
   root.innerHTML = `<header class="widget-header">
     <div class="market-controls"><span class="asset-mark" id="asset-mark" aria-hidden="true">B</span><cf-select id="symbol" class="symbol-picker" aria-label="Symbol"></cf-select><span class="toolbar-divider"></span><cf-select id="interval" class="interval-picker" aria-label="Candle interval" search="off"></cf-select><span class="toolbar-divider"></span><button id="chart-type" class="icon-button" aria-label="Chart type" aria-haspopup="dialog" data-tooltip="Chart type">${icon('candles')}</button></div>
     <div class="analysis-controls"><button id="indicator-menu" aria-haspopup="dialog" data-tooltip="Add indicators">${icon('indicators')}<span>Indicators</span></button><button data-layer="volume" aria-label="Toggle volume" aria-pressed="true" data-tooltip="Volume">${icon('volume')}<span>Volume</span></button></div>
-    <div class="widget-actions"><button id="draw-toggle" class="icon-button" aria-label="Drawing tools" aria-pressed="false" data-tooltip="Drawing tools">${icon('trendline')}</button><button id="book-toggle" aria-label="Toggle order book" aria-pressed="false" data-tooltip="Order book">${icon('book')}<span>Order book</span></button><span class="toolbar-divider"></span><button id="pause" class="icon-button" aria-label="Pause feed" data-tooltip="Pause feed">${icon('pause')}</button><button id="layout" class="icon-button" aria-label="Chart layout" aria-haspopup="dialog" data-tooltip="Layout">${icon('layout')}</button><button id="save" class="icon-button" aria-label="Save layout" data-tooltip="Save layout">${icon('save')}</button><button id="restore" class="icon-button" aria-label="Revert to saved layout" data-tooltip="Revert to saved">${icon('restore')}</button><button id="theme" class="icon-button" aria-label="Chart appearance" data-tooltip="Appearance">${icon('palette')}</button><button id="export" class="icon-button" aria-label="Export PNG" data-tooltip="Export image">${icon('camera')}</button></div>
+    <div class="widget-actions"><button id="draw-toggle" class="icon-button" aria-label="Drawing tools" aria-pressed="false" data-tooltip="Drawing tools">${icon('trendline')}</button><span class="toolbar-divider"></span><button id="pause" class="icon-button" aria-label="Pause feed" data-tooltip="Pause feed">${icon('pause')}</button><button id="layout" class="icon-button" aria-label="Chart layout" aria-haspopup="dialog" data-tooltip="Layout">${icon('layout')}</button><button id="save" class="icon-button" aria-label="Save layout" data-tooltip="Save layout">${icon('save')}</button><button id="restore" class="icon-button" aria-label="Revert to saved layout" data-tooltip="Revert to saved">${icon('restore')}</button><button id="theme" class="icon-button" aria-label="Chart appearance" data-tooltip="Appearance">${icon('palette')}</button><button id="export" class="icon-button" aria-label="Export PNG" data-tooltip="Export image">${icon('camera')}</button></div>
   </header>
   <div class="widget-body"><aside class="tool-rail" aria-label="Drawing tools"><button id="cursor" class="rail-button active" aria-label="Cursor tool" data-tooltip="Cursor">${icon('cursor')}</button><span class="rail-separator"></span><button id="trend" class="rail-button">${icon('trendline')}</button><span class="rail-separator"></span><button id="undo" class="rail-button" aria-label="Undo last edit" data-tooltip="Undo · ⌘ / Ctrl Z">${icon('undo')}</button><button id="clear" class="rail-button" aria-label="Clear drawings" data-tooltip="Clear drawings">${icon('trash')}</button><button id="fit" class="rail-button" aria-label="Fit chart to live data" data-tooltip="Fit chart">${icon('fit')}</button><button id="help" class="rail-button rail-bottom" aria-label="Chart controls and shortcuts" data-tooltip="Help & shortcuts">${icon('help')}</button></aside>
-  <section class="chart-panel" aria-label="Charts"><div class="cell-tabs" role="tablist" aria-label="Charts"></div><div class="chart-grid" data-preset="1"></div></section>
-  <aside class="book-panel" aria-label="Live order book" hidden><div class="panel-title"><h2>Order book</h2><div><span id="book-state" class="book-badge"></span><button id="book-close" class="icon-button" aria-label="Close order book">${icon('close', 16)}</button></div></div><div class="book-subtitle"><span id="book-coverage"></span><span id="book-tick"></span></div><div class="book-columns"><span>Price <small id="book-quote"></small></span><span>Size <small id="book-base"></small></span><span>Total</span></div><div id="asks" class="book-side asks"></div><div class="spread-row"><strong id="book-price">—</strong><span>Spread <b id="spread">—</b></span></div><div id="bids" class="book-side bids"></div><p class="book-note" id="book-note"></p></aside></div>
+  <section class="chart-panel" aria-label="Charts"><div class="cell-tabs" role="tablist" aria-label="Charts"></div><div class="chart-grid" data-preset="1"></div></section></div>
   <footer class="widget-footer"><div class="range-buttons" role="group" aria-label="Bars in view"><span class="range-label" aria-hidden="true">Bars</span><button data-bars="60" aria-label="Show 60 bars">60</button><button data-bars="180" aria-label="Show 180 bars">180</button><button data-bars="360" aria-label="Show 360 bars">360</button><button data-bars="all" aria-label="Show all bars">All</button></div><span class="footer-divider"></span><cf-select id="source" class="source-picker" aria-label="Data source"></cf-select><span class="feed-state" id="feed-state"></span><button class="follow-button" id="follow">Following live</button><button class="autoscale-button" id="autoscale" aria-pressed="true" aria-label="Autoscale price" data-tooltip="Fit price to visible candles">Auto</button><button class="autoscale-button" id="log-scale" aria-pressed="false" aria-label="Logarithmic price scale" data-tooltip="Log scale: equal heights for equal percentage moves">Log</button><button id="inspect" class="icon-button" aria-label="Inspect state" data-tooltip="Inspect chart state">${icon('code', 16)}</button></footer>
   <div class="widget-tooltip" role="tooltip" hidden></div><div class="widget-toast" role="status" hidden></div><section class="widget-dialog" role="dialog" aria-modal="true" aria-label="Chart panel" hidden><header class="dialog-heading"><h2></h2><button class="icon-button" aria-label="Close dialog">${icon('close')}</button></header><div class="dialog-content"></div></section>`;
   shadow.append(style, root);
@@ -568,7 +565,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     if (
       previous &&
       previous.dataRevision === state.dataRevision &&
-      previous.streams === state.streams &&
+      previous.stream === state.stream &&
       previous.paused === state.paused &&
       previous.generation === state.generation
     )
@@ -578,35 +575,23 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
         minimumFractionDigits: state.feed.instrument.pricePrecision,
         maximumFractionDigits: state.feed.instrument.pricePrecision,
       });
-      cell.quantity = new Intl.NumberFormat('en-US', {
-        maximumFractionDigits: Math.min(6, state.feed.instrument.quantityPrecision),
-      });
       labelCell(cell);
     }
     if (previous?.generation !== state.generation) cell.hovering = false;
     put(q('.market-price'), state.candles.length ? cell.price.format(state.candles.at(-1)!.close) : '—');
     if (!cell.hovering) showCandle(cell, state.candles.at(-1));
-    const issues = (['candles', 'depth'] as const).filter(stream =>
-      ['error', 'stale'].includes(state.streams[stream].status),
-    );
-    q('.connection-notice').hidden = !issues.length;
-    const messages = issues.map(stream => state.streams[stream].message ?? state.streams[stream].status);
-    // One shared reason reads once; different ones keep their stream names.
-    put(
-      q('.connection-message'),
-      new Set(messages).size === 1
-        ? messages[0]
-        : issues.map((stream, i) => `${stream}: ${messages[i]}`).join(' · '),
-    );
+    const { status, message } = state.stream;
+    const issue = status === 'error' || status === 'stale';
+    q('.connection-notice').hidden = !issue;
+    if (issue) put(q('.connection-message'), message ?? status);
   }
 
   // Autosave per chart. It waits for the market's saved document to load, so a fresh
-  // chart never overwrites it. Only drawings are per market; indicators, layers, chart
-  // type and heatmap intensity are chart settings that stay with the pane.
+  // chart never overwrites it. Only drawings are per market; indicators, layers and chart
+  // type are chart settings that stay with the pane.
   const documentContent = (d: Readonly<ChartDocument>) => JSON.stringify(d.drawings);
   const paneSettings = (d: Readonly<ChartDocument>) => ({
     layers: d.layers,
-    intensity: d.intensity,
     indicators: d.indicators,
     chartType: d.chartType ?? 'candles',
     ...(d.footprint ? { footprint: d.footprint } : {}),
@@ -762,7 +747,6 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
       element,
       hovering: false,
       price: new Intl.NumberFormat('en-US'),
-      quantity: new Intl.NumberFormat('en-US'),
       timeFormats: createTimeFormats(feed.descriptor.intervalMs, options.timeZone),
       loadedKey: null,
       savedRevision: -1,
@@ -1093,7 +1077,6 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
   }
 
   let unsubscribe = () => {};
-  let bookResize: ResizeObserver | undefined;
   try {
     active = addCell(options.feed);
     switcher = createChartSwitch(active.chart, () => cells.map(cell => cell.chart));
@@ -1165,7 +1148,6 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
       '.widget-header': 'toolbar',
       '.tool-rail': 'drawing-toolbar',
       '.chart-panel': 'chart-panel',
-      '.book-panel': 'order-book',
       '.widget-footer': 'footer',
       '.widget-dialog': 'dialog',
       '.drawing-strip': 'drawing-controls',
@@ -1202,77 +1184,6 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
       },
       { signal: abort.signal },
     );
-    const book = $('.book-panel');
-    book.hidden = !options.orderBook || mount.clientWidth <= 850;
-    // Remembers the user's choice while a feed without a book hides the panel.
-    let bookWanted = !book.hidden;
-    $('#book-toggle').setAttribute('aria-pressed', String(!book.hidden));
-    const makeRows = (id: string) =>
-      Array.from({ length: 11 }, () => {
-        const row = doc.createElement('div');
-        row.className = 'book-row';
-        row.innerHTML = '<span></span><span></span><span></span>';
-        $(`#${id}`).append(row);
-        return row;
-      });
-    const askRows = makeRows('asks'),
-      bidRows = makeRows('bids');
-    let visibleBookRows = 11;
-    function updateBook(state: RuntimeState) {
-      if (book.hidden) return;
-      const { price, quantity } = active;
-      const live = !state.paused && state.streams.depth.status === 'live';
-      book.classList.toggle('stale-book', !live);
-      set('book-state', state.paused ? 'PAUSED' : state.streams.depth.status.toUpperCase());
-      set(
-        'book-coverage',
-        `${state.feed.depth.kind === 'snapshots' ? 'Top ' : ''}${state.feed.depth.levels} levels / side`,
-      );
-      set('book-tick', `${price.format(state.feed.instrument.tickSize)} tick`);
-      set('book-quote', state.feed.instrument.quote);
-      set('book-base', state.feed.instrument.base);
-      set('book-note', `${state.feed.instrument.quote} price · ${state.feed.instrument.base} quantity`);
-      const totals = (levels: RuntimeState['book']['bids']) => {
-        let total = 0;
-        return levels.slice(0, visibleBookRows).map(([p, q]) => ({ p, q, total: (total += q) }));
-      };
-      const bids = totals(state.book.bids),
-        asks = totals(state.book.asks),
-        max = Math.max(1, bids.at(-1)?.total ?? 0, asks.at(-1)?.total ?? 0);
-      for (const [rows, values] of [
-        [bidRows, bids],
-        [askRows, [...asks].reverse()],
-      ] as const)
-        rows.forEach((row, i) => {
-          row.hidden = i >= visibleBookRows;
-          const entry = values[i],
-            formatted = entry
-              ? [price.format(entry.p), quantity.format(entry.q), quantity.format(entry.total)]
-              : ['—', '—', '—'];
-          [...row.children].forEach((cell, j) => {
-            if (cell.textContent !== formatted[j]) cell.textContent = formatted[j];
-          });
-          row.style.setProperty('--depth', `${entry ? (entry.total / max) * 100 : 0}%`);
-        });
-      set('book-price', bids.length && asks.length ? price.format((bids[0].p + asks[0].p) / 2) : '—');
-      set('spread', live && bids.length && asks.length ? price.format(asks[0].p - bids[0].p) : '—');
-    }
-    // Keep complete rows on both sides of the midpoint without reading layout on each tick.
-    bookResize = new ResizeObserver(() => {
-      const height = Math.min($('#asks').clientHeight, $('#bids').clientHeight);
-      if (!height) return;
-      const rowHeight = askRows[0].getBoundingClientRect().height;
-      if (!rowHeight) return;
-      const padding = Number.parseFloat(doc.defaultView!.getComputedStyle($('#asks')).paddingTop) || 0;
-      const count = Math.max(1, Math.min(11, Math.floor((height - padding) / rowHeight)));
-      if (count !== visibleBookRows) {
-        visibleBookRows = count;
-        if (lastState) updateBook(lastState);
-      }
-    });
-    bookResize.observe($('#asks'));
-    bookResize.observe($('#bids'));
-    bookResize.observe(askRows[0]);
     function choices(selector: string, values: readonly SelectItem[], current: string) {
       const select = $<CfSelectElement>(selector);
       const items = values.some(v => v.value === current)
@@ -1327,12 +1238,6 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     // The toolbar follows the active chart; `lastState` resets when it changes.
     unsubscribe = chart.subscribe(state => {
       const previous = lastState;
-      const noBook = state.feed.depth.kind === 'none';
-      if (noBook !== (previous?.feed.depth.kind === 'none') || !previous) {
-        $('#book-toggle').hidden = noBook;
-        book.hidden = noBook || !bookWanted;
-        $('#book-toggle').setAttribute('aria-pressed', String(!book.hidden));
-      }
       lastState = state;
       for (const button of root.querySelectorAll<HTMLButtonElement>('[data-layer]')) {
         const pressed = String(state.document.layers[button.dataset.layer as Layer]);
@@ -1371,7 +1276,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
       if (
         previous &&
         previous.dataRevision === state.dataRevision &&
-        previous.streams === state.streams &&
+        previous.stream === state.stream &&
         previous.paused === state.paused &&
         previous.generation === state.generation
       )
@@ -1380,17 +1285,12 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
       set('asset-mark', state.feed.instrument.base.slice(0, 1));
       set(
         'feed-state',
-        state.paused
-          ? 'Paused'
-          : state.streams.candles.status === 'live'
-            ? 'Connected'
-            : state.streams.candles.status,
+        state.paused ? 'Paused' : state.stream.status === 'live' ? 'Connected' : state.stream.status,
       );
       if (previous?.paused !== state.paused) $('#pause').innerHTML = icon(state.paused ? 'play' : 'pause');
       $('#pause').setAttribute('aria-label', state.paused ? 'Resume feed' : 'Pause feed');
       $('#pause').dataset.tooltip = state.paused ? 'Resume feed' : 'Pause feed';
-      $('#feed-state').dataset.status = state.paused ? 'paused' : state.streams.candles.status;
-      updateBook(state);
+      $('#feed-state').dataset.status = state.paused ? 'paused' : state.stream.status;
     });
     function changeMarket() {
       attempt(() => {
@@ -1416,14 +1316,6 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     for (const id of ['source', 'symbol', 'interval'])
       $(`#${id}`).addEventListener('change', changeMarket, { signal: abort.signal });
     on('#pause', () => chart.execute({ type: 'feed.pause', paused: !lastState?.paused }));
-    function toggleBook() {
-      book.hidden = !book.hidden;
-      bookWanted = !book.hidden;
-      $('#book-toggle').setAttribute('aria-pressed', String(!book.hidden));
-      if (lastState) updateBook(lastState);
-    }
-    on('#book-toggle', toggleBook);
-    on('#book-close', toggleBook);
     for (const button of root.querySelectorAll<HTMLButtonElement>('[data-layer]'))
       button.addEventListener(
         'click',
@@ -1933,7 +1825,6 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
         clearTimeout(toastTimer);
         clearTimeout(workspaceTimer);
         unsubscribe();
-        bookResize?.disconnect();
         themeEditor?.dispose();
         workbench?.dispose();
         group.dispose();
@@ -1953,7 +1844,6 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     abort.abort();
     clearTimeout(toastTimer);
     unsubscribe();
-    bookResize?.disconnect();
     themeEditor?.dispose();
     workbench?.dispose();
     group.dispose();

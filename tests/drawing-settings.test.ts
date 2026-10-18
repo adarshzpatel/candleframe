@@ -126,7 +126,7 @@ test('Fibonacci tools draw only visible levels in their chosen colours', () => {
 test('a drawing.update patch sets level styles in one undo step', () => {
   const runtime = new ChartRuntime({
     descriptor: createSimulatedFeed({ seed: 7 }).descriptor,
-    connect: () => ({ setPaused() {}, requestSnapshot() {}, dispose() {} }),
+    connect: () => ({ setPaused() {}, dispose() {} }),
   });
   runtime.start();
   runtime.execute({

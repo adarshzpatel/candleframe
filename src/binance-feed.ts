@@ -1,15 +1,6 @@
 import { ChartError } from './errors.ts';
 import { intervalToMs, isAligned } from './intervals.ts';
-import type {
-  Candle,
-  DepthSnapshot,
-  FeedAdapter,
-  FeedEvent,
-  Instrument,
-  Interval,
-  Level,
-  Stream,
-} from './types.ts';
+import type { Candle, FeedAdapter, FeedEvent, Instrument, Interval } from './types.ts';
 
 type BinanceSymbol = 'BTC/USDT' | 'ETH/USDT' | 'SOL/USDT';
 export interface BinanceFeedOptions {
@@ -54,7 +45,7 @@ function numeric(value: unknown): number {
 }
 function integer(value: unknown): number {
   const n = numeric(value);
-  if (!Number.isSafeInteger(n) || n < 0) throw new Error('Invalid market-data sequence or time');
+  if (!Number.isSafeInteger(n) || n < 0) throw new Error('Invalid market-data time');
   return n;
 }
 /** OHLCV, then taker buy volume when present, in Binance order. */
@@ -88,30 +79,6 @@ function history(value: unknown, intervalMs: number): Candle[] {
   if (bars.some((bar, i) => i > 0 && bar.timeMs <= bars[i - 1].timeMs))
     throw new Error('Unordered candle history');
   return bars;
-}
-function levels(value: unknown, side: 'bids' | 'asks'): Level[] {
-  if (!Array.isArray(value) || !value.length || value.length > 20)
-    throw new Error('Invalid partial-depth levels');
-  const rows: Level[] = value.map(row => {
-    if (!Array.isArray(row) || row.length !== 2) throw new Error('Invalid depth level');
-    const price = numeric(row[0]);
-    const quantity = numeric(row[1]);
-    if (price <= 0 || quantity <= 0) throw new Error('Invalid depth level');
-    return [price, quantity];
-  });
-  if (rows.some((row, i) => i > 0 && (side === 'bids' ? row[0] >= rows[i - 1][0] : row[0] <= rows[i - 1][0])))
-    throw new Error('Unordered depth levels');
-  return rows;
-}
-function depth(value: unknown): DepthSnapshot {
-  const data = object(value);
-  const book = {
-    sequence: integer(data.lastUpdateId),
-    bids: levels(data.bids, 'bids'),
-    asks: levels(data.asks, 'asks'),
-  };
-  if (book.bids[0][0] >= book.asks[0][0]) throw new Error('Crossed depth snapshot');
-  return book;
 }
 function precision(value: unknown): number {
   if (typeof value !== 'string' || !/^\d+(\.\d+)?$/.test(value) || numeric(value) <= 0)
@@ -175,8 +142,7 @@ export const BINANCE_INTERVALS: readonly Interval[] = [
 ];
 
 /**
- * Public, read-only Binance Spot market data. Partial depth is a fresh top-20 snapshot,
- * never a reconstructed full book. Wire formats: https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams
+ * Public, read-only Binance Spot candles. Wire formats: https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams
  */
 export function createBinanceFeed(
   options: BinanceFeedOptions = {},
@@ -192,7 +158,6 @@ export function createBinanceFeed(
   const intervalMs = intervalToMs(interval);
   const [base, quote] = symbol.split('/');
   const klineStream = `${wireSymbol.toLowerCase()}@kline_${interval}`;
-  const depthStream = `${wireSymbol.toLowerCase()}@depth20`;
   const fetcher = transport.fetch ?? globalThis.fetch;
   const createSocket = transport.createSocket ?? ((url: string) => new WebSocket(url));
 
@@ -212,7 +177,6 @@ export function createBinanceFeed(
         pricePrecision: 2,
         quantityPrecision: 3,
       },
-      depth: { kind: 'snapshots', levels: 20 },
     },
     connect(emit) {
       let disposed = false;
@@ -224,13 +188,12 @@ export function createBinanceFeed(
       let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
       let watchdog: ReturnType<typeof setInterval> | undefined;
       let knownInstrument: Instrument | undefined;
-      let snapshotRequested = false;
 
       function publish(event: FeedEvent): void {
         if (!disposed && !paused) emit(event);
       }
-      function status(stream: Stream, state: 'loading' | 'stale' | 'error', message: string): void {
-        publish({ type: 'stream.status', stream, status: state, message });
+      function status(state: 'loading' | 'stale' | 'error', message: string): void {
+        publish({ type: 'stream.status', status: state, message });
       }
       function stop(): void {
         generation++;
@@ -244,16 +207,10 @@ export function createBinanceFeed(
         socket = undefined;
         closing?.close();
       }
-      function recover(
-        message: string,
-        failedStream?: Stream,
-        retryAt = 0,
-        severity: 'stale' | 'error' = 'error',
-      ): void {
+      function recover(message: string, retryAt = 0, severity: 'stale' | 'error' = 'error'): void {
         if (disposed || paused) return;
         stop();
-        for (const stream of ['candles', 'depth'] as const)
-          status(stream, !failedStream || stream === failedStream ? severity : 'stale', message);
+        status(severity, message);
         const delay = Math.max(
           Math.min(30_000, 1000 * 2 ** Math.min(failures++, 5)),
           retryAt - Date.now(),
@@ -280,17 +237,14 @@ export function createBinanceFeed(
         const abort = new AbortController();
         controller = abort;
         const startedAt = Date.now();
-        const received: Record<Stream, number> = { candles: startedAt, depth: startedAt };
-        const markedStale: Record<Stream, boolean> = { candles: false, depth: false };
+        let received = startedAt;
+        let markedStale = false;
         let historyReady = false;
-        let depthReady = false;
-        let lastDepthSequence = -1;
         let lastAcceptedTime = -1;
         let bufferedCount = 0;
         const buffered = new Map<number, { candle: Candle; eventTime: number }>();
         const accepted = new Map<number, { candle: Candle; eventTime: number }>();
-        for (const stream of ['candles', 'depth'] as const)
-          status(stream, 'loading', 'Connecting to Binance market data');
+        status('loading', 'Connecting to Binance market data');
 
         function acceptedCandle(bar: Candle, eventTime: number): boolean {
           const previous = accepted.get(bar.timeMs);
@@ -307,10 +261,10 @@ export function createBinanceFeed(
           if (accepted.size > 2000) accepted.delete(accepted.keys().next().value!);
           return true;
         }
-        function healthy(stream: Stream): void {
-          received[stream] = Date.now();
-          markedStale[stream] = false;
-          if (historyReady && depthReady) failures = 0;
+        function healthy(): void {
+          received = Date.now();
+          markedStale = false;
+          if (historyReady) failures = 0;
         }
         async function loadHistory(): Promise<void> {
           try {
@@ -329,38 +283,27 @@ export function createBinanceFeed(
               .slice(-2000);
             buffered.clear();
             historyReady = true;
-            healthy('candles');
+            healthy();
             publish({ type: 'candles.history', candles: merged });
           } catch (error) {
             if (active())
               recover(
                 error instanceof Error ? error.message : String(error),
-                'candles',
                 error instanceof HttpFailure ? error.retryAt : 0,
               );
           }
         }
         function message(event: Event): void {
           if (!active()) return;
-          let stream: Stream | undefined;
+          // Until the envelope checks out, a failure means the connection itself is bad.
+          let routed = false;
           try {
             const text = (event as MessageEvent<unknown>).data;
             if (typeof text !== 'string' || text.length > 1_000_000)
               throw new Error('Invalid WebSocket payload');
             const envelope = object(JSON.parse(text));
-            if (envelope.stream !== klineStream && envelope.stream !== depthStream)
-              throw new Error('Unexpected Binance stream');
-            stream = envelope.stream === klineStream ? 'candles' : 'depth';
-            if (stream === 'depth') {
-              const book = depth(envelope.data);
-              if (book.sequence < lastDepthSequence) return;
-              lastDepthSequence = book.sequence;
-              depthReady = true;
-              snapshotRequested = false;
-              healthy('depth');
-              publish({ type: 'depth.snapshot', book });
-              return;
-            }
+            if (envelope.stream !== klineStream) throw new Error('Unexpected Binance stream');
+            routed = true;
             const data = object(envelope.data);
             const k = object(data.k);
             if (data.e !== 'kline' || data.s !== wireSymbol || k.s !== wireSymbol || k.i !== interval)
@@ -369,7 +312,7 @@ export function createBinanceFeed(
             const eventTime = integer(data.E);
             if (integer(k.T) !== bar.timeMs + intervalMs - 1 || eventTime < bar.timeMs)
               throw new Error('Invalid kline time');
-            healthy('candles');
+            healthy();
             if (!historyReady) {
               if (++bufferedCount > MAX_BUFFERED_EVENTS) throw new Error('Candle bootstrap buffer exceeded');
               const previous = buffered.get(bar.timeMs);
@@ -378,27 +321,22 @@ export function createBinanceFeed(
             } else if (acceptedCandle(bar, eventTime)) publish({ type: 'candle', candle: bar });
           } catch (error) {
             const reason = error instanceof Error ? error.message : String(error);
-            if (!stream || reason === 'Candle bootstrap buffer exceeded' || reason === CANDLE_GAP)
-              recover(reason, stream);
-            else status(stream, 'error', reason);
+            if (!routed || reason === 'Candle bootstrap buffer exceeded' || reason === CANDLE_GAP)
+              recover(reason);
+            else status('error', reason);
           }
         }
         watchdog = setInterval(() => {
           if (!active()) return;
           const now = Date.now();
           if (!historyReady && now - startedAt >= 20_000) {
-            recover('Candle bootstrap timed out', 'candles');
+            recover('Candle bootstrap timed out');
             return;
           }
-          for (const stream of ['candles', 'depth'] as const) {
-            if (now - received[stream] >= 30_000) {
-              recover(`No ${stream} updates; reconnecting`, stream, 0, 'stale');
-              return;
-            }
-            if (!markedStale[stream] && now - received[stream] >= 10_000) {
-              markedStale[stream] = true;
-              status(stream, 'stale', `Waiting for ${stream} updates`);
-            }
+          if (now - received >= 30_000) recover('No candle updates; reconnecting', 0, 'stale');
+          else if (!markedStale && now - received >= 10_000) {
+            markedStale = true;
+            status('stale', 'Waiting for candle updates');
           }
         }, 1000);
 
@@ -411,7 +349,7 @@ export function createBinanceFeed(
             }
             if (!active()) return;
             publish({ type: 'instrument', instrument: knownInstrument });
-            const connection = createSocket(`${WS}${klineStream}/${depthStream}`);
+            const connection = createSocket(`${WS}${klineStream}`);
             socket = connection;
             // Subscribe before REST history, then merge buffered updates by candle identity.
             connection.addEventListener(
@@ -426,14 +364,12 @@ export function createBinanceFeed(
               if (active()) recover('Binance market-data connection failed');
             });
             connection.addEventListener('close', () => {
-              if (active())
-                recover('Binance market-data connection closed; reconnecting', undefined, 0, 'stale');
+              if (active()) recover('Binance market-data connection closed; reconnecting', 0, 'stale');
             });
           } catch (error) {
             if (active())
               recover(
                 error instanceof Error ? error.message : String(error),
-                undefined,
                 error instanceof HttpFailure ? error.retryAt : 0,
               );
           }
@@ -447,12 +383,6 @@ export function createBinanceFeed(
           paused = value;
           if (paused) stop();
           else start();
-        },
-        requestSnapshot() {
-          if (disposed || paused || snapshotRequested) return;
-          snapshotRequested = true;
-          // Every depth20 message is complete; the next one is the recovery snapshot.
-          status('depth', 'stale', 'Waiting for the next top-20 snapshot');
         },
         loadOlder(beforeMs) {
           if (disposed || paused || !controller) return;

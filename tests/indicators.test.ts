@@ -139,7 +139,7 @@ test('older layouts migrate to the host indicators; unknown kinds survive and ar
   assert.equal(saved.version, 4);
   const v3 = { ...saved, version: 3, indicators: undefined };
   const feed = runtime.inspect().feed;
-  const migrated = parseDocument(v3, feed, false, undefined, undefined, {
+  const migrated = parseDocument(v3, feed, undefined, undefined, {
     defaults: saved.indicators,
   });
   assert.deepEqual(migrated.indicators, saved.indicators);

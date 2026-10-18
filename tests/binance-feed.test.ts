@@ -59,18 +59,6 @@ const kline = (timeMs = 60_000, volume = 10, close = 100, eventTime = timeMs + 2
     v: String(volume),
   },
 });
-const book = (sequence = 100) => ({
-  lastUpdateId: sequence,
-  bids: [
-    ['99', '2'],
-    ['98', '3'],
-  ],
-  asks: [
-    ['101', '4'],
-    ['102', '5'],
-  ],
-});
-
 function harness() {
   const requests: { url: string; signal: AbortSignal | null | undefined; resolve(value: Response): void }[] =
     [];
@@ -117,40 +105,12 @@ test('Binance validates metadata before data and opens the selected stream befor
   assert.equal(event?.instrument.tickSize, 0.01);
   assert.equal(event?.instrument.pricePrecision, 2);
   assert.equal(event?.instrument.quantityPrecision, 5);
-  assert.equal(
-    h.urls[0],
-    'wss://data-stream.binance.vision:443/stream?streams=btcusdt@kline_1m/btcusdt@depth20',
-  );
+  assert.equal(h.urls[0], 'wss://data-stream.binance.vision:443/stream?streams=btcusdt@kline_1m');
   h.sockets[0].open();
   assert.match(h.requests[1].url, /klines\?symbol=BTCUSDT&interval=1m&limit=360$/);
   h.respond(1, [row()]);
   await flush();
   assert.equal(h.events.filter(event => event.type === 'candles.history').length, 1);
-});
-
-test('depth snapshots publish independently while candle history loads, without synthetic delta sequences', async t => {
-  const h = harness();
-  t.after(() => h.connection.dispose());
-  h.respond(0, metadata);
-  await flush();
-  h.sockets[0].open();
-  h.sockets[0].send('btcusdt@depth20', book(900));
-  h.sockets[0].send('btcusdt@depth20', book(970));
-  h.sockets[0].send('btcusdt@depth20', book(910));
-  assert.deepEqual(
-    h.events.filter(event => event.type === 'depth.snapshot').map(event => event.book.sequence),
-    [900, 970],
-  );
-  assert.equal(
-    h.events.some(event => event.type === 'candles.history'),
-    false,
-  );
-  assert.equal(
-    h.events.some(event => event.type === 'depth.delta'),
-    false,
-  );
-  h.respond(1, [row()]);
-  await flush();
 });
 
 test('bootstrap merging and reordered kline messages cannot roll prices or cumulative volume backward', async t => {
@@ -180,20 +140,18 @@ test('bootstrap merging and reordered kline messages cannot roll prices or cumul
   );
 });
 
-test('malformed depth reports only its own stream and the next valid full snapshot can recover', async t => {
+test('a malformed kline reports an error and the next valid one publishes', async t => {
   const h = harness();
   t.after(() => h.connection.dispose());
   await h.ready();
   const count = h.events.length;
-  h.sockets[0].send('btcusdt@depth20', { ...book(), bids: [['105', '2']] });
+  h.sockets[0].send('btcusdt@kline_1m', kline(60_000, 12, 200));
   assert.deepEqual(
-    h.events
-      .slice(count)
-      .map(event => (event.type === 'stream.status' ? [event.stream, event.status] : event.type)),
-    [['depth', 'error']],
+    h.events.slice(count).map(event => (event.type === 'stream.status' ? event.status : event.type)),
+    ['error'],
   );
-  h.sockets[0].send('btcusdt@depth20', book(101));
-  assert.equal(h.events.at(-1)?.type, 'depth.snapshot');
+  h.sockets[0].send('btcusdt@kline_1m', kline(60_000, 13, 101));
+  assert.equal(h.events.at(-1)?.type, 'candle');
   assert.equal(h.sockets[0].readyState, 1);
 });
 
@@ -211,9 +169,7 @@ test('a skipped candle reconnects and refreshes history before subsequent live b
   assert.ok(
     h.events.some(
       event =>
-        event.type === 'stream.status' &&
-        event.stream === 'candles' &&
-        event.message === 'Candle gap; reconnecting to refresh history',
+        event.type === 'stream.status' && event.message === 'Candle gap; reconnecting to refresh history',
     ),
   );
   t.mock.timers.tick(1000);
@@ -251,7 +207,7 @@ test('pause aborts bootstrap and suppresses late REST and socket events; resume 
   assert.equal(h.sockets[0].readyState, 3);
   const count = h.events.length;
   h.respond(1, [row(60_000, 10, 101)]);
-  h.sockets[0].send('btcusdt@depth20', book());
+  h.sockets[0].send('btcusdt@kline_1m', kline());
   await flush();
   assert.equal(h.events.length, count);
   h.connection.setPaused(false);
@@ -295,27 +251,26 @@ test('Retry-After prevents early HTTP retries even through pause and resume', as
   assert.equal(h.requests.length, 2);
 });
 
-test('watchdog exposes a silent depth stream and reconnects without hiding active candles', async t => {
+test('watchdog marks a silent candle stream stale, then reconnects', async t => {
   t.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: 600_000 });
   const h = harness();
   t.after(() => h.connection.dispose());
   await h.ready();
-  h.sockets[0].send('btcusdt@depth20', book());
   t.mock.timers.tick(10_000);
-  assert.ok(
-    h.events.some(
-      event => event.type === 'stream.status' && event.stream === 'depth' && event.status === 'stale',
-    ),
-  );
-  h.sockets[0].send('btcusdt@kline_1m', kline(60_000, 20));
-  t.mock.timers.tick(20_000);
-  assert.equal(h.sockets[0].readyState, 3);
   assert.ok(
     h.events.some(
       event =>
         event.type === 'stream.status' &&
-        event.stream === 'depth' &&
-        event.message === 'No depth updates; reconnecting',
+        event.status === 'stale' &&
+        event.message === 'Waiting for candle updates',
+    ),
+  );
+  assert.equal(h.sockets[0].readyState, 1);
+  t.mock.timers.tick(20_000);
+  assert.equal(h.sockets[0].readyState, 3);
+  assert.ok(
+    h.events.some(
+      event => event.type === 'stream.status' && event.message === 'No candle updates; reconnecting',
     ),
   );
   t.mock.timers.tick(1000);
@@ -332,10 +287,10 @@ test('unexpected stream envelopes reconnect instead of attributing another marke
   t.after(() => h.connection.dispose());
   await h.ready();
   const count = h.events.length;
-  h.sockets[0].send('ethusdt@depth20', book());
+  h.sockets[0].send('ethusdt@kline_1m', { ...kline(), s: 'ETHUSDT' });
   assert.equal(h.sockets[0].readyState, 3);
   assert.equal(
-    h.events.slice(count).some(event => event.type === 'depth.snapshot'),
+    h.events.slice(count).some(event => event.type === 'candle'),
     false,
   );
   assert.ok(h.events.slice(count).every(event => event.type === 'stream.status' && event.status === 'error'));

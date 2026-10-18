@@ -4,14 +4,12 @@ import { ChartError } from './errors.ts';
 import { chartThemes, colorRGBA, indicatorColor, themeColor } from './themes.ts';
 import type { ResolvedChartTheme } from './themes.ts';
 import type { ChartGeometry } from './geometry.ts';
-import type { HeatmapStore } from './heatmap.ts';
 import type { ChartType, RuntimeState } from './types.ts';
 import { visibleRange } from './time-scale.ts';
 
 export interface RenderFrame {
   state: RuntimeState;
   geometry: ChartGeometry;
-  heatmap?: HeatmapStore;
   theme?: ResolvedChartTheme;
   /** Grid line positions in CSS pixels, usually the axis ticks. Without it, the theme's even grid is used. */
   grid?: { x: readonly number[]; y: readonly number[] };
@@ -20,7 +18,6 @@ export interface RendererStats {
   cpuMs: number;
   drawCalls: number;
   instances: number;
-  textureBytes: number;
   status: 'ready' | 'lost' | 'unavailable';
 }
 export interface ChartRenderer {
@@ -65,51 +62,6 @@ void main() {
   if (vY < vClipY.x || vY > vClipY.y) discard;
   outputColor = vColor;
 }`;
-const heatVertex = `#version 300 es
-precision highp float;
-layout(location=0) in vec2 corner;
-uniform vec2 resolution;
-uniform vec4 rect;
-out vec2 uv;
-void main() {
-  vec2 point = rect.xy + corner * rect.zw;
-  gl_Position = vec4(point / resolution * vec2(2., -2.) + vec2(-1., 1.), 0., 1.);
-  uv = corner;
-}`;
-const heatFragment = `#version 300 es
-precision highp float;
-in vec2 uv;
-uniform sampler2D heat;
-uniform vec4 view;
-uniform vec4 grid;
-uniform vec2 ring;
-uniform float intensity;
-uniform vec4 lowColor;
-uniform vec4 midColor;
-uniform vec4 highColor;
-uniform vec4 peakColor;
-uniform vec4 unknownColor;
-uniform float heatOpacity;
-out vec4 outputColor;
-void main() {
-  float col = floor(mix(view.x, view.y, uv.x));
-  float price = mix(view.w, view.z, uv.y);
-  float row = floor((price - grid.x) / grid.y);
-  if (col < 0. || col >= grid.w || row < 0. || row >= grid.z) discard;
-  float slot = mod(ring.x + col, ring.y);
-  vec2 value = texelFetch(heat, ivec2(int(slot), int(row)), 0).rg;
-  if (value.g < .75) {
-    float stripe = step(.65, fract((gl_FragCoord.x + gl_FragCoord.y) / 12.));
-    outputColor = vec4(unknownColor.rgb, stripe * unknownColor.a);
-    return;
-  }
-  float strength = clamp(value.r * intensity, 0., 1.);
-  vec3 cool = mix(lowColor.rgb, midColor.rgb, smoothstep(.08,.48,strength));
-  vec3 warm = mix(highColor.rgb, peakColor.rgb, smoothstep(.55,.95,strength));
-  vec3 color = mix(cool, warm, smoothstep(.4,.65,strength));
-  outputColor = vec4(color, smoothstep(.03,.65,strength) * heatOpacity);
-}`;
-
 type Color = readonly [number, number, number, number];
 const UNCLIPPED: readonly [number, number] = [-1e9, 1e9];
 const INSTANCE_FLOATS = 12;
@@ -137,11 +89,6 @@ const colorsFor = (theme: ResolvedChartTheme) => {
     histogramDown: token(chart.candleDown, 0.55),
     grid: colorRGBA(theme.palette.grid, chart.gridOpacity),
     indicator: colorRGBA(theme.palette.indicator),
-    heatLow: token(chart.heatmapLow),
-    heatMid: token(chart.heatmapMid),
-    heatHigh: token(chart.heatmapHigh),
-    heatPeak: token(chart.heatmapPeak),
-    heatUnknown: token(chart.heatmapUnknown, chart.heatmapUnknownOpacity),
   };
 };
 
@@ -164,7 +111,7 @@ function candleTones(state: RuntimeState, start: number, end: number): (Color | 
   return tones;
 }
 
-/** Instanced line/rectangle geometry and a bounded, incrementally updated depth texture. */
+/** Instanced line and rectangle geometry. */
 export class WebGL2Renderer implements ChartRenderer {
   readonly name = 'WebGL2';
   private theme = chartThemes.evergreen;
@@ -172,16 +119,9 @@ export class WebGL2Renderer implements ChartRenderer {
   private canvas!: HTMLCanvasElement;
   private gl!: WebGL2RenderingContext;
   private lineProgram!: WebGLProgram;
-  private heatProgram!: WebGLProgram;
   private lineVao!: WebGLVertexArrayObject;
-  private heatVao!: WebGLVertexArrayObject;
   private corners!: WebGLBuffer;
   private instances!: WebGLBuffer;
-  private texture!: WebGLTexture;
-  private uploadedRevision = -1;
-  private uploadedStore?: HeatmapStore;
-  private uploadedStamps: number[] = [];
-  private columnBytes = new Uint8Array(0);
   private instanceCapacity = 0;
   private vertices = new Float32Array(8192 * INSTANCE_FLOATS);
   private used = 0;
@@ -260,20 +200,13 @@ export class WebGL2Renderer implements ChartRenderer {
     const gl = this.gl;
     this.uniforms.clear();
     this.lineProgram = this.program(lineVertex, lineFragment);
-    this.heatProgram = this.program(heatVertex, heatFragment);
     this.corners = gl.createBuffer()!;
     gl.bindBuffer(gl.ARRAY_BUFFER, this.corners);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1]), gl.STATIC_DRAW);
-    const vao = () => {
-      const result = gl.createVertexArray()!;
-      gl.bindVertexArray(result);
-      gl.bindBuffer(gl.ARRAY_BUFFER, this.corners);
-      gl.enableVertexAttribArray(0);
-      gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
-      return result;
-    };
-    this.heatVao = vao();
-    this.lineVao = vao();
+    this.lineVao = gl.createVertexArray()!;
+    gl.bindVertexArray(this.lineVao);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
     this.instances = gl.createBuffer()!;
     gl.bindBuffer(gl.ARRAY_BUFFER, this.instances);
     for (const [location, count, offset] of [
@@ -288,14 +221,6 @@ export class WebGL2Renderer implements ChartRenderer {
       gl.vertexAttribPointer(location, count, gl.FLOAT, false, INSTANCE_FLOATS * 4, offset * 4);
       gl.vertexAttribDivisor(location, 1);
     }
-    this.texture = gl.createTexture()!;
-    gl.bindTexture(gl.TEXTURE_2D, this.texture);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    this.uploadedRevision = -1;
-    this.uploadedStore = undefined;
     this.instanceCapacity = 0;
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -314,54 +239,6 @@ export class WebGL2Renderer implements ChartRenderer {
       cache.set(name, location);
     }
     return location;
-  }
-
-  private upload(store: HeatmapStore): void {
-    const gl = this.gl;
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.texture);
-    if (this.uploadedStore !== store) {
-      gl.texImage2D(
-        gl.TEXTURE_2D,
-        0,
-        gl.RG8,
-        store.capacity,
-        store.grid.rows,
-        0,
-        gl.RG,
-        gl.UNSIGNED_BYTE,
-        null,
-      );
-      this.uploadedStamps = Array(store.capacity).fill(-1);
-      this.columnBytes = new Uint8Array(store.grid.rows * 2);
-      this.uploadedStore = store;
-      this.uploadedRevision = -1;
-    }
-    if (this.uploadedRevision === store.revision) return;
-    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    for (let slot = 0; slot < store.capacity; slot++) {
-      const column = store.columns[slot];
-      if (!column || this.uploadedStamps[slot] === store.stamps[slot]) continue;
-      for (let row = 0; row < store.grid.rows; row++) {
-        this.columnBytes[row * 2] = Math.round(
-          Math.min(1, Math.log1p(column.values[row]) / Math.log(45)) * 255,
-        );
-        this.columnBytes[row * 2 + 1] = column.valid ? 255 : 0;
-      }
-      gl.texSubImage2D(
-        gl.TEXTURE_2D,
-        0,
-        slot,
-        0,
-        1,
-        store.grid.rows,
-        gl.RG,
-        gl.UNSIGNED_BYTE,
-        this.columnBytes,
-      );
-      this.uploadedStamps[slot] = store.stamps[slot];
-    }
-    this.uploadedRevision = store.revision;
   }
 
   private line(
@@ -503,10 +380,9 @@ export class WebGL2Renderer implements ChartRenderer {
     for (const [x1, y1, x2, y2, , stroke] of segments) this.segment(x1, y1, x2, y2, width, stroke, clip);
   }
 
-  render({ state, geometry: g, heatmap, theme = chartThemes.evergreen, grid }: RenderFrame): RendererStats {
+  render({ state, geometry: g, theme = chartThemes.evergreen, grid }: RenderFrame): RendererStats {
     const start = performance.now();
-    if (this.status !== 'ready')
-      return { cpuMs: 0, drawCalls: 0, instances: 0, textureBytes: 0, status: this.status };
+    if (this.status !== 'ready') return { cpuMs: 0, drawCalls: 0, instances: 0, status: this.status };
     if (this.theme !== theme) {
       this.theme = theme;
       this.colors = colorsFor(theme);
@@ -525,40 +401,6 @@ export class WebGL2Renderer implements ChartRenderer {
     gl.disable(gl.SCISSOR_TEST);
     gl.clearColor(...colors.background);
     gl.clear(gl.COLOR_BUFFER_BIT);
-    let drawCalls = 0;
-    if (state.document.layers.heatmap && heatmap?.count) {
-      this.upload(heatmap);
-      gl.useProgram(this.heatProgram);
-      gl.bindVertexArray(this.heatVao);
-      gl.uniform2f(this.uniform(this.heatProgram, 'resolution'), g.width, g.height);
-      gl.uniform4f(this.uniform(this.heatProgram, 'rect'), g.left, g.top, g.plotWidth, g.plotHeight);
-      gl.uniform4f(
-        this.uniform(this.heatProgram, 'view'),
-        (g.fromMs - heatmap.firstTimeMs) / heatmap.grid.intervalMs,
-        (g.toMs - heatmap.firstTimeMs) / heatmap.grid.intervalMs,
-        g.minPrice,
-        g.maxPrice,
-      );
-      gl.uniform4f(
-        this.uniform(this.heatProgram, 'grid'),
-        heatmap.grid.minPrice,
-        heatmap.grid.binSize,
-        heatmap.grid.rows,
-        heatmap.count,
-      );
-      gl.uniform2f(this.uniform(this.heatProgram, 'ring'), heatmap.startSlot, heatmap.capacity);
-      gl.uniform1f(this.uniform(this.heatProgram, 'intensity'), state.document.intensity);
-      gl.uniform4f(this.uniform(this.heatProgram, 'lowColor'), ...colors.heatLow);
-      gl.uniform4f(this.uniform(this.heatProgram, 'midColor'), ...colors.heatMid);
-      gl.uniform4f(this.uniform(this.heatProgram, 'highColor'), ...colors.heatHigh);
-      gl.uniform4f(this.uniform(this.heatProgram, 'peakColor'), ...colors.heatPeak);
-      gl.uniform4f(this.uniform(this.heatProgram, 'unknownColor'), ...colors.heatUnknown);
-      gl.uniform1f(this.uniform(this.heatProgram, 'heatOpacity'), appearance.heatmapOpacity);
-      gl.uniform1i(this.uniform(this.heatProgram, 'heat'), 0);
-      gl.drawArrays(gl.TRIANGLES, 0, 6);
-      drawCalls++;
-    }
-    this.used = 0;
     if (grid && appearance.gridWidth) {
       for (const y of grid.y)
         this.line(g.left, y, g.left + g.plotWidth, y, appearance.gridWidth, colors.grid);
@@ -887,12 +729,10 @@ export class WebGL2Renderer implements ChartRenderer {
     );
     gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, this.used / INSTANCE_FLOATS);
     gl.disable(gl.SCISSOR_TEST);
-    drawCalls++;
     return {
       cpuMs: performance.now() - start,
-      drawCalls,
+      drawCalls: 1,
       instances: this.used / INSTANCE_FLOATS,
-      textureBytes: this.uploadedStore ? this.uploadedStore.capacity * this.uploadedStore.grid.rows * 2 : 0,
       status: this.status,
     };
   }
@@ -919,12 +759,9 @@ export class WebGL2Renderer implements ChartRenderer {
     if (!this.gl) return;
     const gl = this.gl;
     gl.deleteProgram(this.lineProgram);
-    gl.deleteProgram(this.heatProgram);
     gl.deleteBuffer(this.corners);
     gl.deleteBuffer(this.instances);
     gl.deleteVertexArray(this.lineVao);
-    gl.deleteVertexArray(this.heatVao);
-    gl.deleteTexture(this.texture);
     this.uniforms.clear();
   }
 }

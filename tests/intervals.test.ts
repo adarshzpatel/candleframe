@@ -79,12 +79,11 @@ function gappedFeed(history: Candle[]) {
       intervalMs: DAY,
       simulated: false,
       gaps: true,
-      depth: { kind: 'none', levels: 0 },
     },
     connect(callback) {
       emit = callback;
       callback({ type: 'candles.history', candles: history });
-      return { setPaused() {}, requestSnapshot() {}, dispose() {} };
+      return { setPaused() {}, dispose() {} };
     },
   };
   return { feed, emit: (event: FeedEvent) => emit(event) };
@@ -96,7 +95,7 @@ test('gapped feeds accept weekend-skipping history and live bars after a gap', (
   const runtime = new ChartRuntime(feed);
   runtime.start();
   const state = runtime.inspect();
-  assert.equal(state.streams.candles.status, 'live');
+  assert.equal(state.stream.status, 'live');
   assert.equal(state.candleCount, 200);
   const scale = runtime.timeScale();
   const { fromMs, toMs } = state.document.viewport;
@@ -107,7 +106,7 @@ test('gapped feeds accept weekend-skipping history and live bars after a gap', (
   assert.ok(next.timeMs - last.timeMs >= DAY);
   emit({ type: 'candle', candle: { ...next, timeMs: next.timeMs } });
   const after = runtime.inspect();
-  assert.equal(after.streams.candles.status, 'live');
+  assert.equal(after.stream.status, 'live');
   assert.equal(after.candleCount, 201);
   const view = after.document.viewport;
   assert.ok(
@@ -136,12 +135,12 @@ test('continuous feeds still reject a live bar that skips intervals', () => {
   const { feed, emit } = gappedFeed(bars);
   const runtime = new ChartRuntime({ ...feed, descriptor: { ...feed.descriptor, gaps: false } });
   runtime.start();
-  assert.equal(runtime.inspect().streams.candles.status, 'live');
+  assert.equal(runtime.inspect().stream.status, 'live');
   const monday = weekdays(1, bars.at(-1)!.timeMs + 3 * DAY)[0];
   emit({ type: 'candle', candle: monday });
   const state = runtime.inspect();
-  assert.equal(state.streams.candles.status, 'error');
-  assert.match(state.streams.candles.message ?? '', /CANDLE_GAP/);
+  assert.equal(state.stream.status, 'error');
+  assert.match(state.stream.message ?? '', /CANDLE_GAP/);
   runtime.dispose();
 });
 
@@ -159,7 +158,7 @@ test('simulated and Binance feeds accept the wider interval set', () => {
     const runtime = new ChartRuntime(feed);
     runtime.start();
     runtime.execute({ type: 'feed.pause', paused: true });
-    assert.equal(runtime.inspect().streams.candles.status, 'paused');
+    assert.equal(runtime.inspect().stream.status, 'paused');
     assert.ok(runtime.inspect().candleCount >= 300);
     runtime.dispose();
   }
@@ -206,7 +205,7 @@ function tradeBarFeed(interval: Interval, history: Candle[], gaps = true) {
     connect(callback) {
       emit = callback;
       callback({ type: 'candles.history', candles: history });
-      return { setPaused() {}, requestSnapshot() {}, dispose() {} };
+      return { setPaused() {}, dispose() {} };
     },
   };
   return { feed, emit: (event: FeedEvent) => emit(event) };
@@ -236,7 +235,7 @@ test('tick bars a millisecond apart load and update on a gapped axis', () => {
   emit({ type: 'candle', candle: { ...next, high: 121, close: 121, volume: 2 } });
   const state = runtime.inspect();
   assert.equal(state.candleCount, bars.length + 1);
-  assert.equal(state.streams.candles.status, 'live');
+  assert.equal(state.stream.status, 'live');
   runtime.dispose();
 });
 

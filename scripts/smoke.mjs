@@ -121,9 +121,9 @@ async function run(name, launch, contextOptions = {}) {
     await sleep(500);
     const equity = await page.evaluate(() => {
       const state = window.candleframe.inspect();
-      return { gaps: state.feed.gaps, candles: state.candleCount, depth: state.streams.depth.status };
+      return { gaps: state.feed.gaps, candles: state.candleCount, stream: state.stream.status };
     });
-    if (!equity.gaps || equity.candles < 100 || equity.depth !== 'unavailable')
+    if (!equity.gaps || equity.candles < 100 || equity.stream !== 'live')
       problems.push(`sample equity state: ${JSON.stringify(equity)}`);
     await shot('4-equity-gaps');
   } catch (error) {

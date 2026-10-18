@@ -98,7 +98,6 @@ export function createStaticFeed(options: StaticFeedOptions): StaticFeed {
       intervalMs,
       simulated: false,
       gaps: options.gaps ?? false,
-      depth: { kind: 'none', levels: 0 },
     },
     update(candle) {
       const last = candles.at(-1);
@@ -125,8 +124,7 @@ export function createStaticFeed(options: StaticFeedOptions): StaticFeed {
       };
       listeners.add(listener);
       if (candles.length) emit({ type: 'candles.history', candles: candles.slice(-initialBars) });
-      else
-        emit({ type: 'stream.status', stream: 'candles', status: 'error', message: 'No candles to display' });
+      else emit({ type: 'stream.status', status: 'error', message: 'No candles to display' });
       return {
         setPaused(value) {
           if (disposed || paused === value) return;
@@ -135,7 +133,6 @@ export function createStaticFeed(options: StaticFeedOptions): StaticFeed {
           if (!paused && candles.length)
             emit({ type: 'candles.history', candles: candles.slice(-initialBars) });
         },
-        requestSnapshot() {},
         loadOlder(beforeMs) {
           // Reply asynchronously, like a network feed; the runtime is mid-publication.
           queueMicrotask(() => {

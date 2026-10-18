@@ -9,7 +9,7 @@ description: Every chart command, with its properties and a minimal JSON example
 
 A command is a JSON object with a `type`. You send commands to `execute` or `preview` on a chart, a widget or a headless `ChartRuntime`. See [Drive the chart](../../agents/drive-the-chart/) for the loop, revisions and batches.
 
-This page lists all 25 command types. It is generated from `chartCommandSchema`, the JSON Schema (draft 2020-12) exported by `candleframe/core`. The schema checks shapes. The runtime also checks rules that depend on the chart's state, such as whether an id exists or whether a time range is 3 to 2,200 bars wide.
+This page lists all 24 command types. It is generated from `chartCommandSchema`, the JSON Schema (draft 2020-12) exported by `candleframe/core`. The schema checks shapes. The runtime also checks rules that depend on the chart's state, such as whether an id exists or whether a time range is 3 to 2,200 bars wide.
 
 Each example uses only the required properties, plus one optional property where the required ones alone would do nothing useful. The generator sends every example to a headless chart and fails if the runtime rejects it. Examples that name an existing drawing, indicator or group say so.
 
@@ -21,7 +21,7 @@ Show or hide a layer.
 
 | Property | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `layer` | one of `"heatmap"`, `"candles"`, `"volume"`, `"indicator"` | yes |  |
+| `layer` | one of `"candles"`, `"volume"`, `"indicator"` | yes |  |
 | `visible` | boolean | yes |  |
 
 ```json
@@ -29,21 +29,6 @@ Show or hide a layer.
   "type": "layer.set",
   "layer": "volume",
   "visible": true
-}
-```
-
-## `heatmap.intensity`
-
-Experimental heatmap brightness.
-
-| Property | Type | Required | Notes |
-| --- | --- | --- | --- |
-| `value` | number, 0.2 to 2 | yes |  |
-
-```json
-{
-  "type": "heatmap.intensity",
-  "value": 1
 }
 ```
 

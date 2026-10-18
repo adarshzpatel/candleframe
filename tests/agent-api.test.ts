@@ -135,7 +135,7 @@ test('the command schema covers every command type', () => {
     variants.map(v => v.properties.type.const),
     chartCommandTypes,
   );
-  assert.equal(chartCommandTypes.length, 25);
+  assert.equal(chartCommandTypes.length, 24);
   assert.equal((chartCommandBatchSchema as { maxItems: number }).maxItems, 500);
   const runtime = chart();
   assert.deepEqual(runtime.inspect().capabilities.commands, chartCommandTypes);

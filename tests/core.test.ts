@@ -1,26 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { OrderBook } from '../src/order-book.ts';
-import { binBook, HeatmapStore } from '../src/heatmap.ts';
 import { sma } from '../src/indicators.ts';
 import { ChartRuntime } from '../src/runtime.ts';
 import { createGeometry } from '../src/geometry.ts';
 import { dragPriceScale, dragTimeScale, panPriceScale, panTimeScale } from '../src/scales.ts';
-import type { Candle, DepthSnapshot, FeedAdapter, FeedEvent, FeedDescriptor } from '../src/types.ts';
+import type { Candle, FeedAdapter, FeedEvent, FeedDescriptor, Layer } from '../src/types.ts';
 
 const minute = 60000;
-const grid = { minPrice: 90, binSize: 5, rows: 8, intervalMs: minute };
-const snapshot = (sequence = 10): DepthSnapshot => ({
-  sequence,
-  bids: [
-    [99, 2],
-    [98, 3],
-  ],
-  asks: [
-    [101, 4],
-    [102, 5],
-  ],
-});
 const bar = (index: number, close = 100): Candle => ({
   timeMs: index * minute,
   open: 100,
@@ -29,12 +15,6 @@ const bar = (index: number, close = 100): Candle => ({
   close,
   volume: 10,
 });
-const column = (index: number, valid = true) => ({
-  timeMs: index * minute,
-  values: new Float32Array(8).fill(index),
-  valid,
-});
-
 test('axis drag scales expand and compress with fixed anchors and bounded ranges', () => {
   const time = (dx: number) => dragTimeScale(0, 180 * minute, dx, 600, minute);
   assert.ok(time(100).fromMs > 0);
@@ -89,101 +69,6 @@ test('time pan edges retain data and allow immediate reversal without snapping o
   assert.equal(panTimeScale(outlyingFrom, outlyingTo, 10, 1000, history).fromMs, outlyingFrom - 1.8 * minute);
 });
 
-test('book applies absolute quantities, deletions and duplicate messages without double counting', () => {
-  const book = new OrderBook();
-  book.snapshot(snapshot());
-  const delta = {
-    sequence: 11,
-    previousSequence: 10,
-    bids: [
-      [99, 7],
-      [98, 0],
-    ] as const,
-    asks: [],
-  };
-  assert.equal(book.delta(delta), 'applied');
-  assert.deepEqual(book.inspect().bids, [[99, 7]]);
-  assert.equal(book.delta(delta), 'duplicate');
-  assert.deepEqual(book.inspect().bids, [[99, 7]]);
-});
-
-test('a sequence gap blocks later deltas until a current snapshot arrives', () => {
-  const book = new OrderBook();
-  book.snapshot(snapshot());
-  assert.equal(book.delta({ sequence: 12, previousSequence: 11, bids: [[99, 20]], asks: [] }), 'gap');
-  assert.equal(book.inspect().status, 'stale');
-  assert.equal(book.delta({ sequence: 11, previousSequence: 10, bids: [], asks: [] }), 'gap');
-  assert.equal(book.snapshot(snapshot(9)), false);
-  assert.equal(book.inspect().status, 'stale');
-  book.snapshot(snapshot(14));
-  assert.equal(book.delta({ sequence: 15, previousSequence: 14, bids: [], asks: [] }), 'applied');
-  assert.equal(book.inspect().status, 'live');
-});
-
-test('crossed and malformed book updates preserve the last valid data and mark it stale', () => {
-  for (const bids of [
-    [[105, 2]],
-    [[99, -2]],
-    [
-      [99, 2],
-      [99, 3],
-    ],
-  ] as const) {
-    const book = new OrderBook();
-    book.snapshot(snapshot());
-    assert.throws(() => book.delta({ sequence: 11, previousSequence: 10, bids, asks: [] }));
-    assert.deepEqual(book.inspect(), { ...snapshot(), status: 'stale' });
-  }
-});
-
-test('heatmap ring wraps in chronological order and remains bounded', () => {
-  const heatmap = new HeatmapStore(grid, 3);
-  for (let i = 0; i < 8; i++) heatmap.append(column(i));
-  assert.equal(heatmap.count, 3);
-  assert.equal(heatmap.firstTimeMs, 5 * minute);
-  assert.deepEqual(
-    Array.from({ length: 3 }, (_, i) => heatmap.columns[(heatmap.startSlot + i) % 3]!.timeMs),
-    [5, 6, 7].map(n => n * minute),
-  );
-});
-
-test('depth gaps remain unknown after recovery within the same interval', () => {
-  const heatmap = new HeatmapStore(grid, 4);
-  heatmap.append(column(0));
-  heatmap.append(column(2, false));
-  heatmap.append(column(2, true));
-  assert.equal(heatmap.columns[1]!.valid, false);
-  assert.equal(heatmap.columns[2]!.valid, false);
-  heatmap.append(column(3));
-  assert.equal(heatmap.columns[3]!.valid, true);
-  assert.throws(() => heatmap.append(column(1)), /OUT_OF_ORDER/);
-});
-
-test('large feed gaps discard expired columns and reject invalid depth values', () => {
-  const heatmap = new HeatmapStore(grid, 4);
-  heatmap.append(column(0));
-  heatmap.append(column(1000));
-  assert.equal(heatmap.count, 4);
-  assert.equal(heatmap.firstTimeMs, 997 * minute);
-  assert.throws(() => heatmap.append({ ...column(1001), timeMs: NaN }), /INVALID_HEATMAP_COLUMN/);
-  assert.throws(() => new HeatmapStore({ ...grid, intervalMs: 0 }), /INVALID_HEATMAP_GRID/);
-});
-
-test('heatmap sums price bins and never represents a stale book as valid liquidity', () => {
-  const book = new OrderBook();
-  book.snapshot(snapshot());
-  const binned = binBook(book.inspect(), grid, 0);
-  assert.equal(binned.values[1], 5);
-  assert.equal(binned.values[2], 9);
-  assert.equal(binned.valid, true);
-  const missing = binBook({ ...book.inspect(), status: 'stale' }, grid, 0);
-  assert.equal(missing.valid, false);
-  assert.equal(
-    missing.values.reduce((a, b) => a + b),
-    0,
-  );
-});
-
 test('incremental SMA matches an independent rolling calculation after last-bar and historical corrections', () => {
   const candles = Array.from({ length: 10 }, (_, i) => bar(i, 100 + i));
   const plugin = sma(3);
@@ -218,25 +103,19 @@ function descriptor(symbol = 'TEST/USD', interval: FeedDescriptor['interval'] = 
       pricePrecision: 2,
       quantityPrecision: 3,
     },
-    depth: { kind: 'sequenced', levels: 80 },
   };
 }
 
-function harness(historyLength = 3, heatmap = true, maxCandles?: number) {
+function harness(historyLength = 3, maxCandles?: number) {
   let emit: (event: FeedEvent) => void = () => {};
-  const counts = { snapshots: 0, disposed: 0, paused: false, connects: 0 };
+  const counts = { disposed: 0, paused: false, connects: 0 };
   const feed: FeedAdapter = {
     descriptor: descriptor(),
     connect(listener) {
       counts.connects++;
       emit = listener;
       emit({ type: 'candles.history', candles: Array.from({ length: historyLength }, (_, i) => bar(i)) });
-      emit({ type: 'depth.snapshot', book: snapshot() });
-      emit({ type: 'heatmap.history', grid, columns: [column(0), column(1), column(2)] });
       return {
-        requestSnapshot() {
-          counts.snapshots++;
-        },
         setPaused(paused) {
           counts.paused = paused;
         },
@@ -246,32 +125,20 @@ function harness(historyLength = 3, heatmap = true, maxCandles?: number) {
       };
     },
   };
-  const runtime = new ChartRuntime(feed, [sma(2)], { heatmap, maxCandles });
+  const runtime = new ChartRuntime(feed, [sma(2)], { maxCandles });
   runtime.start();
   return { runtime, counts, emit: (event: FeedEvent) => emit(event) };
 }
 
-test('runtime resynchronizes sequence gaps and preserves their heatmap marker', () => {
-  const { runtime, counts, emit } = harness();
-  emit({ type: 'candle', candle: bar(2, 101) });
-  emit({ type: 'depth.delta', book: { ...snapshot(12), previousSequence: 11 } });
-  assert.equal(counts.snapshots, 1);
-  assert.equal(runtime.inspect().book.status, 'stale');
-  emit({ type: 'depth.snapshot', book: snapshot(14) });
-  emit({ type: 'candle', candle: bar(2, 102) });
-  emit({ type: 'depth.delta', book: { ...snapshot(15), previousSequence: 14 } });
-  assert.equal(runtime.inspect().book.status, 'live');
-  assert.equal(runtime.heatmap!.columns[2]!.valid, false);
-  assert.equal(runtime.inspect().indicators[0].value, 101);
-  runtime.dispose();
-});
-
 test('document commands validate atomically and reject stale agent revisions', () => {
   const { runtime } = harness();
   const original = runtime.exportDocument();
-  assert.throws(() => runtime.execute({ type: 'heatmap.intensity', value: NaN }), /INVALID_INTENSITY/);
+  assert.throws(
+    () => runtime.execute({ type: 'layer.set', layer: 'volume', visible: 'no' as unknown as boolean }),
+    /INVALID_LAYER/,
+  );
   assert.deepEqual(runtime.exportDocument(), original);
-  runtime.execute({ type: 'layer.set', layer: 'heatmap', visible: false }, 0);
+  runtime.execute({ type: 'layer.set', layer: 'volume', visible: false }, 0);
   assert.throws(() => runtime.execute({ type: 'drawing.clear' }, 0), /REVISION_CONFLICT/);
   assert.throws(() => runtime.restoreDocument({ ...original, symbol: 'OTHER' }), /SYMBOL_MISMATCH/);
   assert.equal(runtime.inspect().documentRevision, 1);
@@ -308,14 +175,14 @@ test('pause delegates to the feed and disposal is idempotent, stopping future pu
   runtime.subscribe(() => publications++);
   runtime.dispose();
   runtime.dispose();
-  emit({ type: 'depth.snapshot', book: snapshot(20) });
+  emit({ type: 'candle', candle: bar(3, 120) });
   assert.equal(counts.disposed, 1);
   assert.equal(publications, 1);
   assert.throws(() => runtime.execute({ type: 'drawing.clear' }), /DISPOSED/);
 });
 
 test('initial and streaming candle retention share the same bound', () => {
-  const { runtime, emit } = harness(2005, true, 2000);
+  const { runtime, emit } = harness(2005, 2000);
   assert.equal(runtime.inspect().candleCount, 2000);
   assert.equal(runtime.state().candles[0].timeMs, 5 * minute);
   emit({ type: 'candle', candle: bar(2005, 106) });
@@ -343,7 +210,6 @@ function controlledFeed(symbol = 'TEST/USD', interval: FeedDescriptor['interval'
         dispose() {
           counts.disposed++;
         },
-        requestSnapshot() {},
         setPaused() {},
       };
     },
@@ -357,7 +223,6 @@ test('switching markets rejects late old-generation data and clears stale chart 
   const runtime = new ChartRuntime(old.feed);
   runtime.start();
   old.emit({ type: 'candles.history', candles: [bar(0), bar(1)] });
-  old.emit({ type: 'depth.snapshot', book: snapshot() });
   runtime.execute({ type: 'priceScale.set', minPrice: 95, maxPrice: 105 });
   runtime.execute({
     type: 'drawing.add',
@@ -367,13 +232,10 @@ test('switching markets rejects late old-generation data and clears stale chart 
   runtime.replaceFeed(next.feed, revision);
   assert.equal(old.counts.disposed, 1);
   assert.equal(runtime.inspect().candleCount, 0);
-  assert.equal(runtime.inspect().book.sequence, -1);
   assert.equal(runtime.inspect().document.drawings.length, 0);
   assert.deepEqual(runtime.exportDocument().priceScale, { mode: 'auto' });
   old.emit({ type: 'candles.history', candles: [bar(0, 999)] });
-  old.emit({ type: 'depth.snapshot', book: snapshot(999) });
   assert.equal(runtime.inspect().candleCount, 0);
-  assert.equal(runtime.inspect().book.sequence, -1);
   next.emit({ type: 'candles.history', candles: [bar(0, 200), bar(5, 201)] });
   assert.equal(runtime.inspect().latestCandle!.close, 201);
   assert.ok(createGeometry(runtime.state(), 800, 500).maxPrice > 201);
@@ -396,7 +258,7 @@ test('paused market changes defer connecting and ignore incoming data until resu
   assert.equal(runtime.inspect().latestCandle!.timeMs, 0);
   runtime.replaceFeed(next.feed);
   assert.equal(next.counts.connects, 0);
-  assert.equal(runtime.inspect().streams.candles.status, 'paused');
+  assert.equal(runtime.inspect().stream.status, 'paused');
   runtime.execute({ type: 'feed.pause', paused: false });
   assert.equal(next.counts.connects, 1);
   next.emit({ type: 'candles.history', candles: [bar(0, 202)] });
@@ -404,42 +266,29 @@ test('paused market changes defer connecting and ignore incoming data until resu
   runtime.dispose();
 });
 
-test('depth health and updates are independent of candles and indicator calculation', () => {
+test('feed status events set stream health until candles arrive again', () => {
   const feed = controlledFeed();
-  let calculations = 0;
-  const plugin = sma(2),
-    calculate = plugin.calculate;
-  plugin.calculate = (...args) => {
-    calculations++;
-    return calculate(...args);
-  };
-  const runtime = new ChartRuntime(feed.feed, [plugin]);
+  const runtime = new ChartRuntime(feed.feed);
   runtime.start();
   feed.emit({ type: 'candles.history', candles: [bar(0), bar(1)] });
-  feed.emit({ type: 'depth.snapshot', book: snapshot() });
-  feed.emit({ type: 'depth.snapshot', book: snapshot(200) });
-  assert.equal(calculations, 1);
-  assert.equal(runtime.inspect().book.status, 'live');
-  feed.emit({ type: 'stream.status', stream: 'depth', status: 'error', message: 'Depth unavailable' });
+  assert.equal(runtime.inspect().stream.status, 'live');
+  feed.emit({ type: 'stream.status', status: 'error', message: 'Feed unavailable' });
+  assert.equal(runtime.inspect().stream.status, 'error');
+  assert.match(runtime.inspect().error!, /Feed unavailable/);
   feed.emit({ type: 'candle', candle: bar(2, 110) });
-  assert.equal(runtime.inspect().streams.candles.status, 'live');
-  assert.equal(runtime.inspect().streams.depth.status, 'error');
-  assert.equal(runtime.inspect().book.status, 'stale');
-  assert.match(runtime.inspect().error!, /Depth unavailable/);
+  assert.equal(runtime.inspect().stream.status, 'live');
+  assert.equal(runtime.inspect().error, null);
   runtime.dispose();
 });
 
-test('disabled heatmaps allocate no history and cannot return through restore or commands', () => {
-  const { runtime } = harness(3, false);
-  assert.equal(runtime.heatmap, undefined);
-  assert.equal(runtime.inspect().heatmap, null);
+test('layouts with retired layers and settings restore without them', () => {
+  const { runtime } = harness();
   const document = runtime.exportDocument();
-  document.layers.heatmap = true;
-  runtime.restoreDocument(document);
-  assert.equal(runtime.exportDocument().layers.heatmap, false);
+  runtime.restoreDocument({ ...document, layers: { ...document.layers, heatmap: true }, intensity: 1.4 });
+  assert.deepEqual(runtime.exportDocument(), document);
   assert.throws(
-    () => runtime.execute({ type: 'layer.set', layer: 'heatmap', visible: true }),
-    /HEATMAP_DISABLED/,
+    () => runtime.execute({ type: 'layer.set', layer: 'heatmap' as Layer, visible: true }),
+    /INVALID_LAYER/,
   );
   assert.throws(() => runtime.restoreDocument({ ...document, interval: '5m' }), /MARKET_MISMATCH/);
   runtime.dispose();
@@ -464,14 +313,14 @@ test('interval changes preserve time-price drawings and undo but isolate saved l
   runtime.dispose();
 });
 
-test('legacy layouts migrate only for the original market and retain the disabled heatmap policy', () => {
+test('legacy layouts migrate only for the original market', () => {
   const feed = controlledFeed('BTC/USD');
   const runtime = new ChartRuntime(feed.feed);
   runtime.start();
   const { feedId: _id, interval: _interval, ...document } = runtime.exportDocument();
-  runtime.restoreDocument({ ...document, version: 1, layers: { ...document.layers, heatmap: true } });
+  runtime.restoreDocument({ ...document, version: 1 });
   assert.equal(runtime.exportDocument().version, 4);
-  assert.equal(runtime.exportDocument().layers.heatmap, false);
+  assert.deepEqual(runtime.exportDocument().layers, document.layers);
   runtime.dispose();
 });
 

@@ -54,7 +54,7 @@ function runtimeFixture() {
           volume: 1,
         })),
       });
-      return { setPaused() {}, requestSnapshot() {}, dispose() {} };
+      return { setPaused() {}, dispose() {} };
     },
   });
   chart.start();

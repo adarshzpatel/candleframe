@@ -76,7 +76,6 @@ export type {
   SeriesIndicator,
   TrendState,
 } from './indicators.ts';
-export { OrderBook } from './order-book.ts';
 export {
   DrawingRegistry,
   builtInDrawingTools,

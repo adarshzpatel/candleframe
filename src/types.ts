@@ -30,26 +30,6 @@ export type FootprintLevel = readonly [price: number, buyVolume: number, sellVol
  * A sweep through several prices is one print at its volume-weighted price.
  */
 export type LargeTrade = readonly [price: number, size: number, side: 1 | -1, timeMs: number];
-export type Level = readonly [price: number, quantity: number];
-export interface DepthSnapshot {
-  sequence: number;
-  bids: readonly Level[];
-  asks: readonly Level[];
-}
-export interface DepthDelta extends DepthSnapshot {
-  previousSequence: number;
-}
-export interface DepthColumn {
-  timeMs: number;
-  values: Float32Array;
-  valid: boolean;
-}
-export interface HeatmapGrid {
-  minPrice: number;
-  binSize: number;
-  rows: number;
-  intervalMs: number;
-}
 import type { Interval } from './intervals.ts';
 export type { Interval, IntervalUnit } from './intervals.ts';
 /** Common intervals, for pickers. Any `intervalToMs`-parseable interval is accepted. */
@@ -85,18 +65,14 @@ export interface FeedDescriptor {
   interval: Interval;
   intervalMs: number;
   simulated: boolean;
-  /** `none` (with `levels: 0`) for feeds without an order book. */
-  depth: { kind: 'snapshots' | 'sequenced' | 'none'; levels: number };
   /**
    * True when history may skip intervals: exchange sessions, weekends, holidays.
    * The time axis then collapses the gaps, and candle times need only ascend.
    */
   gaps?: boolean;
 }
-export type Stream = 'candles' | 'depth';
 export interface StreamHealth {
-  /** `unavailable` marks the depth stream of a feed declared with `depth.kind: 'none'`. */
-  status: 'loading' | 'live' | 'stale' | 'error' | 'paused' | 'unavailable';
+  status: 'loading' | 'live' | 'stale' | 'error' | 'paused';
   message: string | null;
   receivedAtMs: number | null;
 }
@@ -110,13 +86,9 @@ export type FeedEvent =
    */
   | { type: 'candles.prepend'; candles: readonly Candle[]; exhausted?: boolean; error?: string }
   | { type: 'candle'; candle: Candle }
-  | { type: 'depth.snapshot'; book: DepthSnapshot }
-  | { type: 'depth.delta'; book: DepthDelta }
-  | { type: 'stream.status'; stream: Stream; status: 'loading' | 'stale' | 'error'; message?: string }
-  | { type: 'heatmap.history'; grid: HeatmapGrid; columns: readonly DepthColumn[] };
+  | { type: 'stream.status'; status: 'loading' | 'stale' | 'error'; message?: string };
 export interface FeedConnection {
   setPaused(paused: boolean): void;
-  requestSnapshot(): void;
   dispose(): void;
   /** Optional. Load candles that end before `beforeMs`, then emit `candles.prepend`. */
   loadOlder?(beforeMs: number): void;
@@ -232,7 +204,7 @@ export interface DocumentIndicator {
   inputs: Record<string, number>;
   visible: boolean;
 }
-export type Layer = 'heatmap' | 'candles' | 'volume' | 'indicator';
+export type Layer = 'candles' | 'volume' | 'indicator';
 export interface Anchor {
   timeMs: number;
   price: number;
@@ -283,7 +255,6 @@ export interface ChartDocument {
   symbol: string;
   interval: Interval;
   layers: Record<Layer, boolean>;
-  intensity: number;
   viewport: { fromMs: number; toMs: number; following: boolean };
   priceScale: PriceScale;
   /** Omitted means candles. */
@@ -298,7 +269,6 @@ export interface ChartDocument {
 }
 export type ChartCommand =
   | { type: 'layer.set'; layer: Layer; visible: boolean }
-  | { type: 'heatmap.intensity'; value: number }
   | { type: 'viewport.set'; fromMs: number; toMs: number; priceScale?: PriceScale }
   | { type: 'viewport.reset' }
   | { type: 'priceScale.set'; minPrice: number; maxPrice: number }
@@ -323,12 +293,6 @@ export type ChartCommand =
   | { type: 'history.undo' }
   | { type: 'history.redo' }
   | { type: 'feed.pause'; paused: boolean };
-export interface BookView {
-  status: 'waiting' | 'live' | 'stale';
-  sequence: number;
-  bids: readonly Level[];
-  asks: readonly Level[];
-}
 export interface ActiveIndicator {
   plugin: IndicatorPlugin;
   /** The first output, one value per candle. */
@@ -339,10 +303,9 @@ export interface ActiveIndicator {
 export interface RuntimeState {
   feed: FeedDescriptor;
   generation: number;
-  streams: Readonly<Record<Stream, StreamHealth>>;
+  stream: StreamHealth;
   candles: readonly Candle[];
   document: Readonly<ChartDocument>;
-  book: BookView;
   /** Active indicators with computed values. `series` holds one array per output. */
   indicators: readonly ActiveIndicator[];
   paused: boolean;

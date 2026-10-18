@@ -1,17 +1,6 @@
 import { ChartError } from './errors.ts';
-import { binBook } from './heatmap.ts';
 import { alignTime, intervalToMs } from './intervals.ts';
-import type {
-  Candle,
-  DepthSnapshot,
-  FeedAdapter,
-  FootprintLevel,
-  FeedConnection,
-  HeatmapGrid,
-  Instrument,
-  Interval,
-  Level,
-} from './types.ts';
+import type { Candle, FeedAdapter, FootprintLevel, FeedConnection, Instrument, Interval } from './types.ts';
 
 const MINUTE = 60_000;
 const START_TIME = Date.UTC(2026, 9, 2, 12);
@@ -29,36 +18,6 @@ function random(seed: number): () => number {
     state = (Math.imul(1664525, state) + 1013904223) >>> 0;
     return state / 4294967296;
   };
-}
-
-/** Synthetic quantities only; this is not recorded exchange liquidity. */
-export function simulatedBook(
-  price: number,
-  sequence: number,
-  phase: number,
-  priceStep = 5,
-  quantityScale = 1,
-): DepthSnapshot {
-  const midpoint = Math.round(price / priceStep) * priceStep;
-  const side = (direction: -1 | 1): Level[] =>
-    Array.from({ length: 80 }, (_, i) => {
-      const p = Number((midpoint + direction * (i + 1) * priceStep).toFixed(8));
-      const referencePrice = (p / priceStep) * 5;
-      const wall = Math.exp(-Math.pow(((referencePrice % 200) - 100) / 15, 2)) * 15;
-      const broad = 1.3 + Math.pow(Math.sin(referencePrice * 0.018 + phase * 0.025), 8) * 7;
-      const wave = 0.6 + 0.4 * Math.sin(referencePrice * 0.07 + phase * 0.04);
-      return [p, Math.round((broad + wall) * wave * quantityScale * 1000) / 1000];
-    });
-  return { sequence, bids: side(-1), asks: side(1) };
-}
-
-function diff(previous: readonly Level[], next: readonly Level[]): Level[] {
-  const old = new Map(previous);
-  const fresh = new Map(next);
-  const changes: Level[] = [];
-  for (const [p, q] of fresh) if (old.get(p) !== q) changes.push([p, q]);
-  for (const p of old.keys()) if (!fresh.has(p)) changes.push([p, 0]);
-  return changes;
 }
 
 type Flow = Map<number, [buy: number, sell: number]>;
@@ -145,16 +104,10 @@ function aggregate(candles: readonly Candle[], intervalMs: number): Candle[] {
   return result.slice(-360);
 }
 
-export interface SimulatedFeed extends FeedAdapter {
-  /** Omit one depth sequence while candles continue. For the recovery exercise. */
-  injectGap(): void;
-}
-
 export interface SimulatedFeedOptions {
   seed?: number;
   symbol?: keyof typeof instruments;
   interval?: Interval;
-  heatmap?: boolean;
   /**
    * Simulate individual trades at irregular times, with bursts, heavy-tailed sizes and
    * aggressor imbalance, instead of one price step every 250 ms.
@@ -164,7 +117,7 @@ export interface SimulatedFeedOptions {
   speed?: number;
 }
 
-export function createSimulatedFeed(input: number | SimulatedFeedOptions = 42): SimulatedFeed {
+export function createSimulatedFeed(input: number | SimulatedFeedOptions = 42): FeedAdapter {
   const options = typeof input === 'number' ? { seed: input } : input;
   const seed = options.seed ?? 42;
   const symbol = options.symbol ?? 'BTC/USD';
@@ -182,7 +135,7 @@ export function createSimulatedFeed(input: number | SimulatedFeedOptions = 42): 
   const priceScale = preset.price / 68_000;
   const quantityScale = 1 / priceScale;
   const rounded = (price: number) => Number(price.toFixed(preset.precision));
-  // Footprint buckets are a fifth of a book step at 1m and widen with the interval:
+  // Footprint buckets are a fifth of a price step at 1m and widen with the interval:
   // 4 fifths at 15m, 38 at 1d. Charts merge them into taller rows when zoomed out.
   const bucket = Number(
     ((preset.step / 5) * Math.ceil(Math.sqrt(intervalMs / MINUTE))).toFixed(preset.precision),
@@ -196,7 +149,6 @@ export function createSimulatedFeed(input: number | SimulatedFeedOptions = 42): 
     pricePrecision: preset.precision,
     quantityPrecision: preset.quantityPrecision,
   };
-  const connections = new Set<() => void>();
   return {
     descriptor: {
       id: 'simulated',
@@ -205,10 +157,6 @@ export function createSimulatedFeed(input: number | SimulatedFeedOptions = 42): 
       interval,
       intervalMs,
       simulated: true,
-      depth: { kind: 'sequenced', levels: 80 },
-    },
-    injectGap() {
-      for (const drop of connections) drop();
     },
     connect(emit): FeedConnection {
       const rng = random(seed);
@@ -272,45 +220,10 @@ export function createSimulatedFeed(input: number | SimulatedFeedOptions = 42): 
       let current = { ...candles.at(-1)! };
       let currentFlow: Flow = flows.get(current.timeMs) ?? new Map();
       let currentSwing: Swing = swings.get(current.timeMs) ?? swing();
-      let sequence = 1000;
-      let steps = 0;
       let clockMs = START_TIME;
-      let book = simulatedBook(close, sequence, HISTORY_MINUTES, preset.step, quantityScale);
       let paused = false;
       let disposed = false;
-      let omitted = false;
-      let recovering: ReturnType<typeof setTimeout> | undefined;
-      const drop = () => {
-        omitted = true;
-      };
-      connections.add(drop);
       emit({ type: 'candles.history', candles });
-      emit({ type: 'depth.snapshot', book });
-      if (options.heatmap) {
-        const low = Math.min(...candles.map(bar => bar.low)) - 80 * preset.step;
-        const high = Math.max(...candles.map(bar => bar.high)) + 80 * preset.step;
-        const binSize = Math.ceil((high - low) / 256 / preset.step) * preset.step;
-        const grid: HeatmapGrid = {
-          minPrice: Math.floor(low / binSize) * binSize,
-          binSize,
-          rows: 256,
-          intervalMs,
-        };
-        emit({
-          type: 'heatmap.history',
-          grid,
-          columns: candles.map((bar, i) =>
-            binBook(
-              {
-                ...simulatedBook(bar.close, i, i, preset.step, quantityScale),
-                status: 'live',
-              },
-              grid,
-              bar.timeMs,
-            ),
-          ),
-        });
-      }
       /** Applies one trade at `timeMs`, opening a new bar when the clock crosses into one. */
       const trade = (timeMs: number, price: number, size: number, buyShare: number) => {
         const barMs = alignTime(timeMs, intervalMs);
@@ -346,28 +259,10 @@ export function createSimulatedFeed(input: number | SimulatedFeedOptions = 42): 
           currentSwing,
         );
       };
-      const publishDepth = (price: number, phase: number) => {
-        const old = book;
-        book = simulatedBook(price, ++sequence, phase, preset.step, quantityScale);
-        if (omitted) {
-          omitted = false;
-          return;
-        }
-        emit({
-          type: 'depth.delta',
-          book: {
-            sequence,
-            previousSequence: sequence - 1,
-            bids: diff(old.bids, book.bids),
-            asks: diff(old.asks, book.asks),
-          },
-        });
-      };
       const timer = options.trades
         ? tradeEngine()
         : setInterval(() => {
             if (paused || disposed) return;
-            steps++;
             clockMs += stepMs / 6;
             const next = rounded(
               Math.max(
@@ -379,10 +274,7 @@ export function createSimulatedFeed(input: number | SimulatedFeedOptions = 42): 
             // Upticks are mostly lifted offers, downticks mostly hit bids.
             const lean = next > current.close ? 0.72 : next < current.close ? 0.28 : 0.5;
             trade(clockMs, next, traded, Math.max(0.05, Math.min(0.95, lean + (flowRng() - 0.5) * 0.3)));
-            // Depth transport problems never prevent a candle publication.
             emit({ type: 'candle', candle: { ...current } });
-            if (disposed || paused) return;
-            publishDepth(next, HISTORY_MINUTES + steps / 6);
           }, 250);
 
       /**
@@ -398,8 +290,7 @@ export function createSimulatedFeed(input: number | SimulatedFeedOptions = 42): 
         const priceTick = preset.step / 5;
         let intensity = 1,
           imbalance = 0,
-          price = current.close,
-          sinceDepth = 0;
+          price = current.close;
         return setInterval(() => {
           if (paused || disposed) return;
           const elapsed = TRADE_STEP_MS * speed;
@@ -425,7 +316,7 @@ export function createSimulatedFeed(input: number | SimulatedFeedOptions = 42): 
             const buy = tradeRng() < 0.5 + 0.3 * Math.tanh(imbalance) + 0.12 * pull;
             const block = tradeRng() < 0.01 ? 8 + tradeRng() * 12 : 1;
             const size = 0.018 * quantityScale * Math.exp(normal() * 0.9) * block;
-            // Most prints trade at the touch; larger ones walk the book.
+            // Most prints trade at the last price; larger ones move it several ticks.
             const ticks =
               tradeRng() < 0.45 ? 0 : 1 + Math.floor(-Math.log(1 - tradeRng()) * Math.sqrt(block));
             price = rounded(
@@ -438,24 +329,13 @@ export function createSimulatedFeed(input: number | SimulatedFeedOptions = 42): 
           }
           clockMs += elapsed;
           if (count) emit({ type: 'candle', candle: { ...current } });
-          sinceDepth += TRADE_STEP_MS;
-          if (disposed || paused || sinceDepth < 250) return;
-          sinceDepth = 0;
-          steps++;
-          publishDepth(price, HISTORY_MINUTES + steps / 6);
         }, TRADE_STEP_MS);
       }
       return {
         setPaused(value) {
           if (disposed || value === paused) return;
           paused = value;
-          if (paused) {
-            clearTimeout(recovering);
-            recovering = undefined;
-          } else {
-            emit({ type: 'candle', candle: { ...current } });
-            if (!disposed && !paused) emit({ type: 'depth.snapshot', book });
-          }
+          if (!paused) emit({ type: 'candle', candle: { ...current } });
         },
         loadOlder(beforeMs) {
           queueMicrotask(() => {
@@ -489,19 +369,10 @@ export function createSimulatedFeed(input: number | SimulatedFeedOptions = 42): 
             emit({ type: 'candles.prepend', candles: page });
           });
         },
-        requestSnapshot() {
-          if (disposed || paused || recovering) return;
-          recovering = setTimeout(() => {
-            recovering = undefined;
-            if (!disposed && !paused) emit({ type: 'depth.snapshot', book });
-          }, 1100);
-        },
         dispose() {
           if (disposed) return;
           disposed = true;
           clearInterval(timer);
-          clearTimeout(recovering);
-          connections.delete(drop);
         },
       };
     },

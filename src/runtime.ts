@@ -1,6 +1,4 @@
 import { ChartError, toChartError } from './errors.ts';
-import { binBook, HeatmapStore } from './heatmap.ts';
-import { OrderBook } from './order-book.ts';
 import { DrawingRegistry, translateDrawing } from './drawing-tools.ts';
 import {
   gather,
@@ -40,7 +38,6 @@ import type {
   DocumentIndicator,
   OlderHistory,
   RuntimeState,
-  Stream,
   StreamHealth,
 } from './types.ts';
 
@@ -81,7 +78,6 @@ export type PreviewResult =
   | { ok: true; document: ChartDocument; created: string[] }
   | { ok: false; error: ReturnType<ChartError['toJSON']> };
 export interface RuntimeOptions {
-  heatmap?: boolean;
   drawingTools?: readonly DrawingToolDefinition[];
   /** Candles kept in memory, including paged history. 100 to 100,000; default 10,000. */
   maxCandles?: number;
@@ -138,15 +134,7 @@ function validateDescriptor(d: FeedDescriptor): FeedDescriptor {
     !d.id ||
     typeof d.label !== 'string' ||
     typeof d.simulated !== 'boolean' ||
-    (d.gaps !== undefined && typeof d.gaps !== 'boolean') ||
-    !d.depth ||
-    !(
-      (d.depth.kind === 'none' && d.depth.levels === 0) ||
-      (['sequenced', 'snapshots'].includes(d.depth.kind) &&
-        Number.isInteger(d.depth.levels) &&
-        d.depth.levels >= 1 &&
-        d.depth.levels <= 2048)
-    )
+    (d.gaps !== undefined && typeof d.gaps !== 'boolean')
   )
     throw new ChartError('INVALID_FEED');
   validateInstrument(d.instrument);
@@ -256,7 +244,6 @@ export interface ParseIndicatorOptions {
 export function parseDocument(
   value: unknown,
   feed: FeedDescriptor,
-  heatmapEnabled = false,
   registry = new DrawingRegistry(),
   /** Measures the viewport in bars. Defaults to a continuous scale. */
   timeScale: Pick<TimeScale, 'bars'> = createTimeScale([], feed.intervalMs),
@@ -293,20 +280,9 @@ export function parseDocument(
         actual: { feedId: doc.feedId, interval: doc.interval },
       },
     });
-  if (
-    !doc.layers ||
-    !['heatmap', 'candles', 'volume', 'indicator'].every(
-      k => typeof doc.layers?.[k as keyof ChartDocument['layers']] === 'boolean',
-    )
-  )
+  const layers = doc.layers;
+  if (!layers || ![layers.candles, layers.volume, layers.indicator].every(v => typeof v === 'boolean'))
     throw new ChartError('INVALID_LAYERS');
-  if (
-    typeof doc.intensity !== 'number' ||
-    !Number.isFinite(doc.intensity) ||
-    doc.intensity < 0.2 ||
-    doc.intensity > 2
-  )
-    throw new ChartError('INVALID_INTENSITY');
   const v = validateViewport(doc.viewport, timeScale);
   const priceScale = validatePriceScale(doc.priceScale, feed.instrument.tickSize);
   const style = validateChartStyle(doc.chartType, doc.footprint);
@@ -329,8 +305,8 @@ export function parseDocument(
     feedId: feed.id,
     symbol: feed.instrument.symbol,
     interval: feed.interval,
-    layers: { ...doc.layers, heatmap: heatmapEnabled && doc.layers.heatmap },
-    intensity: doc.intensity,
+    // Older layouts may carry other layers and settings; only these are kept.
+    layers: { candles: layers.candles, volume: layers.volume, indicator: layers.indicator },
     viewport: v,
     priceScale,
     ...style,
@@ -352,7 +328,6 @@ export class ChartRuntime {
   /** What charts and indicators see: `candles`, or Heikin Ashi bars built from them when `heikin`. */
   private bars: Candle[] = this.candles;
   private heikin = false;
-  private book = new OrderBook();
   private adapter: FeedAdapter;
   private descriptor: FeedDescriptor;
   private connection?: FeedConnection;
@@ -371,9 +346,8 @@ export class ChartRuntime {
   private disposed = false;
   private started = false;
   private generation = 0;
-  private snapshotNeeded = false;
   private initializedViewport = false;
-  private streams: Record<Stream, StreamHealth> = { candles: loading(), depth: loading() };
+  private stream: StreamHealth = loading();
   private olderHistory: OlderHistory = { status: 'unavailable', message: null };
   private batching = false;
   private remembered = 0;
@@ -381,14 +355,11 @@ export class ChartRuntime {
   private idempotency = new Map<string, { fingerprint: string; result: CommandResult }>();
   readonly maxCandles: number;
   private scaleCache?: { candles: readonly Candle[]; descriptor: FeedDescriptor; scale: TimeScale };
-  readonly heatmapEnabled: boolean;
   readonly drawingRegistry: DrawingRegistry;
-  heatmap?: HeatmapStore;
 
   constructor(feed: FeedAdapter, plugins: readonly IndicatorPlugin[] = [], options: RuntimeOptions = {}) {
     this.adapter = feed;
     this.descriptor = validateDescriptor(feed.descriptor);
-    this.heatmapEnabled = options.heatmap ?? false;
     this.maxCandles = options.maxCandles ?? 10_000;
     if (!Number.isInteger(this.maxCandles) || this.maxCandles < 100 || this.maxCandles > 100_000)
       throw new ChartError('INVALID_OPTION', 'maxCandles must be an integer from 100 to 100000', {
@@ -425,7 +396,6 @@ export class ChartRuntime {
     }));
     this.document = this.newDocument();
     this.syncIndicators();
-    this.setStatus('depth', 'loading');
   }
   private newDocument(): ChartDocument {
     const d = this.descriptor;
@@ -434,8 +404,7 @@ export class ChartRuntime {
       feedId: d.id,
       symbol: d.instrument.symbol,
       interval: d.interval,
-      layers: { heatmap: this.heatmapEnabled, candles: true, volume: true, indicator: true },
-      intensity: 1,
+      layers: { candles: true, volume: true, indicator: true },
       viewport: { fromMs: 0, toMs: this.defaultBars * d.intervalMs, following: true },
       priceScale: { mode: 'auto' },
       indicators: structuredClone(this.defaultIndicators),
@@ -443,17 +412,10 @@ export class ChartRuntime {
     };
   }
   private parse(value: unknown): ChartDocument {
-    return parseDocument(
-      value,
-      this.descriptor,
-      this.heatmapEnabled,
-      this.drawingRegistry,
-      this.timeScale(),
-      {
-        registry: this.indicatorRegistry,
-        defaults: this.defaultIndicators,
-      },
-    );
+    return parseDocument(value, this.descriptor, this.drawingRegistry, this.timeScale(), {
+      registry: this.indicatorRegistry,
+      defaults: this.defaultIndicators,
+    });
   }
   private resolveIndicator(entry: DocumentIndicator): IndicatorPlugin | undefined {
     const seed = this.seeds.get(entry.id);
@@ -573,13 +535,9 @@ export class ChartRuntime {
       this.connection = connection;
       if (this.olderHistory.status === 'unavailable' && connection.loadOlder)
         this.olderHistory = { status: 'idle', message: null };
-      if (this.snapshotNeeded) {
-        this.snapshotNeeded = false;
-        connection.requestSnapshot();
-      }
       if (this.paused) connection.setPaused(true);
     } catch (error) {
-      for (const stream of ['candles', 'depth'] as const) this.setStatus(stream, 'error', String(error));
+      this.setStatus('error', String(error));
       this.publish();
     }
   }
@@ -597,8 +555,6 @@ export class ChartRuntime {
     this.adapter = feed;
     this.descriptor = descriptor;
     this.candles = this.bars = [];
-    this.book = new OrderBook();
-    this.heatmap = undefined;
     if (sameInstrument) {
       // Drawings survive an interval switch, so their undo steps do too. Undo
       // restores whole documents; point the saved ones at the new feed.
@@ -617,16 +573,13 @@ export class ChartRuntime {
     this.indicators.forEach(slot => {
       slot.series = [];
     });
-    this.streams = { candles: loading(), depth: loading() };
-    this.setStatus('depth', 'loading');
-    if (this.paused) for (const stream of ['candles', 'depth'] as const) this.setStatus(stream, 'paused');
-    this.snapshotNeeded = false;
+    this.stream = loading();
+    if (this.paused) this.setStatus('paused');
     this.initializedViewport = false;
     this.olderHistory = { status: 'unavailable', message: null };
     this.document = {
       ...this.newDocument(),
       layers: { ...previous.layers },
-      intensity: previous.intensity,
       // Log scale is a preference like the layers; the range itself refits.
       priceScale: previous.priceScale.log ? { mode: 'auto', log: true } : { mode: 'auto' },
       ...validateChartStyle(previous.chartType, previous.footprint),
@@ -642,24 +595,12 @@ export class ChartRuntime {
     this.publish();
     if (this.started && !this.paused) this.connect();
   }
-  private setStatus(stream: Stream, status: StreamHealth['status'], message: string | null = null): void {
-    if (stream === 'depth' && this.descriptor.depth.kind === 'none') {
-      status = 'unavailable';
-      message = null;
-    }
-    this.streams = {
-      ...this.streams,
-      [stream]: {
-        status,
-        message,
-        receivedAtMs: status === 'live' ? Date.now() : this.streams[stream].receivedAtMs,
-      },
+  private setStatus(status: StreamHealth['status'], message: string | null = null): void {
+    this.stream = {
+      status,
+      message,
+      receivedAtMs: status === 'live' ? Date.now() : this.stream.receivedAtMs,
     };
-    if (stream === 'depth' && status !== 'live') this.book.markStale();
-  }
-  private requestSnapshot(): void {
-    if (this.connection) this.connection.requestSnapshot();
-    else this.snapshotNeeded = true;
   }
   /** Updates the bars and indicator series for new candles; the caller then stores `candles`. */
   private calculate(candles: Candle[], changed: number): void {
@@ -673,20 +614,11 @@ export class ChartRuntime {
     });
     this.bars = bars;
   }
-  private recordDepth(): void {
-    const time = this.candles.at(-1)?.timeMs;
-    if (this.heatmap && time !== undefined)
-      this.heatmap.append(binBook(this.book.inspect(2048), this.heatmap.grid, time));
-  }
   private receive(event: FeedEvent): void {
-    let stream: Stream =
-      event.type.startsWith('depth.') || event.type === 'heatmap.history' ? 'depth' : 'candles';
-    if (stream === 'depth' && this.descriptor.depth.kind === 'none') return;
     try {
       switch (event.type) {
         case 'stream.status':
-          stream = event.stream;
-          this.setStatus(stream, event.status, event.message ?? null);
+          this.setStatus(event.status, event.message ?? null);
           this.publish();
           return;
         case 'instrument':
@@ -711,7 +643,7 @@ export class ChartRuntime {
           if (!this.initializedViewport || this.document.viewport.following)
             this.resetViewport(!this.initializedViewport);
           this.initializedViewport = true;
-          this.setStatus('candles', 'live');
+          this.setStatus('live');
           break;
         }
         case 'candle': {
@@ -749,37 +681,16 @@ export class ChartRuntime {
               following: true,
             };
           }
-          this.setStatus('candles', 'live');
+          this.setStatus('live');
           break;
         }
         case 'candles.prepend':
           this.prepend(event);
           break;
-        case 'depth.snapshot':
-          if (this.book.snapshot(event.book)) this.setStatus('depth', 'live');
-          this.recordDepth();
-          break;
-        case 'depth.delta': {
-          const result = this.book.delta(event.book);
-          if (result === 'gap') {
-            this.setStatus('depth', 'stale', 'Depth sequence gap. Requesting a snapshot.');
-            this.requestSnapshot();
-          } else if (result === 'applied') this.setStatus('depth', 'live');
-          this.recordDepth();
-          break;
-        }
-        case 'heatmap.history': {
-          if (!this.heatmapEnabled) return;
-          const store = new HeatmapStore(event.grid);
-          for (const c of event.columns) store.append({ ...c, values: c.values.slice() });
-          this.heatmap = store;
-          break;
-        }
       }
       this.dataRevision++;
     } catch (error) {
-      this.setStatus(stream, 'error', error instanceof Error ? error.message : String(error));
-      if (stream === 'depth') this.requestSnapshot();
+      this.setStatus('error', error instanceof Error ? error.message : String(error));
     }
     this.publish();
   }
@@ -1038,8 +949,7 @@ export class ChartRuntime {
       // Paused connections drop replies, so a pending page request would never finish.
       if (this.paused && this.olderHistory.status === 'loading')
         this.olderHistory = { status: 'idle', message: null };
-      for (const stream of ['candles', 'depth'] as const)
-        this.setStatus(stream, this.paused ? 'paused' : 'loading');
+      this.setStatus(this.paused ? 'paused' : 'loading');
       this.publish();
       if (this.connection) this.connection.setPaused(this.paused);
       else if (!this.paused && this.started) this.connect();
@@ -1121,12 +1031,7 @@ export class ChartRuntime {
             path: 'layer',
             details: { layer: command.layer, allowed: Object.keys(next.layers) },
           });
-        if (command.layer === 'heatmap' && command.visible && !this.heatmapEnabled)
-          throw new ChartError('HEATMAP_DISABLED');
         next.layers[command.layer] = command.visible;
-        break;
-      case 'heatmap.intensity':
-        next.intensity = command.value;
         break;
       case 'chartType.set':
         if (!isChartType(command.chartType))
@@ -1383,10 +1288,9 @@ export class ChartRuntime {
     return {
       feed: this.descriptor,
       generation: this.generation,
-      streams: this.streams,
+      stream: this.stream,
       candles: this.bars,
       document: this.document,
-      book: this.book.inspect(80),
       indicators: this.indicators.flatMap(({ entry, plugin, series }): ActiveIndicator[] =>
         plugin && (series.length || plugin.pane === 'profile')
           ? [{ plugin, values: series[0] ?? [], series, visible: entry.visible }]
@@ -1407,16 +1311,7 @@ export class ChartRuntime {
             .map(drawing => drawing.type),
         ),
       ],
-      // Candles and depth often fail for one reason; say it once.
-      error:
-        [
-          ...new Set(
-            Object.values(this.streams)
-              .filter(s => s.status === 'error')
-              .map(s => s.message)
-              .filter(Boolean),
-          ),
-        ].join(' · ') || null,
+      error: (this.stream.status === 'error' && this.stream.message) || null,
     };
   }
   inspect() {
@@ -1425,9 +1320,8 @@ export class ChartRuntime {
       symbol: this.descriptor.instrument.symbol,
       simulated: this.descriptor.simulated,
       generation: this.generation,
-      streams: this.streams,
+      stream: this.stream,
       capabilities: {
-        heatmap: this.heatmapEnabled,
         commands: chartCommandTypes,
         maxBatch: 500,
         drawingTools: this.drawingRegistry
@@ -1463,15 +1357,11 @@ export class ChartRuntime {
       documentRevision: this.documentRevision,
       candleCount: this.candles.length,
       latestCandle: this.candles.at(-1) ?? null,
-      book: this.book.inspect(10),
       history: { canUndo: this.history.length > 0, canRedo: this.future.length > 0 },
       olderHistory: this.olderHistory,
       maxCandles: this.maxCandles,
       firstCandleTimeMs: this.candles[0]?.timeMs ?? null,
       unsupportedDrawingTypes: this.state().unsupportedDrawingTypes,
-      heatmap: this.heatmap
-        ? { columns: this.heatmap.count, capacity: this.heatmap.capacity, rows: this.heatmap.grid.rows }
-        : null,
       document: this.document,
       indicators: this.indicators.map(({ entry, plugin, series }) => ({
         ...entry,

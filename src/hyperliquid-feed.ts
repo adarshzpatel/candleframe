@@ -1,15 +1,6 @@
 import { ChartError } from './errors.ts';
 import { intervalToMs, isAligned } from './intervals.ts';
-import type {
-  Candle,
-  DepthSnapshot,
-  FeedAdapter,
-  FeedEvent,
-  Instrument,
-  Interval,
-  Level,
-  Stream,
-} from './types.ts';
+import type { Candle, FeedAdapter, FeedEvent, Instrument, Interval } from './types.ts';
 
 type HyperliquidSymbol = 'BTC/USDC' | 'ETH/USDC' | 'SOL/USDC' | 'HYPE/USDC';
 export interface HyperliquidFeedOptions {
@@ -34,14 +25,9 @@ const MAX_BUFFERED_EVENTS = 512;
 const CANDLE_GAP = 'Candle gap; reconnecting to refresh history';
 /** The server closes sockets that send nothing for 60 seconds. */
 const PING_MS = 30_000;
-/**
- * Candle messages arrive only on trades, and l2Book about every 5 seconds, so both wait
- * longer than Binance before calling a stream stale.
- */
-const QUIET_MS: Record<Stream, { stale: number; reconnect: number }> = {
-  candles: { stale: 30_000, reconnect: 90_000 },
-  depth: { stale: 15_000, reconnect: 45_000 },
-};
+/** Candle messages arrive only on trades, so quiet spells last longer than on Binance. */
+const STALE_MS = 30_000;
+const RECONNECT_MS = 90_000;
 const restCooldown = new WeakMap<typeof globalThis.fetch, number>();
 
 class HttpFailure extends Error {
@@ -66,7 +52,7 @@ function numeric(value: unknown): number {
 }
 function integer(value: unknown): number {
   const n = numeric(value);
-  if (!Number.isSafeInteger(n) || n < 0) throw new Error('Invalid market-data sequence or time');
+  if (!Number.isSafeInteger(n) || n < 0) throw new Error('Invalid market-data time');
   return n;
 }
 /** A candle with its trade count, which only grows while the bar forms. */
@@ -108,33 +94,6 @@ function history(
   )
     throw new Error('Unordered candle history');
   return bars;
-}
-function levels(value: unknown, side: 'bids' | 'asks'): Level[] {
-  if (!Array.isArray(value) || !value.length || value.length > 20) throw new Error('Invalid l2Book levels');
-  const rows: Level[] = value.map(row => {
-    const level = object(row);
-    const price = numeric(level.px);
-    const quantity = numeric(level.sz);
-    if (price <= 0 || quantity <= 0 || integer(level.n) < 1) throw new Error('Invalid depth level');
-    return [price, quantity];
-  });
-  if (rows.some((row, i) => i > 0 && (side === 'bids' ? row[0] >= rows[i - 1][0] : row[0] <= rows[i - 1][0])))
-    throw new Error('Unordered depth levels');
-  return rows;
-}
-/** `{ coin, time, levels: [bids, asks] }`: a complete top-20 book in every message. */
-function depth(value: unknown, coin: string): DepthSnapshot {
-  const data = object(value);
-  if (data.coin !== coin) throw new Error('Unexpected l2Book market');
-  if (!Array.isArray(data.levels) || data.levels.length !== 2) throw new Error('Invalid l2Book levels');
-  const book = {
-    // Block time in milliseconds. It never decreases, so it orders snapshots.
-    sequence: integer(data.time),
-    bids: levels(data.levels[0], 'bids'),
-    asks: levels(data.levels[1], 'asks'),
-  };
-  if (book.bids[0][0] >= book.asks[0][0]) throw new Error('Crossed depth snapshot');
-  return book;
 }
 /**
  * Perp prices allow 5 significant figures and at most `6 - szDecimals` decimals, and
@@ -201,8 +160,7 @@ export const HYPERLIQUID_INTERVALS: readonly Interval[] = [
 ];
 
 /**
- * Public, read-only Hyperliquid perpetuals market data. Each l2Book message is a fresh
- * top-20 snapshot, never a reconstructed full book.
+ * Public, read-only Hyperliquid perpetuals candles.
  * Wire formats: https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket/subscriptions
  */
 export function createHyperliquidFeed(
@@ -217,10 +175,7 @@ export function createHyperliquidFeed(
     });
   const intervalMs = intervalToMs(interval);
   const [coin, quote] = symbol.split('/');
-  const subscriptions = [
-    { type: 'candle', coin, interval },
-    { type: 'l2Book', coin },
-  ];
+  const subscription = { type: 'candle', coin, interval };
   const fetcher = transport.fetch ?? globalThis.fetch;
   const createSocket = transport.createSocket ?? ((url: string) => new WebSocket(url));
 
@@ -240,7 +195,6 @@ export function createHyperliquidFeed(
         pricePrecision: 2,
         quantityPrecision: 3,
       },
-      depth: { kind: 'snapshots', levels: 20 },
     },
     connect(emit) {
       let disposed = false;
@@ -252,18 +206,15 @@ export function createHyperliquidFeed(
       let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
       let watchdog: ReturnType<typeof setInterval> | undefined;
       let knownInstrument: Instrument | undefined;
-      let snapshotRequested = false;
-      let lastDepthSequence = -1;
 
       function publish(event: FeedEvent): void {
         if (!disposed && !paused) emit(event);
       }
-      function status(stream: Stream, state: 'loading' | 'stale' | 'error', message: string): void {
-        publish({ type: 'stream.status', stream, status: state, message });
+      function status(state: 'loading' | 'stale' | 'error', message: string): void {
+        publish({ type: 'stream.status', status: state, message });
       }
       function stop(): void {
         generation++;
-        snapshotRequested = false;
         clearTimeout(reconnectTimer);
         reconnectTimer = undefined;
         clearInterval(watchdog);
@@ -274,16 +225,10 @@ export function createHyperliquidFeed(
         socket = undefined;
         closing?.close();
       }
-      function recover(
-        message: string,
-        failedStream?: Stream,
-        retryAt = 0,
-        severity: 'stale' | 'error' = 'error',
-      ): void {
+      function recover(message: string, retryAt = 0, severity: 'stale' | 'error' = 'error'): void {
         if (disposed || paused) return;
         stop();
-        for (const stream of ['candles', 'depth'] as const)
-          status(stream, !failedStream || stream === failedStream ? severity : 'stale', message);
+        status(severity, message);
         const delay = Math.max(
           Math.min(30_000, 1000 * 2 ** Math.min(failures++, 5)),
           retryAt - Date.now(),
@@ -318,17 +263,15 @@ export function createHyperliquidFeed(
         const abort = new AbortController();
         controller = abort;
         const startedAt = Date.now();
-        const received: Record<Stream, number> = { candles: startedAt, depth: startedAt };
-        const markedStale: Record<Stream, boolean> = { candles: false, depth: false };
+        let received = startedAt;
+        let markedStale = false;
         let historyReady = false;
-        let depthReady = false;
         let lastAcceptedTime = -1;
         let bufferedCount = 0;
         let pingedAt = startedAt;
         const buffered = new Map<number, Bar>();
         const accepted = new Map<number, Bar>();
-        for (const stream of ['candles', 'depth'] as const)
-          status(stream, 'loading', 'Connecting to Hyperliquid market data');
+        status('loading', 'Connecting to Hyperliquid market data');
 
         // Volume and trade count only grow within a bar, so neither may go backward.
         const newer = (bar: Bar, previous: Bar | undefined) =>
@@ -346,20 +289,10 @@ export function createHyperliquidFeed(
           if (accepted.size > 2000) accepted.delete(accepted.keys().next().value!);
           return true;
         }
-        function healthy(stream: Stream): void {
-          received[stream] = Date.now();
-          markedStale[stream] = false;
-          if (historyReady && depthReady) failures = 0;
-        }
-        function book(value: unknown): void {
-          const snapshot = depth(value, coin);
-          // Out-of-order or repeated books are older data, not a newer state.
-          if (snapshot.sequence < lastDepthSequence) return;
-          lastDepthSequence = snapshot.sequence;
-          depthReady = true;
-          snapshotRequested = false;
-          healthy('depth');
-          publish({ type: 'depth.snapshot', book: snapshot });
+        function healthy(): void {
+          received = Date.now();
+          markedStale = false;
+          if (historyReady) failures = 0;
         }
         async function loadHistory(): Promise<void> {
           try {
@@ -382,20 +315,20 @@ export function createHyperliquidFeed(
               .slice(-2000);
             buffered.clear();
             historyReady = true;
-            healthy('candles');
+            healthy();
             publish({ type: 'candles.history', candles: merged });
           } catch (error) {
             if (active())
               recover(
                 error instanceof Error ? error.message : String(error),
-                'candles',
                 error instanceof HttpFailure ? error.retryAt : 0,
               );
           }
         }
         function message(event: Event): void {
           if (!active()) return;
-          let stream: Stream | undefined;
+          // Until the channel checks out, a failure means the connection itself is bad.
+          let routed = false;
           try {
             const text = (event as MessageEvent<unknown>).data;
             if (typeof text !== 'string' || text.length > 1_000_000)
@@ -404,15 +337,13 @@ export function createHyperliquidFeed(
             if (envelope.channel === 'subscriptionResponse' || envelope.channel === 'pong') return;
             if (envelope.channel === 'error')
               throw new Error(`Hyperliquid error: ${String(envelope.data).slice(0, 200)}`);
-            if (envelope.channel !== 'candle' && envelope.channel !== 'l2Book')
-              throw new Error('Unexpected Hyperliquid channel');
-            stream = envelope.channel === 'candle' ? 'candles' : 'depth';
-            if (stream === 'depth') return book(envelope.data);
+            if (envelope.channel !== 'candle') throw new Error('Unexpected Hyperliquid channel');
+            routed = true;
             // The docs type the payload as Candle[]; the server sends one object.
             const rows = Array.isArray(envelope.data) ? envelope.data : [envelope.data];
             if (!rows.length || rows.length > 10) throw new Error('Invalid candle message');
             const bars = rows.map(row => candle(row, coin, interval, intervalMs));
-            healthy('candles');
+            healthy();
             for (const bar of bars) {
               if (!historyReady) {
                 if (++bufferedCount > MAX_BUFFERED_EVENTS)
@@ -423,31 +354,26 @@ export function createHyperliquidFeed(
             }
           } catch (error) {
             const reason = error instanceof Error ? error.message : String(error);
-            if (!stream || reason === 'Candle bootstrap buffer exceeded' || reason === CANDLE_GAP)
-              recover(reason, stream);
-            else status(stream, 'error', reason);
+            if (!routed || reason === 'Candle bootstrap buffer exceeded' || reason === CANDLE_GAP)
+              recover(reason);
+            else status('error', reason);
           }
         }
         watchdog = setInterval(() => {
           if (!active()) return;
           const now = Date.now();
           if (!historyReady && now - startedAt >= 20_000) {
-            recover('Candle bootstrap timed out', 'candles');
+            recover('Candle bootstrap timed out');
             return;
           }
           if (socket?.readyState === 1 && now - pingedAt >= PING_MS) {
             pingedAt = now;
             socket.send(JSON.stringify({ method: 'ping' }));
           }
-          for (const stream of ['candles', 'depth'] as const) {
-            if (now - received[stream] >= QUIET_MS[stream].reconnect) {
-              recover(`No ${stream} updates; reconnecting`, stream, 0, 'stale');
-              return;
-            }
-            if (!markedStale[stream] && now - received[stream] >= QUIET_MS[stream].stale) {
-              markedStale[stream] = true;
-              status(stream, 'stale', `Waiting for ${stream} updates`);
-            }
+          if (now - received >= RECONNECT_MS) recover('No candle updates; reconnecting', 0, 'stale');
+          else if (!markedStale && now - received >= STALE_MS) {
+            markedStale = true;
+            status('stale', 'Waiting for candle updates');
           }
         }, 1000);
 
@@ -468,8 +394,7 @@ export function createHyperliquidFeed(
               () => {
                 if (!active()) return;
                 pingedAt = Date.now();
-                for (const subscription of subscriptions)
-                  connection.send(JSON.stringify({ method: 'subscribe', subscription }));
+                connection.send(JSON.stringify({ method: 'subscribe', subscription }));
                 void loadHistory();
               },
               { once: true },
@@ -479,14 +404,12 @@ export function createHyperliquidFeed(
               if (active()) recover('Hyperliquid market-data connection failed');
             });
             connection.addEventListener('close', () => {
-              if (active())
-                recover('Hyperliquid market-data connection closed; reconnecting', undefined, 0, 'stale');
+              if (active()) recover('Hyperliquid market-data connection closed; reconnecting', 0, 'stale');
             });
           } catch (error) {
             if (active())
               recover(
                 error instanceof Error ? error.message : String(error),
-                undefined,
                 error instanceof HttpFailure ? error.retryAt : 0,
               );
           }
@@ -500,33 +423,6 @@ export function createHyperliquidFeed(
           paused = value;
           if (paused) stop();
           else start();
-        },
-        requestSnapshot() {
-          if (disposed || paused || snapshotRequested || !controller) return;
-          snapshotRequested = true;
-          status('depth', 'stale', 'Requesting a fresh top-20 snapshot');
-          // Socket books arrive about every 5 seconds; the REST book (weight 2) comes sooner.
-          // Either one is complete, and the newer block time wins.
-          const current = generation;
-          void request({ type: 'l2Book', coin }, controller.signal).then(
-            value => {
-              if (current !== generation || disposed || paused) return;
-              snapshotRequested = false;
-              try {
-                const snapshot = depth(value, coin);
-                // A socket book from a later block already replaced this one.
-                if (snapshot.sequence < lastDepthSequence) return;
-                lastDepthSequence = snapshot.sequence;
-                publish({ type: 'depth.snapshot', book: snapshot });
-              } catch (error) {
-                status('depth', 'error', error instanceof Error ? error.message : String(error));
-              }
-            },
-            () => {
-              // The next socket book recovers depth; the watchdog covers a silent stream.
-              if (current === generation) snapshotRequested = false;
-            },
-          );
         },
         loadOlder(beforeMs) {
           if (disposed || paused || !controller) return;

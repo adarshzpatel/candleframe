@@ -25,13 +25,11 @@ test('a static feed charts an array with inferred instrument metadata', () => {
   const feed = createStaticFeed({ candles: series(50), interval: '1m', instrument: 'ACME' });
   assert.equal(feed.descriptor.instrument.pricePrecision, 2);
   assert.equal(feed.descriptor.instrument.tickSize, 0.01);
-  assert.equal(feed.descriptor.depth.kind, 'none');
   const runtime = new ChartRuntime(feed, [sma(5)]);
   runtime.start();
   const state = runtime.inspect();
   assert.equal(state.candleCount, 50);
-  assert.equal(state.streams.candles.status, 'live');
-  assert.equal(state.streams.depth.status, 'unavailable');
+  assert.equal(state.stream.status, 'live');
   assert.equal(state.error, null);
   runtime.dispose();
 });
@@ -117,7 +115,7 @@ test('overlapping or failed pages report an error and allow a retry', async () =
       let calls = 0;
       return {
         setPaused() {},
-        requestSnapshot() {},
+
         dispose() {},
         loadOlder() {
           calls++;
@@ -141,7 +139,7 @@ test('overlapping or failed pages report an error and allow a retry', async () =
   assert.equal(runtime.loadOlderHistory(), true, 'errors can be retried');
   await flush();
   assert.equal(runtime.inspect().olderHistory.message, 'HTTP 500');
-  assert.equal(runtime.inspect().streams.candles.status, 'live', 'the live stream is unaffected');
+  assert.equal(runtime.inspect().stream.status, 'live', 'the live stream is unaffected');
   runtime.dispose();
 });
 

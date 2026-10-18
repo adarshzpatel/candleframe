@@ -6,10 +6,10 @@
 //   node scripts/hyperliquid-live.mjs --url http://127.0.0.1:5173 --out artifacts/hyperliquid
 //   node scripts/hyperliquid-live.mjs --symbol HYPE/USDC --interval 5m --seconds 20
 //
-// It picks the Hyperliquid source in the demo's source picker, waits for candle history
-// and a live order book, then watches for --seconds and requires new candle and depth
-// data in that window. It also checks that `?offline` drops the source. Screenshots go
-// to --out. It fails on page errors, console errors or data that never arrives.
+// It picks the Hyperliquid source in the demo's source picker, waits for live candle
+// history, then watches for --seconds and requires a candle update in that window. It
+// also checks that `?offline` drops the source. Screenshots go to --out. It fails on
+// page errors, console errors or data that never arrives.
 import { spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -76,8 +76,7 @@ try {
       return (
         state.symbol === symbol &&
         state.feed.interval === interval &&
-        state.streams.candles.status === 'live' &&
-        state.streams.depth.status === 'live' &&
+        state.stream.status === 'live' &&
         state.candleCount > 100
       );
     },
@@ -92,8 +91,7 @@ try {
         tickSize: state.feed.instrument.tickSize,
         candles: state.candleCount,
         latest: state.latestCandle,
-        book: { sequence: state.book.sequence, bid: state.book.bids[0], ask: state.book.asks[0] },
-        streams: [state.streams.candles.status, state.streams.depth.status],
+        stream: state.stream.status,
       };
     });
   const before = await read();
@@ -108,9 +106,7 @@ try {
     after.latest.volume !== before.latest.volume ||
     after.latest.close !== before.latest.close;
   if (!candleMoved) problems.push(`no candle update in ${seconds}s`);
-  if (!(after.book.sequence > before.book.sequence)) problems.push(`no depth update in ${seconds}s`);
-  if (!(after.book.bid?.[0] < after.book.ask?.[0])) problems.push('book is empty or crossed');
-  if (after.streams.join() !== 'live,live') problems.push(`streams ${after.streams.join()}`);
+  if (after.stream !== 'live') problems.push(`stream ${after.stream}`);
 
   const offline = await browser.newPage();
   await offline.goto(new URL('?offline', url).href, { waitUntil: 'load' });

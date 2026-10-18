@@ -107,14 +107,8 @@ const commands = {
   'layer.set': command(
     'layer.set',
     'Show or hide a layer.',
-    { layer: { enum: ['heatmap', 'candles', 'volume', 'indicator'] }, visible: { type: 'boolean' } },
+    { layer: { enum: ['candles', 'volume', 'indicator'] }, visible: { type: 'boolean' } },
     ['layer', 'visible'],
-  ),
-  'heatmap.intensity': command(
-    'heatmap.intensity',
-    'Experimental heatmap brightness.',
-    { value: { type: 'number', minimum: 0.2, maximum: 2 } },
-    ['value'],
   ),
   'viewport.set': command(
     'viewport.set',

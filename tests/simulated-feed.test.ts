@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { OrderBook } from '../src/order-book.ts';
 import { createSimulatedFeed } from '../src/simulated-feed.ts';
 import type { Candle, FeedEvent } from '../src/types.ts';
 
@@ -10,7 +9,7 @@ function latestCandle(events: readonly FeedEvent[]): Candle {
   return event.candle;
 }
 
-test('simulated intervals aggregate the same minute history without enabling heatmap data', t => {
+test('simulated intervals aggregate the same minute history', t => {
   t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
   for (const symbol of ['BTC/USD', 'ETH/USD', 'SOL/USD'] as const) {
     const histories: Record<string, readonly Candle[]> = {};
@@ -22,10 +21,6 @@ test('simulated intervals aggregate the same minute history without enabling hea
       const history = events.find(event => event.type === 'candles.history');
       assert.ok(history);
       assert.equal(history.candles.length, 360);
-      assert.equal(
-        events.some(event => event.type === 'heatmap.history'),
-        false,
-      );
       assert.ok(
         history.candles.every(
           (bar, i) =>
@@ -86,58 +81,18 @@ test('five-minute candles take 30 ticks, pause freezes the clock and disposal ca
   connection.setPaused(false);
   assert.deepEqual(
     events.slice(pausedCount).map(event => event.type),
-    ['candle', 'depth.snapshot'],
+    ['candle'],
   );
   assert.deepEqual(latestCandle(events), beforePause);
 
   t.mock.timers.tick(250);
   assert.equal(latestCandle(events).timeMs, startMs + 300_000);
   assert.equal(latestCandle(events).open, beforePause.close);
-  connection.requestSnapshot();
   connection.dispose();
   connection.dispose();
   const disposedCount = events.length;
   t.mock.timers.tick(15_000);
   assert.equal(events.length, disposedCount);
-});
-
-test('a dropped depth sequence leaves candles streaming and repeated recovery requests share one snapshot', t => {
-  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
-  const events: FeedEvent[] = [];
-  const book = new OrderBook();
-  const feed = createSimulatedFeed(42);
-  const connection = feed.connect(event => {
-    events.push(event);
-    if (event.type === 'depth.snapshot') book.snapshot(event.book);
-    if (event.type === 'depth.delta') book.delta(event.book);
-  });
-  t.after(() => connection.dispose());
-  t.mock.timers.tick(250);
-  const lastValidSequence = book.inspect().sequence;
-  const beforeGap = events.length;
-  feed.injectGap();
-  t.mock.timers.tick(250);
-  assert.deepEqual(
-    events.slice(beforeGap).map(event => event.type),
-    ['candle'],
-  );
-  t.mock.timers.tick(250);
-  assert.equal(book.inspect().status, 'stale');
-  assert.equal(book.inspect().sequence, lastValidSequence);
-  assert.equal(events.slice(beforeGap).filter(event => event.type === 'candle').length, 2);
-
-  const snapshotsBefore = events.filter(event => event.type === 'depth.snapshot').length;
-  connection.requestSnapshot();
-  connection.requestSnapshot();
-  for (let tick = 0; tick < 4; tick++) t.mock.timers.tick(250);
-  assert.equal(events.filter(event => event.type === 'depth.snapshot').length, snapshotsBefore);
-  assert.equal(book.inspect().status, 'stale');
-  t.mock.timers.tick(100);
-  assert.equal(events.filter(event => event.type === 'depth.snapshot').length, snapshotsBefore + 1);
-  assert.equal(book.inspect().status, 'live');
-  assert.ok(book.inspect().sequence > lastValidSequence);
-  t.mock.timers.tick(150);
-  assert.equal(book.inspect().status, 'live');
 });
 
 test('trade mode prints irregular, seeded trades in real time and keeps order flow consistent', t => {
@@ -170,10 +125,6 @@ test('trade mode prints irregular, seeded trades in real time and keeps order fl
   // 90 real seconds at 1x cross exactly one 1m boundary after the history.
   assert.deepEqual([...new Set(candles.map(c => c.timeMs))], [first.startMs, first.startMs + 60_000]);
   assert.ok(new Set(first.perSecond).size > 3, `arrivals vary from second to second: ${first.perSecond}`);
-  assert.ok(
-    first.events.some(event => event.type === 'depth.delta'),
-    'the book keeps updating alongside trades',
-  );
   for (const bar of candles) {
     const flow = bar.footprint!.reduce((sum, [, buy, sell]) => sum + buy + sell, 0);
     assert.ok(Math.abs(flow - bar.volume) < 1e-6 * Math.max(1, bar.volume));

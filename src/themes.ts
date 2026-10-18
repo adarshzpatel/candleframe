@@ -157,6 +157,23 @@ function validateToken(value: unknown, spec: ThemeToken, path: string): string |
   if (!valid) throw new ChartError('INVALID_THEME_TOKEN', `${path}`);
   return Array.isArray(value) ? Object.freeze([...value]) : (value as string | number);
 }
+/**
+ * Tokens that no longer exist. Saved and exported themes may still carry them, so they
+ * are accepted and ignored instead of failing as unknown.
+ */
+const retiredTokens: { readonly [G in keyof ThemeTokens]?: readonly string[] } = {
+  layout: ['bookWidth', 'bookRowHeight'],
+  effects: ['bookFillOpacity', 'bookEdgeOpacity'],
+  chart: [
+    'heatmapLow',
+    'heatmapMid',
+    'heatmapHigh',
+    'heatmapPeak',
+    'heatmapOpacity',
+    'heatmapUnknown',
+    'heatmapUnknownOpacity',
+  ],
+};
 function normalizeTheme(input: unknown): ResolvedChartTheme {
   if (
     !plain(input) ||
@@ -189,7 +206,7 @@ function normalizeTheme(input: unknown): ResolvedChartTheme {
     const schema = themeTokenSchema[group],
       values = input[group];
     if (values !== undefined && !plain(values)) throw new ChartError('INVALID_THEME_TOKEN', `${group}`);
-    if (values) unknownKeys(values, Object.keys(schema), `${group}.`);
+    if (values) unknownKeys(values, [...Object.keys(schema), ...(retiredTokens[group] ?? [])], `${group}.`);
     const resolved: Record<string, unknown> = {};
     for (const [key, spec] of Object.entries(schema))
       resolved[key] = validateToken(

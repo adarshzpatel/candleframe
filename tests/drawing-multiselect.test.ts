@@ -26,7 +26,7 @@ function fixture() {
           volume: 1,
         })),
       });
-      return { setPaused() {}, requestSnapshot() {}, dispose() {} };
+      return { setPaused() {}, dispose() {} };
     },
   });
   runtime.start();

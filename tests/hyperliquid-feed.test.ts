@@ -47,21 +47,6 @@ const bar = (timeMs = 60_000, volume = 10, close = 100, trades = 5) => ({
   v: String(volume),
   n: trades,
 });
-const book = (time = 1000, bid = '99') => ({
-  coin: 'BTC',
-  time,
-  levels: [
-    [
-      { px: bid, sz: '2', n: 1 },
-      { px: '98', sz: '3', n: 2 },
-    ],
-    [
-      { px: '101', sz: '4', n: 1 },
-      { px: '102', sz: '5', n: 3 },
-    ],
-  ],
-});
-
 interface Request {
   url: string;
   body: Record<string, unknown>;
@@ -124,7 +109,6 @@ test('metadata comes first, then the socket subscribes before history is request
   h.sockets[0].open();
   assert.deepEqual(h.sockets[0].sent, [
     { method: 'subscribe', subscription: { type: 'candle', coin: 'BTC', interval: '1m' } },
-    { method: 'subscribe', subscription: { type: 'l2Book', coin: 'BTC' } },
   ]);
   const history = h.requests[1].body as { type: string; req: Record<string, unknown> };
   assert.equal(history.type, 'candleSnapshot');
@@ -139,7 +123,7 @@ test('metadata comes first, then the socket subscribes before history is request
   );
 });
 
-test('history, a live update and a new bar drive a runtime to live candles and depth', async t => {
+test('history, a live update and a new bar drive a runtime to live candles', async t => {
   const h = harness();
   h.connection.dispose();
   // A second connection from the same transport, owned by the runtime.
@@ -153,7 +137,6 @@ test('history, a live update and a new bar drive a runtime to live candles and d
   await flush();
   h.sockets[0].push('candle', bar(60_000, 12, 104, 7));
   h.sockets[0].push('candle', bar(120_000, 1, 105, 1));
-  h.sockets[0].push('l2Book', book(2000));
   const state = runtime.state();
   assert.deepEqual(
     state.candles.map(bar => [bar.timeMs, bar.close]),
@@ -164,10 +147,7 @@ test('history, a live update and a new bar drive a runtime to live candles and d
     ],
   );
   assert.equal(state.feed.instrument.tickSize, 0.1);
-  assert.equal(state.streams.candles.status, 'live');
-  assert.equal(state.streams.depth.status, 'live');
-  assert.deepEqual(state.book.bids[0], [99, 2]);
-  assert.deepEqual(state.book.asks[0], [101, 4]);
+  assert.equal(state.stream.status, 'live');
 });
 
 test('bootstrap merging and reordered candles cannot roll volume or trade count backward', async t => {
@@ -199,84 +179,7 @@ test('bootstrap merging and reordered candles cannot roll volume or trade count 
   );
 });
 
-test('each l2Book message becomes a full snapshot ordered by block time, with no deltas', async t => {
-  const h = harness();
-  t.after(() => h.connection.dispose());
-  h.respond(0, metadata);
-  await flush();
-  h.sockets[0].open();
-  h.sockets[0].push('l2Book', book(900));
-  h.sockets[0].push('l2Book', book(970));
-  h.sockets[0].push('l2Book', book(910));
-  const snapshots = h.events.filter(event => event.type === 'depth.snapshot');
-  assert.deepEqual(
-    snapshots.map(event => event.book.sequence),
-    [900, 970],
-  );
-  assert.deepEqual(snapshots[0].book, {
-    sequence: 900,
-    bids: [
-      [99, 2],
-      [98, 3],
-    ],
-    asks: [
-      [101, 4],
-      [102, 5],
-    ],
-  });
-  assert.equal(
-    h.events.some(event => event.type === 'depth.delta' || event.type === 'candles.history'),
-    false,
-  );
-  h.respond(1, [bar()]);
-  await flush();
-});
-
-test('requestSnapshot fetches the REST book and ignores one older than the socket book', async t => {
-  const h = harness();
-  t.after(() => h.connection.dispose());
-  await h.ready();
-  h.sockets[0].push('l2Book', book(2000));
-  h.connection.requestSnapshot();
-  h.connection.requestSnapshot();
-  assert.equal(h.requests.length, 3);
-  assert.deepEqual(h.requests[2].body, { type: 'l2Book', coin: 'BTC' });
-  h.respond(2, book(1500, '99.5'));
-  await flush();
-  assert.equal(h.events.filter(event => event.type === 'depth.snapshot').length, 1);
-  h.connection.requestSnapshot();
-  h.respond(3, book(2500, '99.5'));
-  await flush();
-  const last = h.events.at(-1);
-  assert.equal(last?.type === 'depth.snapshot' && last.book.bids[0][0], 99.5);
-});
-
-test('malformed depth reports only its own stream and the next valid snapshot recovers', async t => {
-  const h = harness();
-  t.after(() => h.connection.dispose());
-  await h.ready();
-  for (const payload of [
-    book(1000, '105'), // crossed
-    { ...book(1001), levels: [book().levels[0]] },
-    { ...book(1002), levels: [[{ px: '99', sz: '-1', n: 1 }], book().levels[1]] },
-    { ...book(1003), levels: [[...book().levels[0]].reverse(), book().levels[1]] },
-    { ...book(1004), time: -1 },
-  ]) {
-    const count = h.events.length;
-    h.sockets[0].push('l2Book', payload);
-    assert.deepEqual(
-      h.events
-        .slice(count)
-        .map(event => (event.type === 'stream.status' ? [event.stream, event.status] : event.type)),
-      [['depth', 'error']],
-    );
-  }
-  h.sockets[0].push('l2Book', book(1010));
-  assert.equal(h.events.at(-1)?.type, 'depth.snapshot');
-  assert.equal(h.sockets[0].readyState, 1);
-});
-
-test('malformed candles report the candle stream without publishing a bar', async t => {
+test('malformed candles report an error without publishing a bar', async t => {
   const h = harness();
   t.after(() => h.connection.dispose());
   await h.ready();
@@ -290,10 +193,8 @@ test('malformed candles report the candle stream without publishing a bar', asyn
     const count = h.events.length;
     h.sockets[0].push('candle', payload);
     assert.deepEqual(
-      h.events
-        .slice(count)
-        .map(event => (event.type === 'stream.status' ? [event.stream, event.status] : event.type)),
-      [['candles', 'error']],
+      h.events.slice(count).map(event => (event.type === 'stream.status' ? event.status : event.type)),
+      ['error'],
     );
   }
   assert.equal(h.sockets[0].readyState, 1);
@@ -308,8 +209,8 @@ test('malformed candles report the candle stream without publishing a bar', asyn
 
 test('another coin, an unknown channel or a server error reconnects instead of misattributing data', async t => {
   for (const [channel, data] of [
-    ['l2Book', { ...book(), coin: 'ETH' }],
     ['candle', { ...bar(120_000), s: 'ETH' }],
+    ['l2Book', { coin: 'BTC' }],
     ['trades', []],
     ['error', 'Invalid subscription'],
   ] as const) {
@@ -318,9 +219,9 @@ test('another coin, an unknown channel or a server error reconnects instead of m
     await h.ready();
     const count = h.events.length;
     h.sockets[0].push(channel, data);
-    assert.equal(h.sockets[0].readyState, channel === 'l2Book' || channel === 'candle' ? 1 : 3);
+    assert.equal(h.sockets[0].readyState, channel === 'candle' ? 1 : 3);
     assert.equal(
-      h.events.slice(count).some(event => event.type === 'depth.snapshot' || event.type === 'candle'),
+      h.events.slice(count).some(event => event.type === 'candle'),
       false,
     );
   }
@@ -340,9 +241,7 @@ test('a skipped candle reconnects and refreshes history before later bars publis
   assert.ok(
     h.events.some(
       event =>
-        event.type === 'stream.status' &&
-        event.stream === 'candles' &&
-        event.message === 'Candle gap; reconnecting to refresh history',
+        event.type === 'stream.status' && event.message === 'Candle gap; reconnecting to refresh history',
     ),
   );
   t.mock.timers.tick(1000);
@@ -365,11 +264,7 @@ test('a closed socket reconnects with backoff and resubscribes', async t => {
   t.after(() => h.connection.dispose());
   await h.ready();
   h.sockets[0].close();
-  assert.ok(
-    h.events.some(
-      event => event.type === 'stream.status' && event.stream === 'depth' && event.status === 'stale',
-    ),
-  );
+  assert.ok(h.events.some(event => event.type === 'stream.status' && event.status === 'stale'));
   t.mock.timers.tick(999);
   assert.equal(h.sockets.length, 1);
   t.mock.timers.tick(1);
@@ -383,38 +278,32 @@ test('a closed socket reconnects with backoff and resubscribes', async t => {
   await flush();
   assert.equal(h.sockets.length, 3);
   h.sockets[2].open();
-  assert.equal(h.sockets[2].sent.length, 2);
+  assert.equal(h.sockets[2].sent.length, 1);
 });
 
-test('the watchdog pings, marks silent depth stale and reconnects without hiding live candles', async t => {
+test('the watchdog pings, marks silent candles stale and reconnects after a long quiet spell', async t => {
   t.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: 600_000 });
   const h = harness();
   t.after(() => h.connection.dispose());
   await h.ready();
-  h.sockets[0].push('l2Book', book());
-  t.mock.timers.tick(15_000);
-  assert.ok(
-    h.events.some(
-      event => event.type === 'stream.status' && event.stream === 'depth' && event.status === 'stale',
-    ),
-  );
-  assert.equal(
-    h.events.some(
-      event => event.type === 'stream.status' && event.stream === 'candles' && event.status === 'stale',
-    ),
-    false,
-  );
-  h.sockets[0].push('candle', bar(60_000, 20, 100, 9));
-  t.mock.timers.tick(15_000);
-  assert.deepEqual(h.sockets[0].sent.at(-1), { method: 'ping' });
-  t.mock.timers.tick(15_000);
-  assert.equal(h.sockets[0].readyState, 3);
+  t.mock.timers.tick(30_000);
   assert.ok(
     h.events.some(
       event =>
         event.type === 'stream.status' &&
-        event.stream === 'depth' &&
-        event.message === 'No depth updates; reconnecting',
+        event.status === 'stale' &&
+        event.message === 'Waiting for candle updates',
+    ),
+  );
+  assert.deepEqual(h.sockets[0].sent.at(-1), { method: 'ping' });
+  h.sockets[0].push('candle', bar(60_000, 20, 100, 9));
+  t.mock.timers.tick(89_000);
+  assert.equal(h.sockets[0].readyState, 1);
+  t.mock.timers.tick(1000);
+  assert.equal(h.sockets[0].readyState, 3);
+  assert.ok(
+    h.events.some(
+      event => event.type === 'stream.status' && event.message === 'No candle updates; reconnecting',
     ),
   );
   t.mock.timers.tick(1000);
@@ -486,7 +375,7 @@ test('pause aborts bootstrap and suppresses late events; resume reloads history'
   assert.equal(h.sockets[0].readyState, 3);
   const count = h.events.length;
   h.respond(1, [bar(60_000, 10, 101)]);
-  h.sockets[0].push('l2Book', book());
+  h.sockets[0].push('candle', bar(60_000, 11, 102, 6));
   await flush();
   assert.equal(h.events.length, count);
   h.connection.setPaused(false);
@@ -518,9 +407,8 @@ test('dispose after connecting closes the socket and drops later messages', asyn
   h.connection.dispose();
   assert.equal(h.sockets[0].readyState, 3);
   const count = h.events.length;
-  h.sockets[0].push('l2Book', book(5000));
+  h.sockets[0].push('candle', bar(60_000, 11, 102, 6));
   h.connection.loadOlder!(60_000);
-  h.connection.requestSnapshot();
   await flush();
   assert.equal(h.events.length, count);
   assert.equal(h.requests.length, 2);
@@ -554,7 +442,6 @@ test('unknown symbols and intervals are rejected before any request', () => {
   const feed = createHyperliquidFeed({ symbol: 'HYPE/USDC', interval: '4h' }, transport);
   assert.equal(feed.descriptor.intervalMs, 4 * 3_600_000);
   assert.equal(feed.descriptor.instrument.base, 'HYPE');
-  assert.deepEqual(feed.descriptor.depth, { kind: 'snapshots', levels: 20 });
 });
 
 test('a delisted or missing coin is reported instead of guessed', async t => {

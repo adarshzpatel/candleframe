@@ -30,7 +30,6 @@ function harness(drawingTools: readonly DrawingToolDefinition[] = []) {
         pricePrecision: 2,
         quantityPrecision: 3,
       },
-      depth: { kind: 'snapshots', levels: 20 },
     },
     connect(emit) {
       send = emit;
@@ -38,7 +37,7 @@ function harness(drawingTools: readonly DrawingToolDefinition[] = []) {
         type: 'candles.history',
         candles: [{ timeMs: 0, open: 100, high: 111, low: 99, close: 110, volume: 10 }],
       });
-      return { dispose() {}, setPaused() {}, requestSnapshot() {} };
+      return { dispose() {}, setPaused() {} };
     },
   };
   const runtime = new ChartRuntime(feed, [], { drawingTools });

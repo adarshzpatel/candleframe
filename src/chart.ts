@@ -95,7 +95,6 @@ export interface ChartOptions {
   feed: FeedAdapter;
   theme?: ThemeInput;
   onThemeChange?: (theme: ResolvedChartTheme) => void;
-  heatmap?: boolean;
   indicators?: readonly IndicatorPlugin[];
   renderer?: ChartRenderer;
   /** Extra indicator kinds for `indicator.add`, saved layouts and the widget's indicator menu. */
@@ -181,7 +180,6 @@ export interface ChartApi {
 export function createChart(container: HTMLElement, options: ChartOptions): ChartApi {
   let theme = resolveTheme(options.theme ?? systemThemeId(container.ownerDocument?.defaultView));
   const runtime = new ChartRuntime(options.feed, options.indicators, {
-    heatmap: options.heatmap,
     drawingTools: options.drawingTools,
     maxCandles: options.maxCandles,
     indicatorDefinitions: options.indicatorDefinitions,
@@ -484,7 +482,6 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
         const stats = renderer.render({
           state: shown,
           geometry,
-          heatmap: runtime.heatmap,
           theme,
           grid: {
             x: ticks.time.map(tick => tick.position),

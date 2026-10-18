@@ -12,7 +12,6 @@ import { DrawingRegistry } from '../src/drawing-tools.ts';
 import { hitDrawings, renderDrawings } from '../src/drawing-scene.ts';
 import { geometryForRanges } from '../src/geometry.ts';
 import { WebGL2Renderer } from '../src/webgl-renderer.ts';
-import { HeatmapStore } from '../src/heatmap.ts';
 
 // A DOM boundary double runs the real chart/controller/scheduler with a counting
 // renderer. It verifies which work input schedules, not browser painting speed.
@@ -136,7 +135,7 @@ function mount(t: TestContext, extra: Partial<ChartOptions> = {}) {
             volume: 1,
           })),
         });
-        return { setPaused() {}, requestSnapshot() {}, dispose() {} };
+        return { setPaused() {}, dispose() {} };
       },
     },
     renderer: {
@@ -145,7 +144,7 @@ function mount(t: TestContext, extra: Partial<ChartOptions> = {}) {
       render(frame) {
         lastFrame = frame;
         renders++;
-        return { cpuMs: 0, drawCalls: 1, instances: 0, textureBytes: 0, status: 'ready' };
+        return { cpuMs: 0, drawCalls: 1, instances: 0, status: 'ready' };
       },
       dispose() {},
     },
@@ -601,10 +600,9 @@ test('annotation font measurement and padding are shared by rendering and hit te
   assert.ok(seenFonts.every(font => font === '20px Georgia, serif'));
 });
 
-test('renderer applies series tokens and heatmap uniforms while preserving explicit indicator colors', t => {
+test('renderer applies series tokens while preserving explicit indicator colors', t => {
   const f = mount(t);
-  const buffers: Float32Array[] = [],
-    uniforms = new Map<string, number[]>();
+  const buffers: Float32Array[] = [];
   const gl = new Proxy<Record<string, unknown>>(
     {
       getProgramParameter: () => true,
@@ -612,10 +610,7 @@ test('renderer applies series tokens and heatmap uniforms while preserving expli
       createProgram: () => ({}),
       createBuffer: () => ({}),
       createVertexArray: () => ({}),
-      createTexture: () => ({}),
       getUniformLocation: (_program: unknown, name: string) => name,
-      uniform4f: (name: string, ...values: number[]) => uniforms.set(name, values),
-      uniform1f: (name: string, value: number) => uniforms.set(name, [value]),
       bufferSubData: (_target: unknown, _offset: number, data: Float32Array) => buffers.push(data.slice()),
     },
     { get: (target, key) => Reflect.get(target, key) ?? (() => {}) },
@@ -639,16 +634,11 @@ test('renderer applies series tokens and heatmap uniforms while preserving expli
       volumeUp: '#00ff00',
       volumeOpacity: 0.6,
       indicatorWidth: 5,
-      heatmapLow: '#123456',
-      heatmapUnknown: '#abcdef',
-      heatmapUnknownOpacity: 0.2,
-      heatmapOpacity: 0.7,
     },
   });
   const frame = f.lastFrame(),
     state = {
       ...frame.state,
-      document: { ...frame.state.document, layers: { ...frame.state.document.layers, heatmap: true } },
       indicators: [
         {
           plugin: { id: 'custom', name: 'Custom', color: [1, 0, 1, 1] as const, calculate: () => [] },
@@ -658,10 +648,8 @@ test('renderer applies series tokens and heatmap uniforms while preserving expli
         },
       ],
     };
-  const heatmap = new HeatmapStore({ minPrice: 90, binSize: 1, rows: 30, intervalMs: 60000 }, 2);
-  heatmap.append({ timeMs: 0, valid: false, values: new Float32Array(30) });
   // Without tick positions the renderer falls back to the theme's even grid.
-  renderer.render({ ...frame, state, heatmap, theme, grid: undefined });
+  renderer.render({ ...frame, state, theme, grid: undefined });
   const data = buffers.at(-1)!,
     instances = Array.from({ length: data.length / 12 }, (_, i) => [...data.slice(i * 12, (i + 1) * 12)]);
   assert.equal(
@@ -685,9 +673,6 @@ test('renderer applies series tokens and heatmap uniforms while preserving expli
     instances.some(row => row[4] === 5 && row[5] === 1 && row[6] === 0 && row[7] === 1),
     'explicit indicator color survives themed line width',
   );
-  assert.deepEqual(uniforms.get('lowColor'), [0x12 / 255, 0x34 / 255, 0x56 / 255, 1]);
-  assert.deepEqual(uniforms.get('unknownColor'), [0xab / 255, 0xcd / 255, 0xef / 255, 0.2]);
-  assert.deepEqual(uniforms.get('heatOpacity'), [0.7]);
 });
 
 test('autoscaleOnPan keeps an auto price scale fitted while dragging the plot', t => {
