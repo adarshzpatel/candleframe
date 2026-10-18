@@ -590,11 +590,13 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
       ['error', 'stale'].includes(state.streams[stream].status),
     );
     q('.connection-notice').hidden = !issues.length;
+    const messages = issues.map(stream => state.streams[stream].message ?? state.streams[stream].status);
+    // One shared reason reads once; different ones keep their stream names.
     put(
       q('.connection-message'),
-      issues
-        .map(stream => `${stream}: ${state.streams[stream].message ?? state.streams[stream].status}`)
-        .join(' · '),
+      new Set(messages).size === 1
+        ? messages[0]
+        : issues.map((stream, i) => `${stream}: ${messages[i]}`).join(' · '),
     );
   }
 

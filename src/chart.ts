@@ -68,6 +68,29 @@ import type {
   RuntimeState,
 } from './types.ts';
 
+/**
+ * The loading placeholder: 44 candles on a seeded wave, drawn in `currentColor` and
+ * stretched to the plot. Wicks keep a 1px stroke at any size.
+ */
+const GHOST_CANDLES = (() => {
+  let seed = 7;
+  const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  let close = 50;
+  const bars: string[] = [];
+  for (let i = 0; i < 44; i++) {
+    const open = close;
+    close = Math.min(85, Math.max(15, 50 + Math.sin(i / 6) * 22 + (random() - 0.5) * 14));
+    const top = Math.min(open, close) - 2 - random() * 6;
+    const bottom = Math.max(open, close) + 2 + random() * 6;
+    const x = i * 10;
+    bars.push(
+      `<line x1="${x + 4}" x2="${x + 4}" y1="${top.toFixed(1)}" y2="${bottom.toFixed(1)}" stroke="currentColor" vector-effect="non-scaling-stroke"/>`,
+      `<rect x="${x + 1}" width="6" y="${Math.min(open, close).toFixed(1)}" height="${Math.max(1, Math.abs(close - open)).toFixed(1)}"/>`,
+    );
+  }
+  return `<svg viewBox="0 0 440 100" preserveAspectRatio="none" width="100%" height="100%" fill="currentColor" style="display:block;overflow:visible">${bars.join('')}</svg>`;
+})();
+
 export interface ChartOptions {
   feed: FeedAdapter;
   theme?: ThemeInput;
@@ -210,31 +233,91 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       height: '100%',
       pointerEvents: 'none',
     });
+  // Before the first candle, the plot shows ghost candles while history loads and a short
+  // card when loading is paused or has failed. Both cover the plot only, clear of the axes.
+  const plotLayer = document.createElement('div');
+  Object.assign(plotLayer.style, {
+    position: 'absolute',
+    left: '0',
+    top: '0',
+    display: 'none',
+    alignItems: 'center',
+    justifyContent: 'center',
+    pointerEvents: 'none',
+  });
+  const ghost = document.createElement('div');
+  ghost.setAttribute('aria-hidden', 'true');
+  ghost.innerHTML = GHOST_CANDLES;
+  Object.assign(ghost.style, { position: 'absolute', inset: '18% 4% 24%' });
   const notice = document.createElement('div');
   notice.setAttribute('role', 'status');
-  Object.assign(notice.style, {
-    position: 'absolute',
-    top: '48%',
-    left: '10%',
-    right: '10%',
-    borderStyle: 'solid',
-    textAlign: 'center',
-    display: 'none',
-  });
+  const noticeTitle = document.createElement('div');
+  const noticeDetail = document.createElement('div');
+  notice.append(noticeTitle, noticeDetail);
+  Object.assign(notice.style, { position: 'relative', maxWidth: 'min(360px, 80%)', textAlign: 'center' });
+  plotLayer.append(ghost, notice);
+  type Placeholder = { kind: 'loading' | 'paused' | 'error'; title: string; detail?: string } | null;
+  let placeholder: Placeholder = null;
+  let placeholderTimer: ReturnType<typeof setTimeout> | undefined;
+  let pulse: Animation | undefined;
+  function paintPlaceholder(): void {
+    const shown = placeholder;
+    plotLayer.style.display = shown ? 'flex' : 'none';
+    ghost.style.display = shown?.kind === 'loading' ? 'block' : 'none';
+    noticeTitle.textContent = shown?.title ?? '';
+    noticeDetail.textContent = shown?.detail ?? '';
+    noticeDetail.style.display = shown?.detail ? 'block' : 'none';
+    const card = !!shown && shown.kind !== 'loading';
+    // The loading label sits on a chip of the page colour, so the ghost candles never
+    // run through its text.
+    Object.assign(notice.style, {
+      background: card ? theme.palette.surface : theme.palette.background,
+      border: card ? `${theme.effects.borderWidth}px solid ${theme.palette.borderStrong}` : '0',
+      borderRadius: `${theme.effects.radius}px`,
+      padding: card ? `${theme.layout.panelPadding}px ${theme.layout.panelPadding * 1.5}px` : '4px 10px',
+    });
+    noticeTitle.style.color = card ? theme.palette.textStrong : theme.palette.textMuted;
+    noticeTitle.style.fontWeight = card ? '600' : '';
+    Object.assign(noticeDetail.style, {
+      color: theme.palette.textMuted,
+      marginTop: '4px',
+      fontSize: `${theme.typography.smallSize}px`,
+      overflowWrap: 'anywhere',
+    });
+    if (shown?.kind === 'loading') {
+      // A slow pulse says "still working" without motion that pulls the eye.
+      if (!pulse && !window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+        pulse = ghost.animate?.([{ opacity: 0.45 }, { opacity: 1 }], {
+          duration: 1100,
+          direction: 'alternate',
+          iterations: Infinity,
+          easing: 'ease-in-out',
+        });
+    } else {
+      pulse?.cancel();
+      pulse = undefined;
+    }
+  }
+  function showPlaceholder(next: Placeholder): void {
+    clearTimeout(placeholderTimer);
+    placeholder = next;
+    // A load that finishes within 200ms never flashes the loading state.
+    if (next?.kind === 'loading' && plotLayer.style.display === 'none')
+      placeholderTimer = setTimeout(paintPlaceholder, 200);
+    else paintPlaceholder();
+  }
   function reflectTheme() {
     root.style.background = theme.palette.background;
-    Object.assign(notice.style, {
-      color: theme.palette.text,
-      background: theme.palette.surface,
-      borderColor: theme.palette.borderStrong,
-      borderWidth: `${theme.effects.borderWidth}px`,
-      padding: `${theme.layout.panelPadding}px`,
-      borderRadius: `${theme.effects.radius}px`,
+    Object.assign(plotLayer.style, {
+      right: `${theme.chart.priceAxisWidth}px`,
+      bottom: `${theme.chart.timeAxisHeight}px`,
       font: `${theme.typography.uiWeight} ${theme.typography.uiSize}px ${theme.typography.uiFamily}`,
     });
+    ghost.style.color = theme.palette.border;
+    if (placeholder) paintPlaceholder();
   }
   reflectTheme();
-  root.append(canvas, overlay, cursorCanvas, timeAxis, priceAxis, notice);
+  root.append(canvas, overlay, cursorCanvas, timeAxis, priceAxis, plotLayer);
   container.append(root);
   const ctx = overlay.getContext('2d');
   const cursorCtx = cursorCanvas.getContext('2d');
@@ -318,10 +401,18 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
   const abort = new AbortController();
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
+  function marketPlaceholder(value: RuntimeState): Placeholder {
+    if (value.candles.length) return null;
+    if (value.error)
+      return { kind: 'error', title: `Couldn't load ${value.feed.instrument.symbol}`, detail: value.error };
+    if (value.paused) return { kind: 'paused', title: 'Paused', detail: 'Resume to load this market.' };
+    return { kind: 'loading', title: `Loading ${value.feed.instrument.symbol} · ${value.feed.interval}` };
+  }
   function showError(message: string | null): void {
     renderError = message;
-    notice.textContent = message ?? '';
-    notice.style.display = message ? 'block' : 'none';
+    showPlaceholder(
+      message ? { kind: 'error', title: 'The chart cannot draw', detail: message } : marketPlaceholder(state),
+    );
   }
 
   function invalidate(layer: 'market' | 'overlay' | 'cursor' = 'market'): void {
@@ -1594,11 +1685,9 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       drawings.sync(next);
       requestOlderIfNear(next);
       if (!renderError) {
-        const message = next.candles.length
-          ? null
-          : (next.error ?? (next.paused ? 'Paused. Resume to load this market.' : 'Loading market history…'));
-        notice.textContent = message ?? '';
-        notice.style.display = message ? 'block' : 'none';
+        // Repaint only on a change, so streaming updates don't restart the delay or pulse.
+        const shown = marketPlaceholder(next);
+        if (JSON.stringify(shown) !== JSON.stringify(placeholder)) showPlaceholder(shown);
       }
       invalidate();
     });
@@ -1745,6 +1834,8 @@ export function createChart(container: HTMLElement, options: ChartOptions): Char
       cancelDrawing();
       disposed = true;
       cancelAnimationFrame(frame);
+      clearTimeout(placeholderTimer);
+      pulse?.cancel();
       abort.abort();
       resize.disconnect();
       unsubscribe();

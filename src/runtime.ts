@@ -1407,12 +1407,16 @@ export class ChartRuntime {
             .map(drawing => drawing.type),
         ),
       ],
+      // Candles and depth often fail for one reason; say it once.
       error:
-        Object.values(this.streams)
-          .filter(s => s.status === 'error')
-          .map(s => s.message)
-          .filter(Boolean)
-          .join(' · ') || null,
+        [
+          ...new Set(
+            Object.values(this.streams)
+              .filter(s => s.status === 'error')
+              .map(s => s.message)
+              .filter(Boolean),
+          ),
+        ].join(' · ') || null,
     };
   }
   inspect() {
