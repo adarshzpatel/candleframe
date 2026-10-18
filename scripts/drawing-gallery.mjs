@@ -71,6 +71,10 @@ try {
         'long-position': [at(80, 0), at(30, 0.008), at(30, -0.004)],
         'short-position': [at(80, 0), at(30, -0.008), at(30, 0.004)],
         callout: [at(60, 0), at(45, 0.006)],
+        'flat-top-bottom': [at(90, -0.004), at(30, 0.001), at(60, 0.004)],
+        'disjoint-channel': [at(90, 0.001), at(30, 0.004), at(90, -0.001)],
+        'cyclic-lines': [at(95, 0), at(80, 0)],
+        'time-cycles': [at(95, -0.001), at(75, -0.001)],
       };
       const count = typeof points === 'number' ? points : 6;
       const path = Array.from({ length: count }, (_, i) =>

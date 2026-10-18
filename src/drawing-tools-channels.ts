@@ -217,11 +217,12 @@ function regressionTrend(d: Drawing, c: DrawingContext): DrawingPrimitive[] {
     path(base, { color: baseColor, dash: [6, 4] }),
   );
   if (option(d, 'pearson')) {
-    const start = lower[0],
-      below = Math.max(start.y, upper[0].y);
-    result.push(
-      text({ x: start.x + 4, y: below + 18 }, fit.pearson.toFixed(4), { color: lowerColor, plain: true }),
-    );
+    // Under the lowest channel line across the label's width, so a falling line never crosses it.
+    const x = from + 4,
+      end = Math.min(to, x + 72),
+      sigmas = [option<number>(d, 'upperDeviation'), option<number>(d, 'lowerDeviation')],
+      below = Math.max(...sigmas.flatMap(s => [at(x, s).y, at(end, s).y]));
+    result.push(text({ x, y: below + 18 }, fit.pearson.toFixed(4), { color: lowerColor, plain: true }));
   }
   return result;
 }
@@ -339,7 +340,7 @@ function timeCycles(d: Drawing, c: DrawingContext): DrawingPrimitive[] {
   const step = b.x - a.x;
   if (Math.abs(step) < 2) return [];
   const radius = Math.abs(step) / 2,
-    segments = Math.min(48, Math.max(8, Math.ceil(radius / 4))),
+    segments = Math.min(96, Math.max(8, Math.ceil(radius / 2))),
     far = step > 0 ? g.left + g.plotWidth : g.left,
     background = option(d, 'background'),
     result: DrawingPrimitive[] = [];
