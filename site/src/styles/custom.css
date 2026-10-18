@@ -718,20 +718,47 @@ mobile-starlight-toc .toggle {
   font-size: 0.8125rem;
   font-weight: 620;
 }
-/* The same tree as the sidebar: a hairline thread per level, nested levels indented under
-   their parent's text, and the current heading marked on its thread. */
+/* The same tree as the sidebar, without icons: every heading hangs off its parent by a
+   branch connector, a corner on the last one, and the current heading's tick takes the
+   accent. Rows are 28px, so ticks sit at 14px. */
 starlight-toc nav > ul {
   margin-top: 8px;
-  border-inline-start: 1px solid var(--cf-line);
 }
 starlight-toc ul ul {
-  margin-inline-start: 12px;
-  border-inline-start: 1px solid var(--cf-line);
+  margin-inline-start: 6px;
+}
+starlight-toc li {
+  position: relative;
+  padding-inline-start: 10px;
+}
+starlight-toc li::before,
+starlight-toc li::after {
+  content: '';
+  position: absolute;
+  inset-inline-start: 0;
+  background: var(--cf-line-strong);
+  pointer-events: none;
+}
+starlight-toc li::before {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+starlight-toc li:last-child::before {
+  bottom: auto;
+  height: 14px;
+}
+starlight-toc li::after {
+  top: 14px;
+  width: 8px;
+  height: 1px;
+}
+starlight-toc li:has(> a[aria-current='true'])::after {
+  background: var(--cf-accent-strong);
 }
 starlight-toc a {
-  position: relative;
   padding-block: 4px;
-  padding-inline: 12px 0;
+  padding-inline: 4px 0;
   border-radius: 0;
   color: var(--cf-ink-3);
   font-size: 0.8125rem;
@@ -748,15 +775,6 @@ starlight-toc a[aria-current='true'],
 starlight-toc li:has(> a[aria-current='true']) > a {
   color: var(--cf-ink);
   font-weight: 550;
-}
-starlight-toc a[aria-current='true']::before {
-  content: '';
-  position: absolute;
-  inset-block: 6px;
-  inset-inline-start: -2px;
-  width: 3px;
-  border-radius: 1px;
-  background: var(--cf-accent-strong);
 }
 .right-sidebar {
   border-inline-start: 1px solid var(--cf-line);

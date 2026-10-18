@@ -127,12 +127,23 @@ try {
     });
     await toc.goto(new URL('feeds/static-data/#instrument-metadata', url).href);
     await toc.waitForFunction(() => !!document.querySelector('starlight-toc a[aria-current="true"]'));
-    const tree = await toc.evaluate(() => ({
-      thread: getComputedStyle(document.querySelector('starlight-toc ul ul')).borderInlineStartWidth,
-      current: document.querySelector('starlight-toc a[aria-current="true"]')?.textContent?.trim(),
-    }));
+    // Each heading hangs off a connector (a 1px run and a tick); the current one's tick is
+    // the accent, so it differs from a sibling's.
+    const tree = await toc.evaluate(() => {
+      const current = document.querySelector('starlight-toc a[aria-current="true"]');
+      const item = current?.parentElement;
+      const other = [...document.querySelectorAll('starlight-toc li')].find(
+        li => li !== item && !li.contains(item),
+      );
+      return {
+        thread: getComputedStyle(item, '::before').width,
+        tick: getComputedStyle(item, '::after').backgroundColor,
+        otherTick: getComputedStyle(other, '::after').backgroundColor,
+        current: current?.textContent?.trim(),
+      };
+    });
     check(
-      tree.thread === '1px' && tree.current === 'Instrument metadata',
+      tree.thread === '1px' && tree.tick !== tree.otherTick && tree.current === 'Instrument metadata',
       `${colorScheme}: the page outline is a tree`,
       tree,
     );
