@@ -11,6 +11,8 @@ import type {
   DrawingStyle,
   DrawingToolDefaults,
   DrawingToolDefinition,
+  DrawingVisibilityRange,
+  DrawingVisibilityUnit,
 } from './drawing-types.ts';
 import {
   drawingTemplatePatch,
@@ -25,6 +27,10 @@ import { createDrawingTextEditor } from './drawing-text-editor.ts';
 import { uiIcon as svg } from './ui-icons.ts';
 import { DRAWING_HOTKEYS } from './drawing-tools.ts';
 import { defineSelect, type CfSelectElement } from './select.ts';
+import { createFavouritesToolbar, type DrawingFavourites } from './drawing-favourites.ts';
+import { renderVisibilityFields } from './drawing-visibility-form.ts';
+import { visibleOnInterval } from './drawing-visibility.ts';
+import { intervalLabel, type Interval } from './intervals.ts';
 
 const FAMILIES = ['Lines', 'Fib & Gann', 'Patterns', 'Forecasting', 'Shapes', 'Annotations'];
 /** Line widths offered in the drawing toolbar, in pixels. */
@@ -36,13 +42,15 @@ export interface DrawingWorkbenchElements {
   panel: HTMLElement;
   /** Named templates and saved tool defaults; the widget owns their storage. */
   templates: DrawingTemplates;
+  /** Favourite tools for the family menus' stars and the floating toolbar. */
+  favourites?: DrawingFavourites;
   report(message: string): void;
 }
 
 /** Instance-owned controls. The widget supplies layout, styles and the chart instance. */
 export function createDrawingWorkbench(
   chart: ChartApi,
-  { root, rail, panel, templates, report }: DrawingWorkbenchElements,
+  { root, rail, panel, templates, favourites, report }: DrawingWorkbenchElements,
 ) {
   const owner = root.ownerDocument;
   defineSelect(owner.defaultView?.customElements);
@@ -63,6 +71,7 @@ export function createDrawingWorkbench(
   const toolList = flyout.querySelector<HTMLElement>('.drawing-tool-list')!;
   let openGroup = groups[0],
     lastDrawings: readonly Drawing[] | undefined,
+    lastInterval = chart.inspect().feed.interval as string,
     lastHistory = '',
     selection: DrawingInteractionState = chart.drawingState();
   const buttons = new Map<string, HTMLButtonElement>(),
@@ -129,15 +138,63 @@ export function createDrawingWorkbench(
       }
       b.title = t.hint;
       b.addEventListener('click', () => choose(t), { signal: abort.signal });
-      toolList.append(b);
+      toolList.append(favourites ? favouriteRow(t, b) : b);
     }
+  }
+  /** Wraps a menu item with its favourite star; ArrowRight and ArrowLeft move between them. */
+  function favouriteRow(t: DrawingToolDefinition, item: HTMLButtonElement) {
+    const row = owner.createElement('div');
+    row.className = 'drawing-tool-row';
+    row.setAttribute('role', 'none');
+    const star = owner.createElement('button');
+    star.className = 'drawing-tool-star';
+    star.tabIndex = -1;
+    star.setAttribute('role', 'menuitemcheckbox');
+    const show = () => {
+      const on = favourites!.has(t.type);
+      star.innerHTML = svg(on ? 'star-filled' : 'star', 16);
+      star.setAttribute('aria-checked', String(on));
+      star.setAttribute(
+        'aria-label',
+        on ? `Remove ${t.label} from favourites` : `Add ${t.label} to favourites`,
+      );
+      star.dataset.tooltip = on ? 'Remove from favourites' : 'Add to favourites';
+    };
+    show();
+    star.addEventListener(
+      'click',
+      () => {
+        report(
+          favourites!.toggle(t.type)
+            ? `Added ${t.label} to favourites`
+            : `Removed ${t.label} from favourites`,
+        );
+        show();
+      },
+      { signal: abort.signal },
+    );
+    row.append(item, star);
+    return row;
   }
   const items = () => [...toolList.querySelectorAll<HTMLButtonElement>('.drawing-tool-item')];
   toolList.addEventListener(
     'keydown',
     event => {
-      const list = items(),
-        index = list.indexOf(activeElement() as HTMLButtonElement);
+      const focused = activeElement() as HTMLElement | null,
+        onStar = !!focused?.classList.contains('drawing-tool-star'),
+        row = focused?.closest('.drawing-tool-row');
+      if (row && (event.key === 'ArrowRight' || event.key === 'ArrowLeft')) {
+        event.preventDefault();
+        row
+          .querySelector<HTMLElement>(
+            event.key === 'ArrowRight' ? '.drawing-tool-star' : '.drawing-tool-item',
+          )
+          ?.focus({ preventScroll: true });
+        return;
+      }
+      // Up and down keep to the column that has focus: tools or their stars.
+      const list = onStar ? [...toolList.querySelectorAll<HTMLButtonElement>('.drawing-tool-star')] : items(),
+        index = list.indexOf(focused as HTMLButtonElement);
       const next =
         event.key === 'ArrowDown'
           ? list[(index + 1) % list.length]
@@ -211,6 +268,31 @@ export function createDrawingWorkbench(
   }
   flyout.id = 'drawing-tool-picker';
   rail.querySelector('#trend')?.replaceWith(groupHolder);
+  const favouriteBar = favourites && createFavouritesToolbar({ panel, catalog, favourites, choose });
+  const favouriteToggle = owner.createElement('button');
+  favouriteToggle.className = 'rail-button drawing-favourites-toggle';
+  favouriteToggle.innerHTML = svg('star');
+  favouriteToggle.hidden = !favourites;
+  groupHolder.after(favouriteToggle);
+  function showFavouriteToggle() {
+    if (!favourites) return;
+    const any = favourites.tools().some(type => catalog.some(t => t.type === type)),
+      on = favourites.visible;
+    favouriteToggle.disabled = !any;
+    favouriteToggle.setAttribute('aria-pressed', String(any && on));
+    favouriteToggle.setAttribute('aria-label', on ? 'Hide favourites toolbar' : 'Show favourites toolbar');
+    favouriteToggle.dataset.tooltip = !any
+      ? 'Star a tool in a menu to add favourites'
+      : on
+        ? 'Hide favourites'
+        : 'Show favourites';
+    favouriteToggle.innerHTML = svg(any && on ? 'star-filled' : 'star');
+  }
+  const unsubscribeFavourites = favourites?.subscribe(showFavouriteToggle);
+  showFavouriteToggle();
+  favouriteToggle.addEventListener('click', () => favourites?.setVisible(!favourites.visible), {
+    signal: abort.signal,
+  });
   root.addEventListener(
     'pointerdown',
     event => {
@@ -324,6 +406,26 @@ export function createDrawingWorkbench(
   settings.innerHTML = `<div class="drawing-panel-heading"><strong class="drawing-property-title">Defaults</strong><button class="drawing-close" aria-label="Close drawing settings">${svg('close', 16)}</button></div><div class="drawing-properties"><label>Text<textarea aria-label="Drawing text" maxlength="2000" rows="2"></textarea></label><div class="drawing-property-row"><label>Fill opacity<input aria-label="Drawing fill opacity" type="number" min="0" max="1" step="0.05"></label><label>Font size<input aria-label="Drawing font size" type="number" min="10" max="32" step="1"></label></div><div class="drawing-option-fields"></div><label class="drawing-levels-field">Levels<input aria-label="Fibonacci levels" placeholder="0, 0.236, 0.382, 0.5, 0.618, 1"></label><div class="drawing-anchor-fields"></div><div class="drawing-selected-actions"><button data-action="duplicate">Duplicate</button><button data-action="front">Bring to front</button><button data-action="back">Send to back</button></div><div class="drawing-template-footer"><button class="button drawing-template-open" aria-haspopup="dialog" aria-expanded="false" aria-controls="drawing-templates">Template${svg('chevron', 14)}</button></div></div>`;
   panel.append(settings);
   panel.append(objects);
+  const visibilityFields = owner.createElement('div');
+  visibilityFields.className = 'drawing-visibility-fields';
+  settings.querySelector('.drawing-anchor-fields')!.before(visibilityFields);
+  /** The chart's interval as the picker names it, for hidden-drawing hints. */
+  function intervalName() {
+    try {
+      return intervalLabel(lastInterval as Interval);
+    } catch {
+      return lastInterval;
+    }
+  }
+  // Visibility is per drawing; it reaches new drawings only through defaults and templates.
+  function editVisibility(unit: DrawingVisibilityUnit, range: DrawingVisibilityRange) {
+    attempt(() => {
+      const visibility = { [unit]: range };
+      if (selection.selected)
+        chart.execute({ type: 'drawing.update', id: selection.selected.id, patch: { visibility } });
+      else remember({ visibility });
+    });
+  }
   function positionObjects() {
     // In a grid, open beside the active chart, whose summary holds the toggle.
     const bounds = panel.getBoundingClientRect(),
@@ -402,6 +504,7 @@ export function createDrawingWorkbench(
       style: { ...current?.style, ...patch.style },
       options: { ...current?.options, ...patch.options },
       levels: patch.levels ?? current?.levels,
+      visibility: patch.visibility ? { ...current?.visibility, ...patch.visibility } : current?.visibility,
     });
   }
   function editStyle(patch: Partial<DrawingStyle>) {
@@ -909,6 +1012,17 @@ export function createDrawingWorkbench(
     settings.querySelector<HTMLInputElement>('[aria-label="Fibonacci levels"]')!.value =
       d?.levels.join(', ') ?? '';
     renderOptions(tool?.settings ?? [], d);
+    if (d || tool)
+      renderVisibilityFields(
+        visibilityFields,
+        d ? d.visibility : selection.options.toolDefaults[selection.tool]?.visibility,
+        editVisibility,
+        {
+          signal: abort.signal,
+          note: d && !visibleOnInterval(d, lastInterval) ? `Hidden on ${intervalName()}` : undefined,
+        },
+      );
+    else visibilityFields.replaceChildren();
     const anchors = settings.querySelector('.drawing-anchor-fields')!;
     anchors.replaceChildren();
     const position = isPosition(d);
@@ -997,9 +1111,30 @@ export function createDrawingWorkbench(
       const pick = owner.createElement('button');
       pick.className = 'drawing-object-name';
       pick.innerHTML = svg(d.type, 16);
-      pick.append(`${label} ${number}`);
+      const name = owner.createElement('span');
+      name.className = 'drawing-object-label';
+      name.textContent = `${label} ${number}`;
+      pick.append(name);
       pick.style.setProperty('--drawing-color', d.style.color);
-      pick.setAttribute('aria-label', `Select ${label.toLowerCase()} ${number}`);
+      // Still listed, so the user can select it and change its Visibility settings.
+      const offInterval = d.visible && !visibleOnInterval(d, lastInterval),
+        hint = `Hidden on ${intervalName()}`;
+      row.classList.toggle('off-interval', offInterval);
+      if (offInterval) {
+        const small = owner.createElement('small');
+        small.className = 'drawing-object-hint';
+        small.textContent = hint;
+        // The hint sits under the name, so narrow panels keep both readable.
+        const text = owner.createElement('span');
+        text.className = 'drawing-object-text';
+        name.replaceWith(text);
+        text.append(name, small);
+        pick.title = `${hint} by its Visibility settings`;
+      }
+      pick.setAttribute(
+        'aria-label',
+        `Select ${label.toLowerCase()} ${number}${offInterval ? `, ${hint.toLowerCase()}` : ''}`,
+      );
       pick.addEventListener('click', () => chart.selectDrawing(d.id), { signal: abort.signal });
       const hide = owner.createElement('button');
       hide.className = `drawing-row-action${d.visible ? '' : ' on'}`;
@@ -1059,6 +1194,7 @@ export function createDrawingWorkbench(
       .querySelector('.drawing-active-tool')!
       .setAttribute('title', definition?.hint ?? 'Select or move a drawing');
     buttons.forEach((button, group) => button.classList.toggle('active', definition?.group === group));
+    favouriteBar?.setActive(value.tool);
     const cursor = rail.querySelector('#cursor')!;
     cursor.classList.toggle('active', value.tool === 'cursor');
     cursor.setAttribute('aria-pressed', String(value.tool === 'cursor'));
@@ -1111,9 +1247,12 @@ export function createDrawingWorkbench(
       rail.querySelector<HTMLButtonElement>('#undo')!.disabled = !state.history.canUndo;
       redo.disabled = !state.history.canRedo;
     }
-    if (state.document.drawings !== lastDrawings) {
+    if (state.document.drawings !== lastDrawings || state.feed.interval !== lastInterval) {
+      const intervalChanged = state.feed.interval !== lastInterval;
       lastDrawings = state.document.drawings;
+      lastInterval = state.feed.interval;
       renderObjects();
+      if (intervalChanged && !settings.hidden) renderProperties();
     }
   }
   const resize = new ResizeObserver(() => {
@@ -1153,6 +1292,9 @@ export function createDrawingWorkbench(
       templateMenu.remove();
       groupHolder.remove();
       redo.remove();
+      unsubscribeFavourites?.();
+      favouriteBar?.dispose();
+      favouriteToggle.remove();
     },
   };
 }

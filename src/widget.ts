@@ -25,6 +25,12 @@ import type { ChartApi, ChartOptions } from './chart.ts';
 import { createDrawingWorkbench } from './drawing-workbench.ts';
 import { DrawingTemplates, type DrawingTemplateStore } from './drawing-templates.ts';
 import { drawingWorkbenchStyles } from './drawing-workbench-style.ts';
+import {
+  DrawingFavourites,
+  drawingFavouriteStyles,
+  type DrawingFavouriteStore,
+} from './drawing-favourites.ts';
+import { drawingVisibilityStyles } from './drawing-visibility-form.ts';
 import { uiIcon as icon } from './ui-icons.ts';
 import { widgetStyles } from './widget-style.ts';
 import {
@@ -98,6 +104,11 @@ export interface ChartWidgetOptions extends ChartOptions {
    * Without it they use browser storage under `storageKey`, or last for the session.
    */
   drawingTemplateStore?: DrawingTemplateStore;
+  /**
+   * Storage for favourite drawing tools and the favourites toolbar's place. Without it they
+   * use browser storage under `storageKey`, or last for the session.
+   */
+  drawingFavouriteStore?: DrawingFavouriteStore;
   /**
    * Starting grid and sync settings. Grids of more than one chart need `markets`; new
    * charts copy the active chart's market. A saved layout replaces this once it loads.
@@ -193,7 +204,12 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
   Object.assign(mount.style, { width: '100%', height: '100%', minWidth: '0', minHeight: '0' });
   const shadow = mount.attachShadow({ mode: 'open' });
   const style = doc.createElement('style');
-  style.textContent = widgetStyles + drawingWorkbenchStyles + indicatorPanelStyles;
+  style.textContent =
+    widgetStyles +
+    drawingWorkbenchStyles +
+    drawingFavouriteStyles +
+    drawingVisibilityStyles +
+    indicatorPanelStyles;
   const root = doc.createElement('section');
   root.className = 'widget';
   root.setAttribute('aria-label', 'Chart widget');
@@ -1038,11 +1054,38 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     void templates.load().then(() => {
       if (!disposed) attempt(() => chart.setDrawingOptions({ toolDefaults: savedDefaults(chart) }));
     });
+    const favouriteKey = options.storageKey
+      ? JSON.stringify([options.storageKey, 'drawing-favourites'])
+      : null;
+    const favourites = new DrawingFavourites(
+      options.drawingFavouriteStore ??
+        (favouriteKey
+          ? {
+              load() {
+                try {
+                  return JSON.parse(doc.defaultView?.localStorage.getItem(favouriteKey) ?? 'null');
+                } catch {
+                  return null;
+                }
+              },
+              save(value) {
+                try {
+                  doc.defaultView?.localStorage.setItem(favouriteKey, JSON.stringify(value));
+                } catch {
+                  /* Favourites still work for this session when browser storage is unavailable. */
+                }
+              },
+            }
+          : undefined),
+      error => report(`Drawing favourites: ${error instanceof Error ? error.message : String(error)}`),
+    );
+    void favourites.load();
     workbench = createDrawingWorkbench(chart, {
       root,
       rail: $('.tool-rail'),
       panel,
       templates,
+      favourites,
       report,
     });
     // Stable styling hooks for host-specific chrome beyond the shared canvas theme.
@@ -1058,6 +1101,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
       '.drawing-flyout': 'drawing-menu',
       '.drawing-object-panel': 'drawing-properties',
       '.drawing-text-editor': 'text-editor',
+      '.drawing-favourites': 'drawing-favourites',
     })) {
       (root.matches(selector) ? root : root.querySelector(selector))?.setAttribute('part', part);
     }
