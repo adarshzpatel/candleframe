@@ -412,14 +412,59 @@ site-search dialog {
   color: var(--cf-ink);
   font-weight: 620;
 }
-/* The current page also gets the accent mark, laid over the tree's thread. */
-.sidebar-content ul ul a[aria-current='page']::before {
+/*
+ * Groups are folders and pages are files. Each page hangs off its folder by a connector:
+ * a vertical run down the folder's icon column and a short tick into the row, ending in
+ * a corner on the last page, as `tree` draws it. The current page's tick and icon take
+ * the accent.
+ *
+ * Row geometry: rows are 28px (20px line, 4px padding), so the tick sits at 14px. The
+ * caret is 14px with a 4px gap after 6px padding, so folder icons span 24-38px and the
+ * connector runs down x = 31px.
+ */
+.sidebar-content {
+  --cf-tree-icon: 14px;
+  --cf-tree-x: 31px;
+  --cf-tree-row: 28px;
+  --cf-icon-folder: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.25' stroke-linejoin='round'%3E%3Cpath d='M2 4.5A1.5 1.5 0 0 1 3.5 3h2.8l1.5 1.5h4.7A1.5 1.5 0 0 1 14 6v5.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5z'/%3E%3C/svg%3E");
+  --cf-icon-folder-open: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.25' stroke-linejoin='round'%3E%3Cpath d='M2 11.5v-7A1.5 1.5 0 0 1 3.5 3h2.8l1.5 1.5h4A1.5 1.5 0 0 1 13.3 6v1'/%3E%3Cpath d='M2 11.5 3.7 7.9A1.5 1.5 0 0 1 5.1 7h8.6a.8.8 0 0 1 .7 1.1l-1.5 3.9a1.5 1.5 0 0 1-1.4 1H3.5A1.5 1.5 0 0 1 2 11.5z'/%3E%3C/svg%3E");
+  --cf-icon-file: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.25' stroke-linejoin='round'%3E%3Cpath d='M4 2.5h4.8l3.2 3.2v7.8H4z'/%3E%3Cpath d='M8.6 2.5v3.4H12'/%3E%3C/svg%3E");
+}
+/* Folder and file icons are masks, so they take the text colour of their state. */
+.sidebar-content .group-label::before,
+.sidebar-content a::before {
   content: '';
-  position: absolute;
-  inset-block: 6px;
-  inset-inline-start: -9px;
-  width: 2px;
-  border-radius: 1px;
+  flex: none;
+  width: var(--cf-tree-icon);
+  height: var(--cf-tree-icon);
+  background: var(--cf-ink-3);
+  mask: var(--cf-icon-file) center / contain no-repeat;
+}
+.sidebar-content .group-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sidebar-content .group-label::before {
+  mask-image: var(--cf-icon-folder);
+}
+.sidebar-content details[open] > summary .group-label::before {
+  mask-image: var(--cf-icon-folder-open);
+}
+/* Icons sit on the first line, so a wrapped title keeps its icon on the connector's tick. */
+.sidebar-content a {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.sidebar-content a::before {
+  margin-top: 3px;
+}
+/* A top-level page (Overview) lines its icon up with the folders. */
+.sidebar-content .top-level > li > a {
+  padding-inline-start: 24px;
+}
+.sidebar-content a[aria-current='page']::before {
   background: var(--cf-accent-strong);
 }
 .sidebar-content summary {
@@ -452,13 +497,44 @@ site-search dialog {
   font-variant-numeric: tabular-nums;
 }
 .sidebar-content ul ul {
-  margin-block: 2px 8px;
-  margin-inline-start: 13px;
+  margin-block: 0 6px;
+  margin-inline-start: calc(var(--cf-tree-x) - 0.5px);
 }
 .sidebar-content ul ul li {
+  position: relative;
   margin-inline-start: 0;
-  padding-inline-start: 8px;
-  border-inline-start: 1px solid var(--cf-line);
+  padding-inline-start: 10px;
+  border: 0;
+}
+/* The vertical run: full height to reach the next page, half on the last to make a corner. */
+.sidebar-content ul ul li::before,
+.sidebar-content ul ul li::after {
+  content: '';
+  position: absolute;
+  inset-inline-start: 0;
+  background: var(--cf-line-strong);
+  pointer-events: none;
+}
+.sidebar-content ul ul li::before {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+.sidebar-content ul ul li:last-child::before {
+  bottom: auto;
+  height: calc(var(--cf-tree-row) / 2);
+}
+/* The tick into the row, meeting the row's highlight. */
+.sidebar-content ul ul li::after {
+  top: calc(var(--cf-tree-row) / 2);
+  width: 10px;
+  height: 1px;
+}
+.sidebar-content ul ul li:has(> a[aria-current='page'])::after {
+  background: var(--cf-accent-strong);
+}
+.sidebar-content ul ul a {
+  padding-inline-start: 6px;
 }
 
 /* ── Page head ──────────────────────────────────────────── */
