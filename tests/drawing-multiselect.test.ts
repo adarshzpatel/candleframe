@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { DrawingController } from '../src/drawing-controller.ts';
 import { drawingTree, treeMoveCommands } from '../src/drawing-groups.ts';
+import type { DrawingRect } from '../src/drawing-scene.ts';
 import { createGeometry } from '../src/geometry.ts';
 import { ChartRuntime } from '../src/runtime.ts';
 import { createSimulatedFeed } from '../src/simulated-feed.ts';
@@ -248,7 +249,8 @@ test('a modifier drag on empty plot selects the drawings it touches', () => {
   assert.deepEqual(ids(), ['a']);
   controller.down({ x: g.x(100 * minute), y: g.y(140) }, context, { toggle: true });
   controller.move({ x: g.x(110 * minute), y: g.y(90) }, context);
-  assert.ok(controller.marquee && controller.marquee.right > controller.marquee.left);
+  const box = controller.marquee as DrawingRect | null;
+  assert.ok(box && box.right > box.left);
   controller.cancel();
   assert.equal(controller.marquee, null);
   void on;
