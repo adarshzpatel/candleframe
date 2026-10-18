@@ -97,7 +97,7 @@ chart.restoreDocument(layout);
 chart.dispose(); // Call when the host view unmounts.
 ```
 
-Replace `FeedAdapter`, `ChartRenderer` or `IndicatorPlugin` to supply data, rendering or calculations. `ChartRuntime` supports the same documents and commands without a DOM or GPU. See the [working contracts](docs/poc.md), [v0.2 design decisions](docs/v0.2-design.md), [headless example](examples/headless.ts) and [contributor instructions](AGENTS.md).
+Replace `FeedAdapter`, `ChartRenderer` or `IndicatorPlugin` to supply data, rendering or calculations. `ChartRuntime` supports the same documents and commands without a DOM or GPU. See the [headless example](examples/headless.ts) and [contributor instructions](AGENTS.md).
 
 Without a `theme`, charts start in Graphite, or Paper when the system asks for light colors, and the widget follows later system changes until the user picks a theme. The Appearance picker also includes Evergreen (the demo's theme), Midnight, Monochrome and Sand. The library draws no watermark by default; set `chart.watermarkText` to add one. Use Appearance → Customize theme for colors, typography, density, controls and chart styling, with JSON import/export. Hosts can use `createTheme()`, `theme` and `setTheme()`; see [themes](docs/embedding.md#themes).
 
@@ -109,17 +109,12 @@ Interfaces remain experimental. Scripting and broker execution are not implement
 
 CandleFrame is released under the [MIT license](LICENSE). Bundled fonts use the SIL Open Font License; see `src/fonts/`.
 
+CandleFrame is an independent project. It is not affiliated with or endorsed by Binance or any other company named in this repository. Their names and trademarks belong to their owners.
+
 ## Project documents
 
 - [Docs site](https://adarshzpatel.github.io/candleframe/): guides for embedding, data feeds, indicators, plugins and agents. Code blocks are typechecked by `node scripts/check-doc-snippets.mjs`.
 - [Drawing suite and extension API](docs/drawing-suite.md)
 - [Self-contained widget integration](docs/embedding.md)
-- [Multi-chart layouts design](docs/multi-chart-design.md)
-- [Drawing design decisions](docs/drawing-suite-design.md)
 - [Driving a chart from an agent](docs/agents.md): batches, preview, query, schemas and the MCP server
-- [Implementation and verification](docs/poc.md)
-- [Version 0.2 design decisions](docs/v0.2-design.md)
-- [Research and feature comparison](docs/research.md)
-- [Roadmap and release gates](docs/roadmap.md)
-- [Target architecture and proposed future APIs](docs/architecture.md)
-- [Contributing](CONTRIBUTING.md) and [changelog](CHANGELOG.md)
+- [Contributing](CONTRIBUTING.md), [security policy](SECURITY.md), [code of conduct](CODE_OF_CONDUCT.md) and [changelog](CHANGELOG.md)

@@ -17,7 +17,7 @@ CI runs `format:check`, `test`, `build`, the headless example, `npm pack --dry-r
 
 ## Where things live
 
-`AGENTS.md` maps each task to its entry file and lists the rules the engine depends on. Read it before changing the runtime, renderer or widget. `docs/poc.md` records the current contracts.
+`AGENTS.md` maps each task to its entry file and lists the rules the engine depends on. Read it before changing the runtime, renderer or widget.
 
 ## Pull requests
 
@@ -27,6 +27,8 @@ CI runs `format:check`, `test`, `build`, the headless example, `npm pack --dry-r
 - New runtime dependencies need a concrete reason in the pull request description. The library ships with none today.
 
 ## Reporting bugs
+
+Report security issues privately, as described in `SECURITY.md`, not in a public issue.
 
 Include the browser, the feed (simulated seed or provider), and the output of **Inspect state** from the widget footer. That JSON is usually enough to reproduce the state.
 

@@ -24,7 +24,7 @@ The rail has six families, each split into sections in its menu. Tools place wit
 | Shapes | Shapes | Rectangle, ellipse, triangle, polyline, rotated rectangle, circle, path, arc, curve, double curve |
 | Annotations | Text and notes | Text, callout, price label, note, price note, pin, signpost, flag mark, comment, table, anchored text, anchored note |
 
-Each family has its own module, `src/drawing-tools-<family>.ts`, and its own notes in `docs/drawing-notes/`: [patterns](drawing-notes/patterns.md), [Fibonacci and Gann](drawing-notes/fib.md), [channels and cycles](drawing-notes/channels.md), [forecasting](drawing-notes/forecast.md) and [shapes and notes](drawing-notes/shapes.md). Editing features have notes too: [multi-selection and groups](drawing-notes/multiselect.md), [visibility and favourites](drawing-notes/visibility.md) and [settings follow-ups](drawing-notes/settings.md).
+Each family has its own module, `src/drawing-tools-<family>.ts`.
 
 Clicking a family button picks the last tool used from it. The small corner button, or a right-click, opens the family menu. Alt+T, Alt+H, Alt+J, Alt+V, Alt+C and Alt+F pick the trend line, horizontal line, horizontal ray, vertical line, cross line and Fibonacci retracement.
 

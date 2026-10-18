@@ -1,6 +1,6 @@
 # Working on CandleFrame
 
-This is a TypeScript/WebGL2 proof of concept. Read `README.md` and `docs/poc.md` for implemented behavior. `docs/architecture.md` describes the future design, including APIs that do not exist yet.
+This is a TypeScript/WebGL2 proof of concept. Read `README.md` for implemented behavior and `site/src/content/docs/` for the guides.
 
 ## Commands
 
