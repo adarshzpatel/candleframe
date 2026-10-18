@@ -267,6 +267,85 @@ try {
     await stored(),
   );
   await page.evaluate(key => localStorage.removeItem(key), templateKey);
+
+  // Channel and cycle handles: place with real clicks, then drag the tool's own handles.
+  const chartHost = host.locator('.chart-host').first();
+  const cursorAt = async p => {
+    await page.mouse.move(p.x, p.y);
+    return chartHost.evaluate(el => [el, ...el.querySelectorAll('*')].map(e => e.style.cursor).find(Boolean));
+  };
+  const place = async (type, clicks) => {
+    await page.evaluate(() => window.candleframe.execute({ type: 'drawing.clear' }));
+    await page.evaluate(t => window.candleframe.setTool(t), type);
+    for (const p of clicks) await click(p);
+    return (await drawings()).at(-1);
+  };
+  const drag = async (from, to) => {
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(to.x, to.y, { steps: 6 });
+    await page.mouse.up();
+    return (await drawings()).at(-1);
+  };
+  const same = (a, b) => a.timeMs === b.timeMs && a.price === b.price;
+
+  const end = at(0.8, 0.4);
+  const regression = await place('regression-trend', [at(0.55, 0.4), end]);
+  check(regression?.points.length === 2, 'two clicks place a regression trend', regression);
+  // The handle sits on the fitted base line at the last bar in range, so find it by its cursor.
+  let grip;
+  for (let y = plot.y + 4; y < plot.y + plot.height * 0.75 && !grip; y += 3)
+    if ((await cursorAt({ x: end.x - 3, y })) === 'ew-resize') grip = { x: end.x - 3, y };
+  check(!!grip, 'the regression handle sits on its base line');
+  if (grip) {
+    const moved = await drag(grip, { x: grip.x - 60, y: grip.y + 40 });
+    check(
+      moved.points[1].timeMs < regression.points[1].timeMs &&
+        moved.points[1].price === regression.points[1].price &&
+        same(moved.points[0], regression.points[0]),
+      'dragging a regression handle moves its anchor in time only',
+      moved.points,
+    );
+  }
+
+  const [f1, f2, f3] = [at(0.55, 0.6), at(0.8, 0.45), at(0.7, 0.3)];
+  const flat = await place('flat-top-bottom', [f1, f2, f3]);
+  check(flat?.points.length === 3, 'three clicks place a flat top/bottom', flat);
+  const flatEnd = { x: f2.x, y: f3.y };
+  check((await cursorAt(flatEnd)) === 'ns-resize', 'the flat line has a vertical handle at each end');
+  const lowered = await drag(flatEnd, { x: flatEnd.x + 30, y: flatEnd.y + 40 });
+  check(
+    lowered.points[2].price < flat.points[2].price &&
+      lowered.points[2].timeMs === flat.points[2].timeMs &&
+      same(lowered.points[0], flat.points[0]) &&
+      same(lowered.points[1], flat.points[1]),
+    'dragging the flat line moves only its price',
+    lowered.points,
+  );
+
+  const disjoint = await place('disjoint-channel', [f1, f2, at(0.55, 0.3)]);
+  const mirrorStart = { x: f1.x, y: at(0.55, 0.3).y };
+  check((await cursorAt(mirrorStart)) === 'ns-resize', 'the mirrored line has a handle at its start');
+  const shifted = await drag(mirrorStart, { x: mirrorStart.x + 20, y: mirrorStart.y - 30 });
+  check(
+    shifted.points[2].price > disjoint.points[2].price &&
+      shifted.points[2].timeMs === disjoint.points[0].timeMs,
+    'dragging the mirrored line shifts it and pins it to the first anchor time',
+    shifted.points,
+  );
+
+  const [c1, c2] = [at(0.55, 0.7), at(0.62, 0.5)];
+  const cycles = await place('time-cycles', [c1, c2]);
+  const cycleEnd = { x: c2.x, y: c1.y };
+  check((await cursorAt(cycleEnd)) === 'ew-resize', 'the time cycle end handle sits on the baseline');
+  const widened = await drag(cycleEnd, { x: cycleEnd.x + 30, y: cycleEnd.y - 50 });
+  check(
+    widened.points[1].timeMs > cycles.points[1].timeMs && same(widened.points[0], cycles.points[0]),
+    'dragging the time cycle end widens the cycle',
+    widened.points,
+  );
+  await page.screenshot({ path: `${out}/time-cycles.png` });
+  await page.evaluate(() => window.candleframe.execute({ type: 'drawing.clear' }));
 } finally {
   await browser.close();
   server?.kill();
