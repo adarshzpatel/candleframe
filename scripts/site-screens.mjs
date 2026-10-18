@@ -118,6 +118,35 @@ try {
     await guide.screenshot({ path: `${out}/${name}.png`, fullPage: name === 'guide-light' });
     await guide.close();
   }
+  // Code up close: a terminal block, a TypeScript block and inline code, in both modes.
+  for (const colorScheme of ['dark', 'light']) {
+    const code = await browser.newPage({
+      viewport: { width: 1440, height: 1000 },
+      colorScheme,
+      deviceScaleFactor: 2,
+    });
+    await code.goto(new URL('agents/mcp-server/', url).href);
+    const terminal = code.locator('.expressive-code:has(pre[data-language="sh"])').first();
+    const label = await terminal.locator('.header').evaluate(h => {
+      const s = getComputedStyle(h);
+      return { justify: s.justifyContent, chip: getComputedStyle(h, '::before').content };
+    });
+    check(
+      label.justify === 'flex-start' && label.chip === '"SH"',
+      `${colorScheme}: code headers are left-aligned with a chip`,
+      label,
+    );
+    await terminal.screenshot({ path: `${out}/code-terminal-${colorScheme}.png` });
+    await code
+      .locator('.expressive-code:has(pre[data-language="ts"])')
+      .first()
+      .screenshot({ path: `${out}/code-ts-${colorScheme}.png` });
+    await code
+      .locator('.sl-markdown-content p:has(> code)')
+      .first()
+      .screenshot({ path: `${out}/code-inline-${colorScheme}.png` });
+    await code.close();
+  }
   for (const path of ['llms.txt', 'llms-full.txt', 'feeds/overview.md']) {
     const response = await page.goto(new URL(path, url).href);
     check(response?.ok() && (await response.text()).length > 200, `${path} serves text`);

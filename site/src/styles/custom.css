@@ -55,6 +55,10 @@
   --cf-on-btn-primary: oklch(19.5% 0.01 95);
   --cf-btn-secondary-hl: oklch(100% 0 0 / 0.06);
   --cf-scrim: oklch(0% 0 0 / 0.6);
+  /* Inline code: gruvbox dark base00, base02 and base06 (ec.config.mjs). */
+  --cf-code-inline-bg: #282828;
+  --cf-code-inline-line: #504945;
+  --cf-code-inline-fg: #ebdbb2;
   --cf-e-float: 0 6px 16px -6px oklch(0% 0 0 / 0.45);
   --cf-e-modal:
     0 0 0 1px oklch(100% 0 0 / 0.06), 0 16px 40px -12px oklch(0% 0 0 / 0.5),
@@ -99,6 +103,10 @@
   --cf-on-btn-primary: oklch(98.5% 0.003 95);
   --cf-btn-secondary-hl: oklch(100% 0 0 / 0.6);
   --cf-scrim: oklch(21% 0.014 260 / 0.4);
+  /* Inline code: gruvbox light base00, base02 and base06. */
+  --cf-code-inline-bg: #fbf1c7;
+  --cf-code-inline-line: #d5c4a1;
+  --cf-code-inline-fg: #3c3836;
   --cf-e-float: 0 6px 16px -6px oklch(21% 0.014 260 / 0.12);
   --cf-e-modal: 0 16px 40px -12px oklch(21% 0.014 260 / 0.2), 0 4px 12px -4px oklch(21% 0.014 260 / 0.1);
 }
@@ -538,13 +546,21 @@ main > .content-panel:first-of-type {
   color: var(--cf-link-hover);
   text-decoration-color: currentColor;
 }
+/* Inline code shares the code blocks' gruvbox ground, so code reads as code in running text. */
 .sl-markdown-content :not(pre) > code {
-  border: 1px solid var(--cf-line);
+  border: 1px solid var(--cf-code-inline-line);
   border-radius: var(--cf-r-inline);
-  background: var(--cf-sunken);
-  color: var(--cf-ink);
-  font-size: 0.8125em;
-  padding: 1px 4px;
+  background: var(--cf-code-inline-bg);
+  color: var(--cf-code-inline-fg);
+  font-size: 0.875em;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  padding: 1px 5px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.sl-markdown-content a > code {
+  color: inherit;
 }
 .sl-markdown-content hr {
   border-color: var(--cf-line);
@@ -686,9 +702,150 @@ footer .meta a {
   font-size: 0.8125rem;
 }
 
-/* A shell block with no title still gets a label in its bar, as in Caret's terminal. */
+/* ── Code blocks ────────────────────────────────────────── */
+
+/*
+ * Every block gets one flat header, as in Caret's code specimen: a language chip, then the
+ * file name, "Terminal" or the language, all left-aligned, with the copy button on the right.
+ * Expressive Code shows a header only for titled and terminal frames and styles the title as
+ * an editor tab; these rules replace both. Colors come from the base16 theme (ec.config.mjs).
+ */
+.expressive-code .frame {
+  --cf-lang: 'CODE';
+  --cf-lang-name: 'Code';
+}
+.expressive-code .frame:has(pre[data-language='ts']) {
+  --cf-lang: 'TS';
+  --cf-lang-name: 'TypeScript';
+}
+.expressive-code .frame:has(pre[data-language='tsx']) {
+  --cf-lang: 'TSX';
+  --cf-lang-name: 'TypeScript JSX';
+}
+.expressive-code .frame:has(pre[data-language='js']) {
+  --cf-lang: 'JS';
+  --cf-lang-name: 'JavaScript';
+}
+.expressive-code .frame:has(pre[data-language='json']) {
+  --cf-lang: 'JSON';
+  --cf-lang-name: 'JSON';
+}
+.expressive-code .frame:has(pre[data-language='sh']) {
+  --cf-lang: 'SH';
+  --cf-lang-name: 'Terminal';
+}
+.expressive-code .frame:has(pre[data-language='html']) {
+  --cf-lang: 'HTML';
+  --cf-lang-name: 'HTML';
+}
+.expressive-code .frame:has(pre[data-language='css']) {
+  --cf-lang: 'CSS';
+  --cf-lang-name: 'CSS';
+}
+.expressive-code .frame:has(pre[data-language='vue']) {
+  --cf-lang: 'VUE';
+  --cf-lang-name: 'Vue';
+}
+.expressive-code .frame:has(pre[data-language='svelte']) {
+  --cf-lang: 'SVELTE';
+  --cf-lang-name: 'Svelte';
+}
+.expressive-code .frame:has(pre[data-language='text']) {
+  --cf-lang: 'TXT';
+  --cf-lang-name: 'Text';
+}
+.expressive-code .frame .header,
+.expressive-code .frame.has-title:not(.is-terminal) .header,
+.expressive-code .frame.is-terminal .header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  height: 36px;
+  margin: 0;
+  padding: 0 48px 0 12px;
+  border: 1px solid var(--ec-brdCol);
+  border-bottom-color: var(--ec-frm-edTabBarBrdBtmCol);
+  border-radius: 12px 12px 0 0;
+  background: var(--ec-frm-edTabBarBg);
+  color: var(--ec-frm-trmTtbFg);
+  font: 550 0.8125rem/1.25rem var(--cf-font-ui);
+  letter-spacing: 0;
+}
+.expressive-code .frame .header::before,
+.expressive-code .frame.has-title:not(.is-terminal) .header::before,
+.expressive-code .frame.is-terminal .header::before {
+  content: var(--cf-lang);
+  position: static;
+  inset: auto;
+  width: auto;
+  height: auto;
+  padding: 0 5px;
+  border: 1px solid var(--ec-brdCol);
+  border-radius: var(--cf-r-inline);
+  background: var(--ec-codeBg);
+  color: var(--ec-frm-trmTtbFg);
+  opacity: 1;
+  font: 400 0.6875rem/1rem var(--cf-font-mono);
+  -webkit-mask: none;
+  mask: none;
+}
+.expressive-code .frame .header::after,
+.expressive-code .frame.is-terminal .header::after {
+  content: none;
+}
+/* An untitled block names its language; a titled one shows its file name or label. */
+.expressive-code .frame:not(.has-title):not(.is-terminal) .header::after {
+  content: var(--cf-lang-name);
+  position: static;
+  border: 0;
+}
 .expressive-code .frame.is-terminal .header .title:empty::before {
-  content: 'Terminal';
+  content: var(--cf-lang-name);
+}
+.expressive-code .frame.has-title:not(.is-terminal) .title,
+.expressive-code .frame .title {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.expressive-code .frame .title::after {
+  content: none !important;
+}
+.expressive-code .frame pre,
+.expressive-code .frame code {
+  border-top: none;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+/* The copy button sits in the header and stays visible, a little dimmed until hovered. */
+.expressive-code .frame .copy,
+.expressive-code .frame.has-title .copy,
+.expressive-code .frame.is-terminal .copy {
+  inset-block-start: 4px;
+  inset-inline-end: 4px;
+}
+.expressive-code .copy button {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--cf-r-inline);
+  background: transparent;
+  opacity: 0.7;
+}
+.expressive-code .copy button::after {
+  margin: 6px;
+}
+.expressive-code .copy button:hover {
+  opacity: 1;
+}
+/* Line numbers help in long samples; a one-line command does not need one. */
+.expressive-code pre:not(:has(.ec-line + .ec-line)) .gutter {
+  display: none;
 }
 
 /* ── Landing ────────────────────────────────────────────── */
