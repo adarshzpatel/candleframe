@@ -85,7 +85,7 @@
     "docs:commands": "node --experimental-strip-types scripts/generate-command-docs.ts"
   },
   "devDependencies": {
-    "@types/node": "^24.0.0",
+    "@types/node": "^26.6.5",
     "playwright": "^1.64.0",
     "prettier": "^3.9.9",
     "typescript": "~5.9.3",
