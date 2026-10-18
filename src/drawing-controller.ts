@@ -291,6 +291,7 @@ export class DrawingController {
       // Only annotations start with placeholder text; lines show text once the user adds it.
       text: this.host.registry.get(this.tool)?.editableText ? this.options.text : '',
       levels: [...(defaults?.levels ?? [])],
+      ...(defaults?.levelStyles?.length ? { levelStyles: structuredClone(defaults.levelStyles) } : {}),
       ...(defaults?.options && Object.keys(defaults.options).length
         ? { options: { ...defaults.options } }
         : {}),

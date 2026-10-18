@@ -140,6 +140,45 @@ export function bars(c: DrawingContext, from: number, to: number): number {
   return Number(count.toFixed(2));
 }
 
+/** Familiar Fibonacci hues by ratio; other ratios cycle through the same set. */
+const FIB_COLORS: Record<string, string> = {
+  '0': '#787b86',
+  '0.236': '#f23645',
+  '0.382': '#ff9800',
+  '0.5': '#4caf50',
+  '0.618': '#089981',
+  '0.786': '#00bcd4',
+  '1': '#787b86',
+  '1.272': '#9c27b0',
+  '1.414': '#f23645',
+  '1.618': '#2962ff',
+  '2': '#ff9800',
+  '2.618': '#f23645',
+  '3.618': '#9c27b0',
+  '4.236': '#e91e63',
+};
+const FIB_CYCLE = ['#f23645', '#ff9800', '#4caf50', '#089981', '#00bcd4', '#2962ff', '#9c27b0', '#e91e63'];
+/** A level's built-in hue: the familiar colour for its ratio, else one from a cycle by position. */
+export const fibLevelColor = (level: number, index: number): string =>
+  FIB_COLORS[String(Number(level.toFixed(3)))] ?? FIB_CYCLE[index % FIB_CYCLE.length];
+/**
+ * A Fibonacci drawing's visible levels, in table order, with their colours. Uses `defaults` while
+ * the drawing has no levels of its own. With a `levelColors` setting turned off, every level takes
+ * the line colour.
+ */
+export function fibLevels(
+  d: Drawing,
+  defaults: readonly number[],
+  settings?: DrawingToolDefinition['settings'],
+): { level: number; color: string; index: number }[] {
+  const oneColor = drawingOption<boolean>(d, { settings }, 'levelColors') === false;
+  return (d.levels.length ? d.levels : defaults).flatMap((level, index) => {
+    const look = d.levelStyles?.[index];
+    if (look?.visible === false) return [];
+    return [{ level, index, color: oneColor ? d.style.color : (look?.color ?? fibLevelColor(level, index)) }];
+  });
+}
+
 /** Setting builders keep tool definitions short and their defaults in one place. */
 export const toggle = (key: string, label: string, value: boolean, section?: string): DrawingSetting => ({
   key,

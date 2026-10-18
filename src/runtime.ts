@@ -1098,9 +1098,17 @@ export class ChartRuntime {
           Array.isArray(patch) ||
           Object.keys(patch).some(
             key =>
-              !['points', 'style', 'locked', 'visible', 'text', 'levels', 'options', 'visibility'].includes(
-                key,
-              ),
+              ![
+                'points',
+                'style',
+                'locked',
+                'visible',
+                'text',
+                'levels',
+                'levelStyles',
+                'options',
+                'visibility',
+              ].includes(key),
           )
         )
           throw new ChartError('INVALID_DRAWING_PATCH');

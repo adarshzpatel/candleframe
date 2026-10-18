@@ -4,8 +4,10 @@ import type { Drawing, DrawingPatch, DrawingToolDefaults, DrawingToolDefinition 
 
 export const MAX_TEMPLATES_PER_TOOL = 20;
 export const MAX_TEMPLATE_NAME_LENGTH = 64;
+/** How long the store waits for more edits before writing, in milliseconds. */
+export const TEMPLATE_SAVE_DELAY_MS = 300;
 
-/** A named look for one tool: style, settings and Fibonacci levels. */
+/** A named look for one tool: style, settings, and Fibonacci levels with their colours. */
 export interface DrawingTemplate extends DrawingToolDefaults {
   name: string;
 }
@@ -52,6 +54,7 @@ export function drawingTemplateValue(
     ...(options.length ? { options: Object.fromEntries(options) } : {}),
     ...(drawing.levels.length ? { levels: [...drawing.levels] } : {}),
     ...(drawing.visibility ? { visibility: structuredClone(drawing.visibility) } : {}),
+    ...(drawing.levelStyles?.length ? { levelStyles: structuredClone(drawing.levelStyles) } : {}),
   };
 }
 
@@ -73,6 +76,7 @@ export function drawingTemplatePatch(
     ),
     levels: [...(value?.levels ?? [])],
     visibility: value?.visibility ? structuredClone(value.visibility) : null,
+    levelStyles: structuredClone(value?.levelStyles ?? []),
   };
 }
 
@@ -118,13 +122,18 @@ export function parseDrawingTemplates(
   return result;
 }
 
-/** Named templates and saved defaults per tool, in memory with optional storage. */
+/**
+ * Named templates and saved defaults per tool, in memory with optional storage. Writes wait
+ * `TEMPLATE_SAVE_DELAY_MS` for more edits, so a burst of style changes saves once; `flush`
+ * writes at once.
+ */
 export class DrawingTemplates {
   private data: DrawingTemplateData = { version: 1, templates: {}, defaults: {} };
   private readonly tools: readonly DrawingToolDefinition[];
   private readonly store: DrawingTemplateStore | undefined;
   private readonly onError: (error: unknown) => void;
   private changed = false;
+  private timer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(
     tools: readonly DrawingToolDefinition[],
@@ -180,6 +189,19 @@ export class DrawingTemplates {
     this.persist();
     return structuredClone(template);
   }
+  /** Renames a template in place. Changing only the case of a name is allowed. */
+  rename(type: string, from: string, to: string): DrawingTemplate {
+    const name = templateName(to),
+      list = [...(this.data.templates[type] ?? [])],
+      index = list.findIndex(t => sameName(t.name, from));
+    if (index < 0) throw new ChartError('TEMPLATE_NOT_FOUND', from);
+    if (list.some((t, i) => i !== index && sameName(t.name, name)))
+      throw new ChartError('TEMPLATE_EXISTS', name);
+    list[index] = { ...list[index], name };
+    this.data.templates[type] = list;
+    this.persist();
+    return structuredClone(list[index]);
+  }
   remove(type: string, name: string): void {
     const list = this.data.templates[type] ?? [];
     if (!list.some(t => sameName(t.name, name))) throw new ChartError('TEMPLATE_NOT_FOUND', name);
@@ -206,13 +228,20 @@ export class DrawingTemplates {
     if (!definition) throw new ChartError('UNKNOWN_DRAWING_TOOL', type);
     return normalizedToolDefaults(value, definition);
   }
-  private persist() {
-    this.changed = true;
-    if (!this.store) return;
+  /** Writes a pending change now, such as when the page hides. */
+  flush(): void {
+    if (this.timer === undefined) return;
+    clearTimeout(this.timer);
+    this.timer = undefined;
     try {
-      Promise.resolve(this.store.save(this.snapshot())).catch(this.onError);
+      Promise.resolve(this.store!.save(this.snapshot())).catch(this.onError);
     } catch (error) {
       this.onError(error);
     }
+  }
+  private persist() {
+    this.changed = true;
+    if (!this.store || this.timer !== undefined) return;
+    this.timer = setTimeout(() => this.flush(), TEMPLATE_SAVE_DELAY_MS);
   }
 }

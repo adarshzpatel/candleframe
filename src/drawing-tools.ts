@@ -14,6 +14,7 @@ import {
   choice,
   drawingOption,
   duration,
+  fibLevels,
   fill,
   line,
   midpoint,
@@ -37,6 +38,7 @@ import type { Anchor } from './types.ts';
 import type {
   Drawing,
   DrawingContext,
+  DrawingLevelStyle,
   DrawingOptionValue,
   DrawingOptionValues,
   DrawingPoint,
@@ -47,7 +49,7 @@ import type {
   DrawingToolDefinition,
 } from './drawing-types.ts';
 
-export { drawingOption };
+export { drawingOption, fibLevels };
 
 export const DEFAULT_DRAWING_STYLE: Readonly<DrawingStyle> = Object.freeze({
   color: '#a9c4ff',
@@ -73,28 +75,10 @@ const defaultsFor = (type: string): number[] =>
           : type.startsWith('fib-')
             ? RETRACEMENT
             : [];
-const levelsFor = (d: Drawing): number[] => (d.levels.length ? d.levels : defaultsFor(d.type));
 /** True for tools whose `Drawing.levels` drive their geometry. */
 export const usesDrawingLevels = (type: string): boolean => defaultsFor(type).length > 0;
-
-/** Familiar Fibonacci hues by ratio; other ratios cycle through the same set. */
-const FIB_COLORS: Record<string, string> = {
-  '0': '#787b86',
-  '0.236': '#f23645',
-  '0.382': '#ff9800',
-  '0.5': '#4caf50',
-  '0.618': '#089981',
-  '0.786': '#00bcd4',
-  '1': '#787b86',
-  '1.272': '#9c27b0',
-  '1.414': '#f23645',
-  '1.618': '#2962ff',
-  '2': '#ff9800',
-  '2.618': '#f23645',
-  '3.618': '#9c27b0',
-  '4.236': '#e91e63',
-};
-const FIB_CYCLE = ['#f23645', '#ff9800', '#4caf50', '#089981', '#00bcd4', '#2962ff', '#9c27b0', '#e91e63'];
+/** The built-in levels a Fibonacci tool starts with, or none for other tools. */
+export const fibDefaultLevels = (type: string): readonly number[] => defaultsFor(type);
 
 const ENDS = [
   ['normal', 'Normal'],
@@ -179,6 +163,17 @@ const textSettings = (background: boolean): DrawingSetting[] => [
   toggle('bold', 'Bold', false, 'Text'),
   toggle('italic', 'Italic', false, 'Text'),
   toggle('border', 'Border', false, 'Text'),
+  // Zero leaves lines as typed.
+  {
+    key: 'wrapWidth',
+    label: 'Wrap width',
+    kind: 'number',
+    default: 0,
+    min: 0,
+    max: 1000,
+    step: 10,
+    section: 'Text',
+  },
   toggle('background', 'Background', background, 'Background'),
   { key: 'backgroundColor', label: 'Colour', kind: 'color', default: '', section: 'Background' },
   {
@@ -192,8 +187,14 @@ const textSettings = (background: boolean): DrawingSetting[] => [
     section: 'Background',
   },
 ];
-const shapeSettings = (extend: boolean): DrawingSetting[] => [
+// A blank fill colour follows the line colour, like a text background.
+const fillSettings = (): DrawingSetting[] => [
   toggle('background', 'Background', true, 'Style'),
+  { key: 'backgroundColor', label: 'Fill colour', kind: 'color', default: '', section: 'Style' },
+];
+const fillColor = (d: Drawing) => option<string>(d, 'backgroundColor') || d.style.color;
+const shapeSettings = (extend: boolean): DrawingSetting[] => [
+  ...fillSettings(),
   ...(extend
     ? [
         toggle('extendLeft', 'Extend left', false, 'Style'),
@@ -227,15 +228,25 @@ function statsLines(d: Drawing, c: DrawingContext, a: DrawingPoint, b: DrawingPo
     `${angle(a, b).toFixed(1)}°`,
   ].join('\n');
 }
-/** Text sits just above the line at the chosen end, or its middle. */
+/** Text runs along the line just above it, at the chosen end or its middle, and stays upright. */
 function lineText(d: Drawing, a: DrawingPoint, b: DrawingPoint): DrawingPrimitive[] {
   if (!d.text) return [];
   const align = option<'left' | 'center' | 'right'>(d, 'textAlign');
-  const [first, last] = a.x <= b.x ? [a, b] : [b, a];
+  let turn = Math.atan2(b.y - a.y, b.x - a.x) || 0;
+  if (turn > Math.PI / 2) turn -= Math.PI;
+  else if (turn <= -Math.PI / 2) turn += Math.PI;
+  const cos = Math.cos(turn),
+    sin = Math.sin(turn);
+  const [first, last] = a.x * cos + a.y * sin <= b.x * cos + b.y * sin ? [a, b] : [b, a];
   const at = align === 'left' ? first : align === 'right' ? last : midpoint(a, b);
-  return [text({ x: at.x, y: at.y - 6 }, d.text, { align, plain: true })];
+  return [
+    text({ x: at.x + 6 * sin, y: at.y - 6 * cos }, d.text, {
+      align,
+      plain: true,
+      ...(turn ? { angle: turn } : {}),
+    }),
+  ];
 }
-
 function lineTool(type: string): DrawingToolDefinition['project'] {
   return (d, c) => {
     const [a, b] = screen(d, c),
@@ -301,10 +312,7 @@ function channelOffset(a: DrawingPoint, b: DrawingPoint, third: DrawingPoint): D
   if (!dx) return { x: third.x - a.x, y: 0 };
   return { x: 0, y: third.y - a.y - ((third.x - a.x) / dx) * dy };
 }
-function levelColor(d: Drawing, level: number, index: number): string {
-  if (!option(d, 'levelColors')) return d.style.color;
-  return FIB_COLORS[String(Number(level.toFixed(3)))] ?? FIB_CYCLE[index % FIB_CYCLE.length];
-}
+const levelRows = (d: Drawing) => fibLevels(d, defaultsFor(d.type), builtInSettings.get(d.type));
 function channel(d: Drawing, c: DrawingContext): DrawingPrimitive[] {
   const [a, b, third] = screen(d, c);
   if (!third) return b ? line(a, b, c) : [];
@@ -312,16 +320,15 @@ function channel(d: Drawing, c: DrawingContext): DrawingPrimitive[] {
     topA = add(a, offset),
     topB = add(b, offset);
   if (d.type === 'fib-channel') {
-    const levels = [...levelsFor(d)].sort((x, y) => x - y),
+    const rows = levelRows(d).sort((x, y) => x.level - y.level),
       result: DrawingPrimitive[] = [];
-    levels.forEach((level, i) => {
-      const color = levelColor(d, level, i);
+    rows.forEach(({ level, color }, i) => {
       if (i && option(d, 'background'))
         result.push(
           fill(
             [
-              add(a, offset, levels[i - 1]),
-              add(b, offset, levels[i - 1]),
+              add(a, offset, rows[i - 1].level),
+              add(b, offset, rows[i - 1].level),
               add(b, offset, level),
               add(a, offset, level),
             ],
@@ -335,7 +342,7 @@ function channel(d: Drawing, c: DrawingContext): DrawingPrimitive[] {
     return result;
   }
   return [
-    fill([a, b, topB, topA], d.style.color),
+    ...(option(d, 'background') ? [fill([a, b, topB, topA], fillColor(d))] : []),
     ...line(a, b, c),
     ...line(topA, topB, c),
     ...line(add(a, offset, 0.5), add(b, offset, 0.5), c, 0, 1, { dash: [5, 4] }),
@@ -370,11 +377,10 @@ function fibonacci(d: Drawing, c: DrawingContext): DrawingPrimitive[] {
     g = c.geometry;
   if (!b) return [];
   const result: DrawingPrimitive[] = [];
-  const levels = levelsFor(d);
+  const levels = levelRows(d);
   if (d.type === 'fib-time-zone') {
-    levels.forEach((level, i) => {
-      const x = a.x + (b.x - a.x) * level,
-        color = levelColor(d, level, i);
+    levels.forEach(({ level, color }) => {
+      const x = a.x + (b.x - a.x) * level;
       result.push(
         ...line({ x, y: g.top }, { x, y: g.top + g.plotHeight }, c, 0, 1, { color }),
         text({ x: x + 3, y: g.top + 15 }, `${level}`, { color, plain: true }),
@@ -383,10 +389,9 @@ function fibonacci(d: Drawing, c: DrawingContext): DrawingPrimitive[] {
     return result;
   }
   if (d.type === 'fib-fan') {
-    const ends = levels.map(level => ({ x: b.x, y: a.y + (b.y - a.y) * level }));
-    levels.forEach((level, i) => {
-      const color = levelColor(d, level, i),
-        end = ends[i];
+    const ends = levels.map(({ level }) => ({ x: b.x, y: a.y + (b.y - a.y) * level }));
+    levels.forEach(({ level, color }, i) => {
+      const end = ends[i];
       if (i && option(d, 'background')) {
         const reach = (p: DrawingPoint) => add(a, { x: p.x - a.x, y: p.y - a.y }, 50);
         result.push(fill([a, reach(ends[i - 1]), reach(end)], color));
@@ -413,7 +418,7 @@ function fibonacci(d: Drawing, c: DrawingContext): DrawingPrimitive[] {
       ? (level: number) => d.points[2].price + (second.price - first.price) * level
       : (level: number) => second.price + (first.price - second.price) * level;
   const rows = levels
-    .map((level, i) => ({ level, price: price(level), color: levelColor(d, level, i) }))
+    .map(({ level, color }) => ({ level, price: price(level), color }))
     .sort((x, y) => x.price - y.price);
   rows.forEach((row, i) => {
     const y = g.y(row.price);
@@ -481,7 +486,7 @@ function shape(d: Drawing, c: DrawingContext): DrawingPrimitive[] {
     }));
   }
   return [
-    ...(option(d, 'background') ? [fill(outline, d.style.color)] : []),
+    ...(option(d, 'background') ? [fill(outline, fillColor(d))] : []),
     path(outline, { closed: true }),
     ...extras,
   ];
@@ -496,6 +501,7 @@ function annotation(d: Drawing, c: DrawingContext): DrawingPrimitive[] {
     background: option<string>(d, 'backgroundColor') || d.style.color,
     backgroundOpacity: option<number>(d, 'backgroundOpacity'),
     ...(option(d, 'border') ? { border: d.style.color } : {}),
+    ...(option<number>(d, 'wrapWidth') > 0 ? { wrap: option<number>(d, 'wrapWidth') } : {}),
   };
   if (d.type === 'price-label')
     return [
@@ -723,6 +729,7 @@ export const builtInDrawingTools: readonly DrawingToolDefinition[] = Object.free
   ),
   tool('parallel-channel', 'Parallel channel', 'Lines', 'Channels', 3, channel, {
     hint: 'Click two baseline points, then the opposite side.',
+    settings: fillSettings(),
   }),
   ...channelTools,
   tool('pitchfork', 'Pitchfork', 'Lines', 'Pitchforks', 3, pitchfork, {
@@ -828,6 +835,28 @@ function normalizedLevels(value: unknown): number[] {
     throw new ChartError('INVALID_DRAWING_LEVELS');
   return [...value];
 }
+/** Checks per-level looks and trims them to `count` levels; `{}` entries keep later ones aligned. */
+function normalizedLevelStyles(value: unknown, count: number): DrawingLevelStyle[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > 24) throw new ChartError('INVALID_DRAWING_LEVELS');
+  const result = value.map((entry: unknown): DrawingLevelStyle => {
+    if (entry === null) return {};
+    if (
+      !object(entry) ||
+      Object.keys(entry).some(key => key !== 'color' && key !== 'visible') ||
+      (entry.color !== undefined && (typeof entry.color !== 'string' || !COLOR.test(entry.color))) ||
+      (entry.visible !== undefined && typeof entry.visible !== 'boolean')
+    )
+      throw new ChartError('INVALID_DRAWING_LEVELS');
+    return {
+      ...(entry.color !== undefined ? { color: entry.color as string } : {}),
+      ...(entry.visible === false ? { visible: false } : {}),
+    };
+  });
+  result.length = Math.min(result.length, count);
+  while (result.length && !Object.keys(result.at(-1)!).length) result.pop();
+  return result.length ? result : undefined;
+}
 /** Checks a tool's defaults or a template without a drawing: a partial style, settings and levels. */
 export function normalizedToolDefaults(
   value: unknown,
@@ -835,7 +864,7 @@ export function normalizedToolDefaults(
 ): DrawingToolDefaults {
   if (
     !object(value) ||
-    Object.keys(value).some(key => !['style', 'options', 'levels', 'visibility'].includes(key))
+    Object.keys(value).some(key => !['style', 'options', 'levels', 'levelStyles', 'visibility'].includes(key))
   )
     throw new ChartError('INVALID_DRAWING_OPTIONS');
   const result: DrawingToolDefaults = {};
@@ -853,6 +882,8 @@ export function normalizedToolDefaults(
   if (levels.length) result.levels = levels;
   const visibility = normalizedVisibility(value.visibility);
   if (visibility) result.visibility = visibility;
+  const levelStyles = normalizedLevelStyles(value.levelStyles, levels.length || 24);
+  if (levelStyles) result.levelStyles = levelStyles;
   return result;
 }
 function normalizedPoint(value: unknown): Anchor {
@@ -979,6 +1010,11 @@ export class DrawingRegistry {
       text: (value.text as string | undefined) ?? '',
       levels,
     };
+    const levelStyles = normalizedLevelStyles(
+      value.levelStyles,
+      (levels.length ? levels : defaultsFor(type)).length,
+    );
+    if (levelStyles) drawing.levelStyles = levelStyles;
     const options = normalizedOptions(value.options, definition);
     if (options) drawing.options = options;
     const visibility = normalizedVisibility(value.visibility);
@@ -1013,6 +1049,7 @@ export function translateDrawing(
     points,
     style: { ...drawing.style },
     levels: [...drawing.levels],
+    ...(drawing.levelStyles ? { levelStyles: structuredClone(drawing.levelStyles) } : {}),
     ...(drawing.options ? { options: { ...drawing.options } } : {}),
     ...(drawing.visibility ? { visibility: structuredClone(drawing.visibility) } : {}),
   };

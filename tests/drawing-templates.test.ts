@@ -160,11 +160,13 @@ test('templates and saved defaults round-trip through a store', async () => {
     levels: [0, 0.618, 1],
   });
   first.setDefault('trendline', { style: { width: 3 }, options: { extendRight: true } });
-  assert.equal(store.saves, 2);
+  first.flush();
+  assert.equal(store.saves, 1);
   const second = new DrawingTemplates(tools, store);
   await second.load();
   assert.deepEqual(second.snapshot(), first.snapshot());
   second.setDefault('trendline', null);
+  second.flush();
   const third = new DrawingTemplates(tools, store);
   await third.load();
   assert.deepEqual(third.defaults(), {});
@@ -211,6 +213,7 @@ test('stored data is read leniently: bad entries drop, unknown plugin tools stay
     error => errors.push(error),
   );
   broken.save('trendline', 'Local', {});
+  broken.flush();
   await broken.load();
   assert.equal(broken.list('trendline').length, 1);
   assert.deepEqual(

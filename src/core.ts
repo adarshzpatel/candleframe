@@ -93,6 +93,8 @@ export {
   builtInDrawingTools,
   DEFAULT_DRAWING_STYLE,
   drawingOption,
+  fibDefaultLevels,
+  fibLevels,
 } from './drawing-tools.ts';
 export {
   DRAWING_VISIBILITY_UNITS,
