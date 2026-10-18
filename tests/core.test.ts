@@ -445,7 +445,7 @@ test('disabled heatmaps allocate no history and cannot return through restore or
   runtime.dispose();
 });
 
-test('interval changes preserve time-price drawings but isolate undo and saved layouts', () => {
+test('interval changes preserve time-price drawings and undo but isolate saved layouts', () => {
   const old = controlledFeed(),
     next = controlledFeed('TEST/USD', '5m');
   const runtime = new ChartRuntime(old.feed);
@@ -456,6 +456,9 @@ test('interval changes preserve time-price drawings but isolate undo and saved l
   runtime.replaceFeed(next.feed);
   assert.deepEqual(runtime.exportDocument().drawings, saved.drawings);
   runtime.execute({ type: 'history.undo' });
+  assert.deepEqual(runtime.exportDocument().drawings, []);
+  assert.equal(runtime.exportDocument().interval, '5m');
+  runtime.execute({ type: 'history.redo' });
   assert.deepEqual(runtime.exportDocument().drawings, saved.drawings);
   assert.throws(() => runtime.restoreDocument(saved), /MARKET_MISMATCH/);
   runtime.dispose();

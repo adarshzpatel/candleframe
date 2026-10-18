@@ -237,7 +237,7 @@ test('unavailable drawing plugins survive round trips and become usable when reg
   registered.runtime.dispose();
 });
 
-test('history is bounded and a market generation discards undo and redo', () => {
+test('history is bounded and a new instrument discards undo and redo', () => {
   const { runtime, feed } = harness();
   runtime.execute({ type: 'drawing.add', drawing: line() });
   for (let i = 1; i <= 50; i++)
@@ -249,8 +249,45 @@ test('history is bounded and a market generation discards undo and redo', () => 
   assert.equal(runtime.exportDocument().drawings[0].text, 'edit 50');
   runtime.execute({ type: 'history.undo' });
   runtime.replaceFeed({ ...feed });
+  assert.deepEqual(runtime.inspect().history, { canUndo: true, canRedo: true });
+  runtime.replaceFeed({
+    ...feed,
+    descriptor: { ...feed.descriptor, instrument: { ...feed.descriptor.instrument, symbol: 'ETH/USD' } },
+  });
   assert.deepEqual(runtime.inspect().history, { canUndo: false, canRedo: false });
-  assert.equal(runtime.exportDocument().drawings[0].text, 'edit 49');
+  assert.deepEqual(runtime.exportDocument().drawings, []);
+  runtime.dispose();
+});
+
+test('an interval switch keeps drawings, groups and undo history', () => {
+  const { runtime, feed } = harness();
+  runtime.execute({ type: 'drawing.add', drawing: line('a') });
+  runtime.execute({ type: 'drawing.add', drawing: line('b') });
+  runtime.execute({ type: 'drawing.group', id: 'g', drawingIds: ['a', 'b'] });
+  runtime.execute({ type: 'drawing.update', id: 'a', patch: { text: 'edited' } });
+  runtime.replaceFeed({
+    ...feed,
+    descriptor: { ...feed.descriptor, interval: '5m', intervalMs: 5 * minute },
+  });
+  const document = runtime.exportDocument();
+  assert.equal(document.interval, '5m');
+  assert.deepEqual(
+    document.drawings.map(d => d.id),
+    ['a', 'b'],
+  );
+  assert.deepEqual(
+    document.drawingGroups?.map(g => g.id),
+    ['g'],
+  );
+  assert.deepEqual(runtime.inspect().history, { canUndo: true, canRedo: false });
+  runtime.execute({ type: 'history.undo' });
+  const undone = runtime.exportDocument();
+  assert.notEqual(undone.drawings[0].text, 'edited');
+  assert.equal(undone.interval, '5m');
+  assert.deepEqual(
+    undone.drawingGroups?.map(g => g.id),
+    ['g'],
+  );
   runtime.dispose();
 });
 

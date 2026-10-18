@@ -4,6 +4,7 @@ All notable changes are listed here. The project follows [Semantic Versioning](h
 
 ## Unreleased
 
+- `replaceFeed` on the same feed and symbol (an interval switch) keeps drawing groups and the undo and redo history. Saved undo steps take the new interval, so undoing never switches back. A different symbol or feed still starts a fresh history.
 - Trend-based fib time, fib arcs, fib circles, fib wedge, pitchfan, Gann box and Gann square now honour each level's show and colour settings (`levelStyles`), matched by table row even when levels are out of order. The 0.25 and 0.75 Gann levels get the same hues in the levels table as on the chart.
 - Out-of-the-box UI. With no `theme`, charts start in neutral Graphite, or Paper when the system prefers light, and the widget follows system changes until a theme is chosen (`systemThemeId()` is exported). The default watermark is empty and the footer wordmark is gone. Prices, axes and annotations use the bundled Paper Mono (`CandleFrame Mono`), so numbers match on every OS; whole-number price ticks drop their decimals (68,000, not 68,000.00), and ticks under the last-price tag are hidden.
 - The widget hides controls that cannot act: Layout without `markets`, the source picker with one source, Save and Revert (formerly Restore) without `storageKey`, and Inspect unless the new `inspector: true`. Save is now a plain icon button. Symbol and interval stop showing a hover state when they offer no choices.

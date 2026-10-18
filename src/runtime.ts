@@ -573,8 +573,21 @@ export class ChartRuntime {
     this.candles = [];
     this.book = new OrderBook();
     this.heatmap = undefined;
-    this.history = [];
-    this.future = [];
+    if (sameInstrument) {
+      // Drawings survive an interval switch, so their undo steps do too. Undo
+      // restores whole documents; point the saved ones at the new feed.
+      const retarget = (document: ChartDocument): ChartDocument => ({
+        ...document,
+        feedId: descriptor.id,
+        symbol: descriptor.instrument.symbol,
+        interval: descriptor.interval,
+      });
+      this.history = this.history.map(retarget);
+      this.future = this.future.map(retarget);
+    } else {
+      this.history = [];
+      this.future = [];
+    }
     this.indicators.forEach(slot => {
       slot.series = [];
     });
@@ -593,6 +606,9 @@ export class ChartRuntime {
       ...validateChartStyle(previous.chartType, previous.footprint),
       indicators: structuredClone(previous.indicators),
       drawings: sameInstrument ? structuredClone(previous.drawings) : [],
+      ...(sameInstrument && previous.drawingGroups?.length
+        ? { drawingGroups: structuredClone(previous.drawingGroups) }
+        : {}),
     };
     this.syncIndicators();
     this.documentRevision++;
