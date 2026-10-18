@@ -2,7 +2,8 @@
 // Drives drawing interactions through real pointer and keyboard input on the offline demo:
 // rail families, Alt hotkeys, Shift angle snapping, Alt-drag cloning, double-click settings,
 // remembered tool defaults and templates across reloads, favourites, interval visibility,
-// multi-selection and groups. Prints ok/FAIL per check and saves screenshots of the menus.
+// multi-selection and groups. Loads the demo with the trading plugin, so popups are checked
+// against its order panel. Prints ok/FAIL per check and saves screenshots of the menus.
 //
 //   node scripts/drawing-behaviour.mjs                                 # starts Vite on 5196
 //   node scripts/drawing-behaviour.mjs --url http://127.0.0.1:5173/ --out artifacts/drawing-behaviour
@@ -47,7 +48,7 @@ try {
   page.on('pageerror', e => check(false, `page error: ${e.message}`));
   const templateKey = JSON.stringify(['demo', 'drawing-templates']);
   const load = async () => {
-    await page.goto(`${url}?offline`, { waitUntil: 'load' });
+    await page.goto(`${url}?offline&trading`, { waitUntil: 'load' });
     await page.waitForFunction(() => window.candleframe?.inspect().candleCount > 100, null, {
       timeout: 15000,
     });
@@ -62,7 +63,7 @@ try {
   const host = page.locator('#app > *');
   const state = () => page.evaluate(() => window.candleframe.drawingState());
   const drawings = () => page.evaluate(() => window.candleframe.exportDocument().drawings);
-  // The plot's right half stays clear of the demo's order ticket.
+  // The plot's right half stays clear of the trading plugin's order panel.
   const plot = await host.locator('.chart-host').first().boundingBox();
   const at = (fx, fy) => ({ x: plot.x + plot.width * fx, y: plot.y + plot.height * fy });
   const click = async p => page.mouse.click(p.x, p.y);
@@ -729,7 +730,7 @@ try {
     await page.evaluate(key => localStorage.removeItem(key), templateKey);
   }
   {
-    // Drawing popups open above the demo's order panel, which the trading layer stacks over the widget.
+    // Drawing popups open above the trading plugin's order panel (`?trading`), which stacks over the widget.
     const covering = async selector =>
       page.evaluate(selector => {
         const [mount, shell] = document.querySelectorAll('#app > div');
@@ -805,6 +806,28 @@ try {
     await value.fill('1.272');
     await value.press('Enter');
     check((await fib())?.levels?.[6] === 1.272, 'editing a value changes that level', (await fib())?.levels);
+    const reported = () =>
+      page.evaluate(() =>
+        [...document.querySelectorAll('#app *')].some(el =>
+          /INVALID DRAWING/.test((el.shadowRoot ?? el).textContent ?? ''),
+        ),
+      );
+    await value.fill('');
+    await value.press('Tab');
+    check(
+      (await value.inputValue()) === '1.272' && (await fib())?.levels?.[6] === 1.272 && !(await reported()),
+      'clearing a level value restores it without an error',
+      [await value.inputValue(), (await fib())?.levels],
+    );
+    await value.fill('5000');
+    await value.press('Enter');
+    check(
+      (await value.inputValue()) === '1000' && (await fib())?.levels?.[6] === 1000 && !(await reported()),
+      'an out-of-range level value clamps to 1000',
+      [await value.inputValue(), (await fib())?.levels],
+    );
+    await value.fill('1.272');
+    await value.press('Enter');
     await settings.locator('.drawing-level-add').click();
     check((await fib())?.levels?.length === 8, 'Add level appends a row', (await fib())?.levels);
     check((await table.locator('.drawing-level-row').count()) === 8, 'the table shows the new row');
@@ -815,6 +838,72 @@ try {
       restored?.levels.length === 0 && !restored.levelStyles,
       'Reset levels restores the built-in levels',
       restored,
+    );
+    await page.keyboard.press('Escape');
+
+    // Gann and the other Fib tools draw per-level show and colour like the retracement.
+    const gannPixels = async styles => {
+      await page.evaluate(levelStyles => {
+        const chart = window.candleframe,
+          { latestCandle: last, feed } = chart.inspect();
+        chart.execute({ type: 'drawing.clear' });
+        chart.execute({
+          type: 'drawing.add',
+          drawing: {
+            id: 'gann',
+            type: 'gann-box',
+            points: [
+              { timeMs: last.timeMs - 60 * feed.intervalMs, price: last.close * 0.99 },
+              { timeMs: last.timeMs - 10 * feed.intervalMs, price: last.close * 1.01 },
+            ],
+            ...(levelStyles ? { levelStyles } : {}),
+          },
+        });
+      }, styles);
+      await sleep(200);
+      return page.screenshot();
+    };
+    const plainGann = await gannPixels();
+    const styledGann = await gannPixels([{}, { visible: false }, {}, { color: '#ff00ff' }]);
+    await page.screenshot({ path: `${out}/gann-box-level-styles.png` });
+    check(!plainGann.equals(styledGann), 'a hidden and a recoloured level change the Gann box');
+
+    // Number settings clamp to the setting's range and ignore blank input.
+    await page.evaluate(() => {
+      const chart = window.candleframe,
+        { latestCandle: last } = chart.inspect();
+      chart.execute({ type: 'drawing.clear' });
+      chart.execute({
+        type: 'drawing.add',
+        drawing: {
+          id: 'note',
+          type: 'text',
+          text: 'Note',
+          points: [{ timeMs: last.timeMs, price: last.close }],
+        },
+      });
+      chart.selectDrawing('note');
+    });
+    await host.locator('.drawing-settings-button').click();
+    const opacity = settings
+      .locator('.drawing-option-fields')
+      .getByRole('spinbutton', { name: 'Opacity', exact: true });
+    const note = async () => (await drawings()).find(d => d.id === 'note');
+    await opacity.fill('7');
+    await opacity.press('Enter');
+    check(
+      (await opacity.inputValue()) === '1' && (await note())?.options?.backgroundOpacity === 1,
+      'an out-of-range number setting clamps to its maximum',
+      [await opacity.inputValue(), (await note())?.options],
+    );
+    await opacity.fill('');
+    await opacity.press('Tab');
+    check(
+      (await opacity.inputValue()) === '1' &&
+        (await note())?.options?.backgroundOpacity === 1 &&
+        !(await reported()),
+      'clearing a number setting restores it without an error',
+      [await opacity.inputValue(), (await note())?.options],
     );
     await page.keyboard.press('Escape');
 

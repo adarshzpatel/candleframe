@@ -1,5 +1,5 @@
 import type { ChartGeometry } from './geometry.ts';
-import { indicatorColor, type ResolvedChartTheme } from './themes.ts';
+import { indicatorColor, themeColor, type ResolvedChartTheme } from './themes.ts';
 import { visibleRange } from './time-scale.ts';
 import type { RuntimeState } from './types.ts';
 
@@ -45,5 +45,39 @@ export function renderIndicatorDots(
       }
       ctx.fill();
     });
+  ctx.restore();
+}
+
+/** Below this bar spacing, markers would touch, so `line-markers` draws the line alone. */
+const MARKER_MIN_SPACING = 4;
+
+/** The markers of the `line-markers` chart type: a dot at each close in view. `latest` is the displayed forming bar. */
+export function renderLineMarkers(
+  ctx: CanvasRenderingContext2D,
+  state: RuntimeState,
+  g: ChartGeometry,
+  theme: ResolvedChartTheme,
+  latest = state.candles.at(-1),
+): void {
+  if (state.document.chartType !== 'line-markers' || !state.document.layers.candles) return;
+  if (g.barSpacing < MARKER_MIN_SPACING || !state.candles.length) return;
+  const { start, end } = visibleRange(state.candles, g.fromMs, g.toMs, state.feed.intervalMs);
+  const half = state.feed.intervalMs / 2,
+    radius = Math.min(RADIUS, g.barSpacing / 4) + theme.chart.lineWidth / 2,
+    last = state.candles.length - 1;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(g.left, g.top, g.plotWidth, g.plotHeight);
+  ctx.clip();
+  ctx.fillStyle = themeColor(theme, theme.chart.lineColor);
+  ctx.beginPath();
+  for (let i = start; i < end; i++) {
+    const bar = i === last && latest ? latest : state.candles[i];
+    const x = g.x(bar.timeMs + half),
+      y = g.y(bar.close);
+    ctx.moveTo(x + radius, y);
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+  }
+  ctx.fill();
   ctx.restore();
 }

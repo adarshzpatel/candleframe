@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Checks trading on the demo with the paper broker: the order panel, a market buy, a TP
+// Checks the trading plugin on the demo (`?trading`) with the paper broker: the order panel, a market buy, a TP
 // dragged out of the position line, the right-click menu and Flatten all.
 //
 //   node scripts/paper-trading.mjs                          # starts Vite on 5198
@@ -45,7 +45,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   page.on('pageerror', error => problems.push(`pageerror: ${error.message}`));
   // Offline: the seeded simulation, so prices move without a network.
-  await page.goto(`${url}?offline`);
+  await page.goto(`${url}?offline&trading`);
   await page.waitForFunction(() => window.candleframe?.inspect().candleCount > 100, null, { timeout: 15000 });
 
   const panel = page.getByRole('region', { name: 'Order panel' });

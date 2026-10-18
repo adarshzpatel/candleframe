@@ -44,6 +44,20 @@ const MAX_LEVELS = 24;
 const replaced = <T>(list: readonly T[], index: number, value: T) =>
   list.map((item, i) => (i === index ? value : item));
 const without = <T>(list: readonly T[], index: number) => list.filter((_, i) => i !== index);
+/**
+ * Reads a number field clamped to `min`..`max`. Blank or non-numeric input
+ * restores `fallback` and returns null, so the form never sends NaN.
+ */
+function fieldNumber(input: HTMLInputElement, fallback: number, min: number, max: number): number | null {
+  const n = Number(input.value);
+  if (!input.value.trim() || !Number.isFinite(n)) {
+    input.value = String(fallback);
+    return null;
+  }
+  const clamped = Math.max(min, Math.min(max, n));
+  input.value = String(clamped);
+  return clamped;
+}
 /** A colour input needs six hex digits. */
 const pickerColor = (color: string) => {
   const hex = color.slice(1);
@@ -84,7 +98,7 @@ export function createDrawingWorkbench(
   root.append(flyout);
   /**
    * Popups open in the top layer where the browser supports it, so overlays a host stacks
-   * over the widget, such as the demo's order ticket, cannot cover them. They are then fixed
+   * over the widget, such as the trading plugin's order panel, cannot cover them. They are then fixed
    * to the viewport, and `frame` shifts their root- or panel-relative coordinates there.
    */
   const topLayer = typeof flyout.showPopover === 'function';
@@ -1059,8 +1073,9 @@ export function createDrawingWorkbench(
       value.addEventListener(
         'change',
         () => {
-          const { levels, looks } = now();
-          editLevels(replaced(levels, i, value.value.trim() ? Number(value.value) : NaN), looks);
+          const { levels, looks } = now(),
+            next = fieldNumber(value, levels[i], -1000, 1000);
+          if (next !== null) editLevels(replaced(levels, i, next), looks);
         },
         { signal: abort.signal },
       );
@@ -1108,7 +1123,7 @@ export function createDrawingWorkbench(
       () => {
         const { levels, looks } = now();
         reshape(
-          [...levels, Number((Math.max(...levels) + 1).toFixed(3))],
+          [...levels, Number(Math.min(1000, Math.max(...levels) + 1).toFixed(3))],
           looks,
           '.drawing-level-row:last-child input[type=number]',
         );
@@ -1229,9 +1244,16 @@ export function createDrawingWorkbench(
               ? `#${[...hex.slice(0, 3)].map(c => c + c).join('')}`
               : `#${hex.slice(0, 6)}`
             : shown;
+        let last = Number(shown);
         input.addEventListener(
           'change',
-          () => editOption(field.key, field.kind === 'number' ? Number(input.value) : input.value),
+          () => {
+            if (field.kind !== 'number') return editOption(field.key, input.value);
+            const next = fieldNumber(input, last, field.min, field.max);
+            if (next === null) return;
+            last = next;
+            editOption(field.key, next);
+          },
           { signal: abort.signal },
         );
         control = input;

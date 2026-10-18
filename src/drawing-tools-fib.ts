@@ -1,6 +1,8 @@
 import {
   add,
   drawingOption,
+  fibLevelColor,
+  fibLevels,
   fill,
   line,
   midpoint,
@@ -36,40 +38,13 @@ export const fibLevelDefaults: Readonly<Record<string, readonly number[]>> = Obj
   'gann-box': GANN_LEVELS,
   'gann-square': GANN_LEVELS,
 });
-const levelsFor = (d: Drawing): readonly number[] =>
-  d.levels.length ? d.levels : (fibLevelDefaults[d.type] ?? []);
-
-/** Same hues as the other Fibonacci tools, plus the quarter levels Gann tools use. */
-const FIB_COLORS: Record<string, string> = {
-  '0': '#787b86',
-  '0.236': '#f23645',
-  '0.25': '#f23645',
-  '0.382': '#ff9800',
-  '0.5': '#4caf50',
-  '0.618': '#089981',
-  '0.75': '#00bcd4',
-  '0.786': '#00bcd4',
-  '1': '#787b86',
-  '1.272': '#9c27b0',
-  '1.414': '#f23645',
-  '1.618': '#2962ff',
-  '2': '#ff9800',
-  '2.618': '#f23645',
-  '3.618': '#9c27b0',
-  '4.236': '#e91e63',
-};
-const FIB_CYCLE = ['#f23645', '#ff9800', '#4caf50', '#089981', '#00bcd4', '#2962ff', '#9c27b0', '#e91e63'];
-
 const settingsByType = new Map<string, readonly DrawingSetting[]>();
 const option = <T extends DrawingOptionValue>(d: Drawing, key: string): T =>
   drawingOption<T>(d, { settings: settingsByType.get(d.type) }, key);
 
-function levelColor(d: Drawing, level: number, index: number): string {
-  if (!option(d, 'levelColors')) return d.style.color;
-  return FIB_COLORS[String(Number(level.toFixed(3)))] ?? FIB_CYCLE[index % FIB_CYCLE.length];
-}
+/** Visible levels low to high, with colours from their table rows (`index`), as on the other Fibonacci tools. */
 const sorted = (d: Drawing) =>
-  [...levelsFor(d)].sort((x, y) => x - y).map((level, i) => ({ level, color: levelColor(d, level, i) }));
+  fibLevels(d, fibLevelDefaults[d.type] ?? [], settingsByType.get(d.type)).sort((x, y) => x.level - y.level);
 const dashed = (points: DrawingPoint[]): DrawingPrimitive =>
   path(points, { dash: [4, 4], opacity: 0.6, width: 1 });
 const label = (at: DrawingPoint, value: string, color: string, align: 'left' | 'center' | 'right' = 'left') =>
@@ -201,7 +176,7 @@ function wedge(d: Drawing, c: DrawingContext): DrawingPrimitive[] {
   // The shorter way round, so the wedge never wraps past half a turn.
   if (sweep > Math.PI) sweep -= Math.PI * 2;
   if (sweep < -Math.PI) sweep += Math.PI * 2;
-  const reach = radius * Math.max(1, ...levelsFor(d)),
+  const reach = radius * Math.max(1, ...sorted(d).map(row => row.level)),
     ray = (angle: number) => ({ x: a.x + reach * Math.cos(angle), y: a.y + reach * Math.sin(angle) });
   return [
     ...arcs(d, a, radius, from, from + sweep, r => ({
@@ -370,7 +345,7 @@ function gannSquare(d: Drawing, c: DrawingContext): DrawingPrimitive[] {
       ? [0, 1, 2, 3, 4, 5].map((step, i) => ({
           level: step / 5,
           name: `${step}`,
-          color: levelColor(d, step / 5, i),
+          color: option(d, 'levelColors') ? fibLevelColor(step / 5, i) : d.style.color,
         }))
       : sorted(d).map(row => ({ ...row, name: `${row.level}` })),
     result: DrawingPrimitive[] = [];
@@ -398,16 +373,14 @@ function gannSquare(d: Drawing, c: DrawingContext): DrawingPrimitive[] {
       result.push(path([a, end], { color, width: 1 }));
     });
   if (option(d, 'arcs')) {
-    const radii = fixed ? FIXED_ARCS.map(r => r / 5) : rows.map(row => row.level).filter(r => r > 0);
-    radii.forEach((r, i) => {
-      const color = fixed ? FAN_COLORS[i % FAN_COLORS.length] : levelColor(d, r, i);
-      result.push(
-        path(arc(a, (b.x - a.x) * r, (b.y - a.y) * r, 0, Math.PI / 2), {
-          color: option(d, 'levelColors') ? color : d.style.color,
-          width: 1,
-        }),
-      );
-    });
+    const arcRows = fixed
+      ? FIXED_ARCS.map((r, i) => ({
+          level: r / 5,
+          color: option(d, 'levelColors') ? FAN_COLORS[i % FAN_COLORS.length] : d.style.color,
+        }))
+      : rows.filter(row => row.level > 0);
+    for (const { level: r, color } of arcRows)
+      result.push(path(arc(a, (b.x - a.x) * r, (b.y - a.y) * r, 0, Math.PI / 2), { color, width: 1 }));
   }
   return result;
 }

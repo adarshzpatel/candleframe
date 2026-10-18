@@ -122,16 +122,18 @@ group.dispose(); // Unlinks; the charts stay mounted.
 
 ## Trading
 
-Pass a broker adapter and the widget gets an order panel, order and position lines, and order entry on the chart:
+Trading is a separate plugin, `candleframe/trading`. The widget and chart know nothing about orders; attach the plugin to either one to get an order panel, order and position lines, and order entry on the chart:
 
 ```ts
-import { createChartWidget, createPaperBroker } from 'candleframe';
+import { createChartWidget } from 'candleframe/widget';
+import { attachTrading, createPaperBroker } from 'candleframe/trading';
 
-const chart = createChartWidget(host, {
-  feed,
-  trading: { broker: createPaperBroker(), confirm: true },
-});
+const chart = createChartWidget(host, { feed });
+const trading = attachTrading(chart, { broker: createPaperBroker(), host, confirm: true });
+// trading.dispose() before chart.dispose()
 ```
+
+`host` is the element the charts fill. Pass the same `storageKey` as the widget to keep the panel position, account and Trading switch with its other saved settings. The demo attaches it with `?trading`.
 
 A broker adapter implements `BrokerAdapter` (`src/trading-types.ts`). State comes in through `subscribe(listener)`: accounts, working orders, open positions, fills, whether it is connected and whether it accepts orders. Orders go out through `placeOrder`, `modifyOrder` and `cancelOrder`, each resolving to `{ ok, orderId?, error? }`. Symbols are the chart's instrument symbols; mapping one to a tradable contract is the adapter's job. `pointValue(symbol)` turns price moves into money for P&L; without it P&L reads in points. `onMarketPrice` is optional and receives each chart's last price, which simulated brokers fill against.
 
@@ -147,7 +149,7 @@ What the user gets:
 
 TPs, SLs and flatten are sent with `reduceOnly: true`; adapters should refuse them when they would open or add to a position. The layer owns the charts' price lines and markers while attached.
 
-`attachTrading(chartOrWidget, { broker, host })` adds the same to a bare chart, with `host` as the element the chart fills.
+`attachTrading` works the same on a bare chart from `createChart`.
 
 ## Drawings and themes
 

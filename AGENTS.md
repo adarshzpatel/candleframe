@@ -46,6 +46,8 @@ Use Node 24. The build includes type checking and emits the demo and plain JavaS
 | Agent API: batches, preview, idempotency, query | `src/runtime.ts` (`execute`, `preview`, `query`), `docs/agents.md` |
 | Command JSON Schema | `src/command-schema.ts` |
 | MCP server example | `examples/mcp-server.ts` |
+| Trading plugin (`candleframe/trading`): order panel, broker adapters, paper broker | `src/trading-entry.ts`, `src/trading.ts`, `src/trading-ui.ts`, `src/paper-broker.ts`, `scripts/paper-trading.mjs` |
+| Chart types, Heikin Ashi bars | `src/chart-types.ts`, `src/webgl-renderer.ts` (`closeLine`) |
 | Indicators, registry and panes | `src/indicators.ts`, `src/geometry.ts` (`paneRanges`), `src/indicator-panel.ts` |
 | Intervals, session gaps and time labels | `src/intervals.ts`, `src/time-scale.ts`, `src/time-format.ts` |
 | Static feed and history paging | `src/static-feed.ts`, `ChartRuntime.loadOlderHistory` |

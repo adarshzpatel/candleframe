@@ -37,5 +37,3 @@ export type {
   ThemeOverrides,
 } from './themes.ts';
 export type * from './theme-tokens.ts';
-export { attachTrading } from './trading.ts';
-export type { TradingLayer, TradingOptions } from './trading.ts';

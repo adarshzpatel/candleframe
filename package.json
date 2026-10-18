@@ -42,6 +42,10 @@
       "types": "./dist/lib/widget-entry.d.ts",
       "import": "./dist/lib/widget-entry.js"
     },
+    "./trading": {
+      "types": "./dist/lib/trading-entry.d.ts",
+      "import": "./dist/lib/trading-entry.js"
+    },
     "./binance": {
       "types": "./dist/lib/binance.d.ts",
       "import": "./dist/lib/binance.js"

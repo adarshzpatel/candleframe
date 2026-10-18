@@ -14,6 +14,7 @@ import { intervalToMs, isAligned, isTimeInterval } from './intervals.ts';
 import { createTimeScale } from './time-scale.ts';
 import { IndicatorRegistry } from './indicators.ts';
 import { footprintOptions } from './footprint.ts';
+import { CHART_TYPES, heikinAshi, isChartType } from './chart-types.ts';
 import { chartCommandTypes } from './command-schema.ts';
 import type { IndicatorDefinition } from './indicators.ts';
 
@@ -52,6 +53,8 @@ export interface DataQuery {
   limit?: number;
   /** Default true. */
   indicators?: boolean;
+  /** The feed's bars instead of Heikin Ashi ones. Indicator values are unchanged. Default false. */
+  raw?: boolean;
 }
 export interface DataResult {
   candles: Candle[];
@@ -170,12 +173,13 @@ function validateChartStyle(
   chartType: unknown,
   footprint: unknown,
 ): Pick<ChartDocument, 'chartType' | 'footprint'> {
-  if (chartType !== undefined && chartType !== 'candles' && chartType !== 'footprint')
-    throw new ChartError('INVALID_CHART_TYPE', 'chartType must be candles or footprint', {
+  if (chartType !== undefined && !isChartType(chartType))
+    throw new ChartError('INVALID_CHART_TYPE', 'chartType must be one of the chart types', {
       path: 'chartType',
+      details: { chartTypes: CHART_TYPES.map(type => type.id) },
     });
   return {
-    ...(chartType === 'footprint' ? { chartType } : {}),
+    ...(chartType !== undefined && chartType !== 'candles' ? { chartType } : {}),
     ...(footprint === undefined ? {} : { footprint: footprintOptions(footprint) }),
   };
 }
@@ -345,6 +349,9 @@ const loading = (): StreamHealth => ({ status: 'loading', message: null, receive
 /** Owns one active market generation. Old connections cannot write into a replacement market. */
 export class ChartRuntime {
   private candles: Candle[] = [];
+  /** What charts and indicators see: `candles`, or Heikin Ashi bars built from them when `heikin`. */
+  private bars: Candle[] = this.candles;
+  private heikin = false;
   private book = new OrderBook();
   private adapter: FeedAdapter;
   private descriptor: FeedDescriptor;
@@ -457,27 +464,46 @@ export class ChartRuntime {
   }
   /** Matches indicator instances to the document, reusing unchanged ones and computing new ones. */
   private syncIndicators(): void {
-    this.indicators = this.slotsFor(this.document);
+    this.useSlots(this.slotsFor(this.document));
   }
-  /** Computes before anything is assigned, so a failing plugin cannot leave a half-applied edit. */
-  private slotsFor(document: ChartDocument): IndicatorSlot[] {
+  /**
+   * Computes before anything is assigned, so a failing plugin cannot leave a half-applied edit.
+   * Switching to or from Heikin Ashi changes the bars, so every indicator recomputes.
+   */
+  private slotsFor(document: ChartDocument): { slots: IndicatorSlot[]; bars: Candle[]; heikin: boolean } {
+    const heikin = document.chartType === 'heikin-ashi';
+    const bars = heikin === this.heikin ? this.bars : heikin ? heikinAshi(this.candles, [], 0) : this.candles;
     const previous = new Map(this.indicators.map(slot => [slot.entry.id, slot]));
-    return document.indicators.map(entry => {
+    const slots = document.indicators.map(entry => {
       const old = previous.get(entry.id);
-      if (old && old.entry.kind === entry.kind && sameInputs(old.entry.inputs, entry.inputs))
+      if (
+        bars === this.bars &&
+        old &&
+        old.entry.kind === entry.kind &&
+        sameInputs(old.entry.inputs, entry.inputs)
+      )
         return { ...old, entry };
-      const plugin = this.resolveIndicator(entry);
+      const plugin =
+        old?.plugin && old.entry.kind === entry.kind && sameInputs(old.entry.inputs, entry.inputs)
+          ? old.plugin
+          : this.resolveIndicator(entry);
       const slot: IndicatorSlot = { entry, plugin, series: [] };
-      if (plugin && this.candles.length) slot.series = this.compute(plugin, this.candles, [], 0);
+      if (plugin && bars.length) slot.series = this.compute(plugin, bars, [], 0);
       return slot;
     });
+    return { slots, bars, heikin };
+  }
+  private useSlots({ slots, bars, heikin }: ReturnType<ChartRuntime['slotsFor']>): void {
+    this.indicators = slots;
+    this.bars = bars;
+    this.heikin = heikin;
   }
   /** Replaces the document and its indicator instances together. */
   private commit(document: ChartDocument, remember: boolean): void {
     const slots = this.slotsFor(document);
     if (remember) this.remember();
     this.document = document;
-    this.indicators = slots;
+    this.useSlots(slots);
     this.documentRevision++;
     this.publish();
   }
@@ -570,11 +596,24 @@ export class ChartRuntime {
     this.connection = undefined;
     this.adapter = feed;
     this.descriptor = descriptor;
-    this.candles = [];
+    this.candles = this.bars = [];
     this.book = new OrderBook();
     this.heatmap = undefined;
-    this.history = [];
-    this.future = [];
+    if (sameInstrument) {
+      // Drawings survive an interval switch, so their undo steps do too. Undo
+      // restores whole documents; point the saved ones at the new feed.
+      const retarget = (document: ChartDocument): ChartDocument => ({
+        ...document,
+        feedId: descriptor.id,
+        symbol: descriptor.instrument.symbol,
+        interval: descriptor.interval,
+      });
+      this.history = this.history.map(retarget);
+      this.future = this.future.map(retarget);
+    } else {
+      this.history = [];
+      this.future = [];
+    }
     this.indicators.forEach(slot => {
       slot.series = [];
     });
@@ -593,6 +632,9 @@ export class ChartRuntime {
       ...validateChartStyle(previous.chartType, previous.footprint),
       indicators: structuredClone(previous.indicators),
       drawings: sameInstrument ? structuredClone(previous.drawings) : [],
+      ...(sameInstrument && previous.drawingGroups?.length
+        ? { drawingGroups: structuredClone(previous.drawingGroups) }
+        : {}),
     };
     this.syncIndicators();
     this.documentRevision++;
@@ -619,14 +661,17 @@ export class ChartRuntime {
     if (this.connection) this.connection.requestSnapshot();
     else this.snapshotNeeded = true;
   }
+  /** Updates the bars and indicator series for new candles; the caller then stores `candles`. */
   private calculate(candles: Candle[], changed: number): void {
     // Compute everything before assigning, so one failing plugin leaves all series unchanged.
+    const bars = this.heikin ? heikinAshi(candles, this.bars, changed) : candles;
     const results = this.indicators.map(slot =>
-      slot.plugin ? this.compute(slot.plugin, candles, slot.series, changed) : [],
+      slot.plugin ? this.compute(slot.plugin, bars, slot.series, changed) : [],
     );
     this.indicators.forEach((slot, index) => {
       slot.series = results[index];
     });
+    this.bars = bars;
   }
   private recordDepth(): void {
     const time = this.candles.at(-1)?.timeMs;
@@ -885,7 +930,7 @@ export class ChartRuntime {
         return value === undefined || Number.isNaN(value) ? null : value;
       });
     return structuredClone({
-      candles: this.candles.slice(start, end),
+      candles: (request.raw ? this.candles : this.bars).slice(start, end),
       indicators:
         request.indicators === false
           ? []
@@ -933,6 +978,8 @@ export class ChartRuntime {
       history: [...this.history],
       future: [...this.future],
       indicators: this.indicators,
+      bars: this.bars,
+      heikin: this.heikin,
       remembered: this.remembered,
     };
     const restore = () => {
@@ -941,6 +988,8 @@ export class ChartRuntime {
       this.history = snapshot.history;
       this.future = snapshot.future;
       this.indicators = snapshot.indicators;
+      this.bars = snapshot.bars;
+      this.heikin = snapshot.heikin;
       this.remembered = snapshot.remembered;
     };
     this.batching = true;
@@ -1009,7 +1058,7 @@ export class ChartRuntime {
         const slots = this.slotsFor(document);
         this.pushHistory(destination);
         this.document = document;
-        this.indicators = slots;
+        this.useSlots(slots);
         this.documentRevision++;
         this.publish();
       }
@@ -1080,12 +1129,13 @@ export class ChartRuntime {
         next.intensity = command.value;
         break;
       case 'chartType.set':
-        if (command.chartType === 'footprint') next.chartType = 'footprint';
-        else if (command.chartType === 'candles') delete next.chartType;
-        else
-          throw new ChartError('INVALID_CHART_TYPE', 'chartType must be candles or footprint', {
+        if (!isChartType(command.chartType))
+          throw new ChartError('INVALID_CHART_TYPE', 'chartType must be one of the chart types', {
             path: 'chartType',
+            details: { chartTypes: CHART_TYPES.map(type => type.id) },
           });
+        if (command.chartType === 'candles') delete next.chartType;
+        else next.chartType = command.chartType;
         if (command.footprint !== undefined)
           next.footprint = footprintOptions(command.footprint, next.footprint);
         break;
@@ -1334,7 +1384,7 @@ export class ChartRuntime {
       feed: this.descriptor,
       generation: this.generation,
       streams: this.streams,
-      candles: this.candles,
+      candles: this.bars,
       document: this.document,
       book: this.book.inspect(80),
       indicators: this.indicators.flatMap(({ entry, plugin, series }): ActiveIndicator[] =>

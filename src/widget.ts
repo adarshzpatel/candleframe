@@ -14,12 +14,12 @@ import {
 } from './themes.ts';
 import type { ThemeInput } from './themes.ts';
 import { FOOTPRINT_DEFAULTS } from './footprint.ts';
+import { CHART_TYPES, chartTypeLabel } from './chart-types.ts';
 import { applyWidgetTheme } from './widget-theme.ts';
 import { createThemeEditor } from './theme-editor.ts';
 import { createChart } from './chart.ts';
 import { createChartGroup } from './chart-group.ts';
 import { createChartSwitch } from './chart-switch.ts';
-import { attachTrading, type TradingOptions } from './trading.ts';
 import type { ChartSwitch } from './chart-switch.ts';
 import { createGeometry } from './geometry.ts';
 import type { ChartApi, ChartOptions } from './chart.ts';
@@ -67,7 +67,15 @@ import type {
   WidgetWorkspaceIndex,
   WorkspaceCell,
 } from './widget-layout.ts';
-import type { Candle, ChartDocument, FeedAdapter, Interval, Layer, RuntimeState } from './types.ts';
+import type {
+  Candle,
+  ChartDocument,
+  ChartType,
+  FeedAdapter,
+  Interval,
+  Layer,
+  RuntimeState,
+} from './types.ts';
 import type { RendererStats } from './webgl-renderer.ts';
 
 export type { WidgetMarketSource } from './widget-market.ts';
@@ -120,11 +128,6 @@ export interface ChartWidgetOptions extends ChartOptions {
    * charts copy the active chart's market. A saved layout replaces this once it loads.
    */
   layout?: { preset?: LayoutPreset; sync?: Partial<WidgetSync> };
-  /**
-   * Trading through a broker adapter: an order panel, order and position lines, drag
-   * to place and move orders, and a right-click order menu. See `attachTrading`.
-   */
-  trading?: Omit<TradingOptions, 'host' | 'storageKey'>;
 }
 /** The widget acts on its active chart, like its toolbar. */
 export interface ChartWidgetApi extends ChartApi {
@@ -1342,10 +1345,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
       if (typeButton.dataset.type !== type) {
         typeButton.dataset.type = type;
         typeButton.innerHTML = icon(type);
-        typeButton.setAttribute(
-          'aria-label',
-          `Chart type: ${type === 'footprint' ? 'Footprint' : 'Candles'}`,
-        );
+        typeButton.setAttribute('aria-label', `Chart type: ${chartTypeLabel(type)}`);
       }
       if (
         previous?.document.chartType !== state.document.chartType ||
@@ -1563,32 +1563,39 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
           }
           content.append(group);
         };
-        heading('Bars');
-        choices(
-          'Bars',
-          [
-            ['candles', 'Candles'],
-            ['footprint', 'Footprint'],
-          ] as const,
-          type,
-          value => {
-            const state = lastState!;
-            chart.execute({ type: 'chartType.set', chartType: value });
-            // Cells need room: zoom a wide view in to the latest bars.
-            if (value === 'footprint' && state.candles.length) {
-              const scale = stateTimeScale(state);
-              const { fromMs, toMs } = state.document.viewport;
-              if (scale.bars(fromMs, toMs) > FOOTPRINT_VIEW_BARS * 2) {
-                const end = scale.logical(state.candles.at(-1)!.timeMs) + 2;
-                chart.execute({
-                  type: 'viewport.set',
-                  fromMs: scale.time(end - FOOTPRINT_VIEW_BARS),
-                  toMs: scale.time(end),
-                });
-              }
+        const pickType = (value: ChartType) => {
+          const state = lastState!;
+          chart.execute({ type: 'chartType.set', chartType: value });
+          // Cells need room: zoom a wide view in to the latest bars.
+          if (value === 'footprint' && state.candles.length) {
+            const scale = stateTimeScale(state);
+            const { fromMs, toMs } = state.document.viewport;
+            if (scale.bars(fromMs, toMs) > FOOTPRINT_VIEW_BARS * 2) {
+              const end = scale.logical(state.candles.at(-1)!.timeMs) + 2;
+              chart.execute({
+                type: 'viewport.set',
+                fromMs: scale.time(end - FOOTPRINT_VIEW_BARS),
+                toMs: scale.time(end),
+              });
             }
-          },
-        );
+          }
+        };
+        for (const group of ['Bars', 'Lines', 'Order flow'] as const) {
+          heading(group);
+          const list = doc.createElement('div');
+          list.className = 'chart-type-list';
+          list.setAttribute('role', 'group');
+          list.setAttribute('aria-label', group);
+          for (const item of CHART_TYPES.filter(item => item.group === group)) {
+            const button = doc.createElement('button');
+            button.innerHTML = `${icon(item.id)}<span>${item.label}</span>`;
+            button.dataset.focusKey = `type:${item.id}`;
+            button.setAttribute('aria-pressed', String(item.id === type));
+            button.addEventListener('click', () => attempt(() => pickType(item.id)));
+            list.append(button);
+          }
+          content.append(list);
+        }
         const note = doc.createElement('p');
         note.className = 'chart-type-note';
         const hasCells = state.candles.some(candle => candle.footprint?.length);
@@ -1894,7 +1901,6 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     if (layout.preset !== '1') applyPreset(layout.preset);
     else renderGrid();
     void loadWorkspaces();
-    let trading: ReturnType<typeof attachTrading> | null = null;
     const api: ChartWidgetApi = {
       ...chart,
       charts: () => cells.map(cell => cell.chart),
@@ -1921,7 +1927,6 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
         if (disposed) return;
         flushAll();
         disposed = true;
-        trading?.dispose();
         abort.abort();
         clearTimeout(toastTimer);
         clearTimeout(workspaceTimer);
@@ -1940,12 +1945,6 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
         mount.remove();
       },
     };
-    if (options.trading)
-      trading = attachTrading(api, {
-        ...options.trading,
-        host: container,
-        ...(options.storageKey ? { storageKey: options.storageKey } : {}),
-      });
     return api;
   } catch (error) {
     disposed = true;

@@ -257,10 +257,26 @@ export interface FootprintOptions {
   summary: boolean;
 }
 /**
- * `footprint` draws each bar's `footprint` levels as price cells beside a thin candle.
- * Bars without levels, and views zoomed out past readable cells, draw as candles.
+ * How price bars are drawn. `footprint` draws each bar's `footprint` levels as price cells
+ * beside a thin candle; bars without levels, and views zoomed out past readable cells, draw
+ * as candles. `heikin-ashi` replaces the bar values themselves: `RuntimeState.candles`,
+ * autoscale, hover and indicators all see Heikin Ashi bars, and `query({ raw: true })`
+ * returns the feed's. Line types draw closes; `baseline` splits at the first visible close.
  */
-export type ChartType = 'candles' | 'footprint';
+export type ChartType =
+  | 'candles'
+  | 'hollow-candles'
+  | 'heikin-ashi'
+  | 'ohlc-bars'
+  | 'hlc-bars'
+  | 'high-low'
+  | 'columns'
+  | 'line'
+  | 'line-markers'
+  | 'step-line'
+  | 'area'
+  | 'baseline'
+  | 'footprint';
 export interface ChartDocument {
   version: 4;
   feedId: string;
@@ -270,7 +286,7 @@ export interface ChartDocument {
   intensity: number;
   viewport: { fromMs: number; toMs: number; following: boolean };
   priceScale: PriceScale;
-  /** Omitted means candles. Builds without footprint support ignore it. */
+  /** Omitted means candles. */
   chartType?: ChartType;
   /** Footprint cell settings, kept while candles show. Omitted means the defaults. */
   footprint?: FootprintOptions;
