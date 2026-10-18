@@ -2,6 +2,7 @@ import {
   createChartWidget,
   createSimulatedFeed,
   createBinanceFeed,
+  createHyperliquidFeed,
   createTheme,
   restoreTheme,
   sma,
@@ -35,6 +36,18 @@ const markets: WidgetMarketSource[] = [
       createBinanceFeed({ symbol: symbol as 'BTC/USDT' | 'ETH/USDT' | 'SOL/USDT', interval }),
   },
   {
+    // Perpetuals. Hyperliquid weeks start on Thursday, so 1w is not offered.
+    id: 'hyperliquid',
+    label: 'Hyperliquid',
+    symbols: ['BTC/USDC', 'ETH/USDC', 'SOL/USDC', 'HYPE/USDC'],
+    intervals: intervals.filter(interval => interval !== '1w'),
+    createFeed: ({ symbol, interval }) =>
+      createHyperliquidFeed({
+        symbol: symbol as 'BTC/USDC' | 'ETH/USDC' | 'SOL/USDC' | 'HYPE/USDC',
+        interval,
+      }),
+  },
+  {
     // Static data with weekend and overnight gaps: the time axis skips closed hours.
     id: 'sample-equity',
     label: 'Sample equity',
@@ -43,8 +56,11 @@ const markets: WidgetMarketSource[] = [
     createFeed: ({ interval }) => sampleEquityFeed(interval),
   },
 ];
-// `?offline` drops Binance, for the smoke test and network-free work.
-if (new URLSearchParams(location.search).has('offline')) markets.splice(1, 1);
+// `?offline` drops the live exchange sources, for the smoke test and network-free work.
+const live = new Set(['binance', 'hyperliquid']);
+const sources = new URLSearchParams(location.search).has('offline')
+  ? markets.filter(source => !live.has(source.id))
+  : markets;
 // The demo keeps its Evergreen look and watermark. A saved appearance still wins.
 let savedTheme: ResolvedChartTheme | null = null;
 try {
@@ -57,7 +73,7 @@ const chart = createChartWidget(host, {
   feed: simulate('BTC/USD', '1m'),
   theme: savedTheme ?? createTheme('evergreen', { chart: { watermarkText: 'candleframe' } }),
   indicators: [sma(20)],
-  markets,
+  markets: sources,
   orderBook: true,
   autoscaleOnPan: true,
   storageKey: 'demo',

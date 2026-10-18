@@ -59,7 +59,7 @@ async function run(name, launch, contextOptions = {}) {
   });
   const shot = step => page.screenshot({ path: `${out}/${name}-${step}.png` });
   try {
-    // Offline mode uses the seeded simulation so runs do not depend on Binance.
+    // Offline mode uses the seeded simulation so runs do not depend on live exchanges.
     await page.goto(new URL('?offline', url).href, { waitUntil: 'load' });
     await page.waitForFunction(() => window.candleframe?.inspect().candleCount > 100, null, {
       timeout: 15000,
