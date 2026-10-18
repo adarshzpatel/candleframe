@@ -4,3 +4,4 @@ artifacts/
 package-lock.json
 *.md
 .github/
+.astro/

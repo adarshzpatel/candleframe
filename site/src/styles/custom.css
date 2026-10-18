@@ -1,0 +1,48 @@
+/* Evergreen in dark mode and Paper in light, the chart's own palettes (src/theme-palettes.ts). */
+:root {
+  --sl-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --sl-color-accent-low: #2c2814;
+  --sl-color-accent: #c9a93c;
+  --sl-color-accent-high: #e6d08e;
+  --sl-color-white: #eff5f2;
+  --sl-color-gray-1: #cad6d0;
+  --sl-color-gray-2: #afbdb6;
+  --sl-color-gray-3: #909e97;
+  --sl-color-gray-4: #495e54;
+  --sl-color-gray-5: #1b2f26;
+  --sl-color-gray-6: #12251d;
+  --sl-color-black: #02120b;
+}
+:root[data-theme='light'] {
+  --sl-color-accent-low: #e3e3f7;
+  --sl-color-accent: #5050c5;
+  --sl-color-accent-high: #2e2e86;
+  --sl-color-white: #1c1e22;
+  --sl-color-gray-1: #43454a;
+  --sl-color-gray-2: #585b60;
+  --sl-color-gray-3: #707378;
+  --sl-color-gray-4: #bbbec2;
+  --sl-color-gray-5: #e1e3e7;
+  --sl-color-gray-6: #f6f8fc;
+  --sl-color-gray-7: #f6f8fc;
+  --sl-color-black: #ffffff;
+}
+
+.live-chart {
+  height: min(560px, 72vh);
+  margin-block: 2rem 1rem;
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+.live-chart-caption {
+  margin-top: 0;
+  font-size: var(--sl-text-sm);
+  color: var(--sl-color-gray-3);
+  text-align: center;
+}
+@media (max-width: 50rem) {
+  .live-chart {
+    height: 480px;
+  }
+}

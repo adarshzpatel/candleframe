@@ -1,0 +1,41 @@
+---
+/** The real widget on a simulated market, built from the library source. */
+---
+
+<div class="live-chart" data-live-chart aria-label="Live CandleFrame chart on simulated data"></div>
+<p class="live-chart-caption">
+  The actual widget, running on simulated BTC/USD trades in your browser. Draw on it, add indicators, switch the
+  chart type.
+</p>
+
+<script>
+  import { createChartWidget } from '@candleframe/widget-entry.ts';
+  import { createSimulatedFeed, sma } from '@candleframe/core.ts';
+
+  const host = document.querySelector<HTMLElement>('[data-live-chart]');
+  if (host) {
+    const feed = (symbol: 'BTC/USD' | 'ETH/USD' | 'SOL/USD', interval: '1m' | '5m' | '15m' | '1h') =>
+      createSimulatedFeed({ symbol, interval, trades: true });
+    const themeFor = () => (document.documentElement.dataset.theme === 'light' ? 'paper' : 'evergreen');
+    const chart = createChartWidget(host, {
+      feed: feed('BTC/USD', '1m'),
+      theme: themeFor(),
+      indicators: [sma(20)],
+      markets: [
+        {
+          id: 'simulated',
+          label: 'Simulation',
+          symbols: ['BTC/USD', 'ETH/USD', 'SOL/USD'],
+          intervals: ['1m', '5m', '15m', '1h'],
+          createFeed: ({ symbol, interval }) =>
+            feed(symbol as 'BTC/USD', interval as '1m'),
+        },
+      ],
+    });
+    // Follow the site's light and dark switch.
+    new MutationObserver(() => chart.setTheme(themeFor())).observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme'],
+    });
+  }
+</script>
