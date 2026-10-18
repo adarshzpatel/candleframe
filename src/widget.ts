@@ -14,6 +14,7 @@ import {
 } from './themes.ts';
 import type { ThemeInput } from './themes.ts';
 import { FOOTPRINT_DEFAULTS } from './footprint.ts';
+import { CHART_TYPES, chartTypeLabel } from './chart-types.ts';
 import { applyWidgetTheme } from './widget-theme.ts';
 import { createThemeEditor } from './theme-editor.ts';
 import { createChart } from './chart.ts';
@@ -67,7 +68,15 @@ import type {
   WidgetWorkspaceIndex,
   WorkspaceCell,
 } from './widget-layout.ts';
-import type { Candle, ChartDocument, FeedAdapter, Interval, Layer, RuntimeState } from './types.ts';
+import type {
+  Candle,
+  ChartDocument,
+  ChartType,
+  FeedAdapter,
+  Interval,
+  Layer,
+  RuntimeState,
+} from './types.ts';
 import type { RendererStats } from './webgl-renderer.ts';
 
 export type { WidgetMarketSource } from './widget-market.ts';
@@ -1342,10 +1351,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
       if (typeButton.dataset.type !== type) {
         typeButton.dataset.type = type;
         typeButton.innerHTML = icon(type);
-        typeButton.setAttribute(
-          'aria-label',
-          `Chart type: ${type === 'footprint' ? 'Footprint' : 'Candles'}`,
-        );
+        typeButton.setAttribute('aria-label', `Chart type: ${chartTypeLabel(type)}`);
       }
       if (
         previous?.document.chartType !== state.document.chartType ||
@@ -1563,32 +1569,39 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
           }
           content.append(group);
         };
-        heading('Bars');
-        choices(
-          'Bars',
-          [
-            ['candles', 'Candles'],
-            ['footprint', 'Footprint'],
-          ] as const,
-          type,
-          value => {
-            const state = lastState!;
-            chart.execute({ type: 'chartType.set', chartType: value });
-            // Cells need room: zoom a wide view in to the latest bars.
-            if (value === 'footprint' && state.candles.length) {
-              const scale = stateTimeScale(state);
-              const { fromMs, toMs } = state.document.viewport;
-              if (scale.bars(fromMs, toMs) > FOOTPRINT_VIEW_BARS * 2) {
-                const end = scale.logical(state.candles.at(-1)!.timeMs) + 2;
-                chart.execute({
-                  type: 'viewport.set',
-                  fromMs: scale.time(end - FOOTPRINT_VIEW_BARS),
-                  toMs: scale.time(end),
-                });
-              }
+        const pickType = (value: ChartType) => {
+          const state = lastState!;
+          chart.execute({ type: 'chartType.set', chartType: value });
+          // Cells need room: zoom a wide view in to the latest bars.
+          if (value === 'footprint' && state.candles.length) {
+            const scale = stateTimeScale(state);
+            const { fromMs, toMs } = state.document.viewport;
+            if (scale.bars(fromMs, toMs) > FOOTPRINT_VIEW_BARS * 2) {
+              const end = scale.logical(state.candles.at(-1)!.timeMs) + 2;
+              chart.execute({
+                type: 'viewport.set',
+                fromMs: scale.time(end - FOOTPRINT_VIEW_BARS),
+                toMs: scale.time(end),
+              });
             }
-          },
-        );
+          }
+        };
+        for (const group of ['Bars', 'Lines', 'Order flow'] as const) {
+          heading(group);
+          const list = doc.createElement('div');
+          list.className = 'chart-type-list';
+          list.setAttribute('role', 'group');
+          list.setAttribute('aria-label', group);
+          for (const item of CHART_TYPES.filter(item => item.group === group)) {
+            const button = doc.createElement('button');
+            button.innerHTML = `${icon(item.id)}<span>${item.label}</span>`;
+            button.dataset.focusKey = `type:${item.id}`;
+            button.setAttribute('aria-pressed', String(item.id === type));
+            button.addEventListener('click', () => attempt(() => pickType(item.id)));
+            list.append(button);
+          }
+          content.append(list);
+        }
         const note = doc.createElement('p');
         note.className = 'chart-type-note';
         const hasCells = state.candles.some(candle => candle.footprint?.length);

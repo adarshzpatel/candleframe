@@ -54,6 +54,7 @@ export {
   IMBALANCE_RATIO,
 } from './footprint.ts';
 export type { FootprintBar, FootprintRow } from './footprint.ts';
+export { CHART_TYPES, chartTypeLabel, drawsClosesOnly, heikinAshi, isChartType } from './chart-types.ts';
 export type { BarRule, Trade, TradeBarOptions } from './trade-bars.ts';
 export { createTimeScale } from './time-scale.ts';
 export type { TimeScale } from './time-scale.ts';

@@ -1,3 +1,4 @@
+import { CHART_TYPES } from './chart-types.ts';
 import { DRAWING_VISIBILITY_UNITS } from './drawing-visibility.ts';
 import type { ChartCommand } from './types.ts';
 
@@ -137,9 +138,9 @@ const commands = {
   ),
   'chartType.set': command(
     'chartType.set',
-    'Draw bars as candles or footprints. Footprint settings merge with the current ones.',
+    'Choose how bars draw. heikin-ashi also changes the bar values that autoscale, hover and indicators read. Footprint settings merge with the current ones.',
     {
-      chartType: { enum: ['candles', 'footprint'] },
+      chartType: { enum: CHART_TYPES.map(type => type.id) },
       footprint: {
         type: 'object',
         properties: {

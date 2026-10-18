@@ -1,10 +1,11 @@
 import { footprintShown } from './footprint.ts';
+import { drawsClosesOnly } from './chart-types.ts';
 import { ChartError } from './errors.ts';
 import { chartThemes, colorRGBA, indicatorColor, themeColor } from './themes.ts';
 import type { ResolvedChartTheme } from './themes.ts';
 import type { ChartGeometry } from './geometry.ts';
 import type { HeatmapStore } from './heatmap.ts';
-import type { RuntimeState } from './types.ts';
+import type { ChartType, RuntimeState } from './types.ts';
 import { visibleRange } from './time-scale.ts';
 
 export interface RenderFrame {
@@ -125,6 +126,13 @@ const colorsFor = (theme: ResolvedChartTheme) => {
     wickDown: token(chart.wickDown),
     volumeUp: token(chart.volumeUp, chart.volumeOpacity),
     volumeDown: token(chart.volumeDown, chart.volumeOpacity),
+    line: token(chart.lineColor),
+    area: token(chart.areaColor, chart.areaOpacity),
+    baselineUp: token(chart.baselineUp),
+    baselineDown: token(chart.baselineDown),
+    baselineUpFill: token(chart.baselineUp, chart.baselineOpacity),
+    baselineDownFill: token(chart.baselineDown, chart.baselineOpacity),
+    baseline: token(chart.axisColor, 0.5),
     histogramUp: token(chart.candleUp, 0.55),
     histogramDown: token(chart.candleDown, 0.55),
     grid: colorRGBA(theme.palette.grid, chart.gridOpacity),
@@ -414,6 +422,87 @@ export class WebGL2Renderer implements ChartRenderer {
     this.vertices[this.used - 1] = Math.abs(h2);
   }
 
+  /** A segment with square ends, so joined segments leave no notch at their corners. */
+  private segment(
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    width: number,
+    color: Color,
+    clipY: readonly [number, number],
+  ): void {
+    const length = Math.hypot(x2 - x1, y2 - y1);
+    if (!length) return;
+    const ex = ((x2 - x1) / length) * (width / 2),
+      ey = ((y2 - y1) / length) * (width / 2);
+    this.line(x1 - ex, y1 - ey, x2 + ex, y2 + ey, width, color, clipY);
+  }
+
+  /** Line, step line, area and baseline: the closes joined, with any fill beneath them. */
+  private closeLine(
+    type: ChartType,
+    bars: readonly { x: number; close: number }[],
+    g: ChartGeometry,
+    clip: readonly [number, number],
+  ): void {
+    const colors = this.colors,
+      width = this.theme.chart.lineWidth,
+      bottom = g.top + g.plotHeight;
+    if (type === 'step-line') {
+      for (let i = 0; i < bars.length; i++) {
+        const y = g.y(bars[i].close),
+          left = i ? (bars[i - 1].x + bars[i].x) / 2 : bars[i].x - g.barSpacing / 2,
+          right = i < bars.length - 1 ? (bars[i].x + bars[i + 1].x) / 2 : bars[i].x + g.barSpacing / 2;
+        this.segment(left, y, right, y, width, colors.line, clip);
+        if (i) this.segment(left, g.y(bars[i - 1].close), left, y, width, colors.line, clip);
+      }
+      return;
+    }
+    // Segments with the fill under each and the colour of its line. Baseline splits a
+    // segment where it crosses the base, the first close in view.
+    const first = bars.find(bar => bar.x >= g.left) ?? bars[0],
+      base = type === 'baseline' && first ? g.y(first.close) : bottom;
+    const segments: [number, number, number, number, Color | null, Color][] = [];
+    for (let i = 1; i < bars.length; i++) {
+      let x1 = bars[i - 1].x,
+        y1 = g.y(bars[i - 1].close);
+      const x2 = bars[i].x,
+        y2 = g.y(bars[i].close);
+      if (type !== 'baseline') {
+        segments.push([x1, y1, x2, y2, type === 'area' ? colors.area : null, colors.line]);
+        continue;
+      }
+      if ((y1 - base) * (y2 - base) < 0) {
+        const xm = x1 + ((x2 - x1) * (base - y1)) / (y2 - y1),
+          above = y1 < base;
+        segments.push([
+          x1,
+          y1,
+          xm,
+          base,
+          above ? colors.baselineUpFill : colors.baselineDownFill,
+          above ? colors.baselineUp : colors.baselineDown,
+        ]);
+        x1 = xm;
+        y1 = base;
+      }
+      const above = Math.min(y1, y2) < base;
+      segments.push([
+        x1,
+        y1,
+        x2,
+        y2,
+        above ? colors.baselineUpFill : colors.baselineDownFill,
+        above ? colors.baselineUp : colors.baselineDown,
+      ]);
+    }
+    for (const [x1, y1, x2, y2, fill] of segments)
+      if (fill) this.trapezoid(x1, y1, base, x2, y2, base, fill, clip);
+    if (type === 'baseline') this.line(g.left, base, g.left + g.plotWidth, base, 1, colors.baseline, clip);
+    for (const [x1, y1, x2, y2, , stroke] of segments) this.segment(x1, y1, x2, y2, width, stroke, clip);
+  }
+
   render({ state, geometry: g, heatmap, theme = chartThemes.evergreen, grid }: RenderFrame): RendererStats {
     const start = performance.now();
     if (this.status !== 'ready')
@@ -569,31 +658,105 @@ export class WebGL2Renderer implements ChartRenderer {
           }
         }
       }
+    const type = state.document.chartType ?? 'candles';
+    const candlesShown = state.document.layers.candles;
+    if (candlesShown && drawsClosesOnly(type) && type !== 'columns')
+      this.closeLine(type, drawn, g, priceClip);
+    // Hollow candles and columns colour each bar by the close before it.
+    let previousClose = bars[range.start - 1]?.close ?? drawn[0]?.open ?? 0;
     for (const bar of drawn) {
       const up = bar.close >= bar.open;
       const x = bar.x,
+        rising = bar.close >= previousClose,
         color = bar.tone ?? (up ? colors.up : colors.down);
-      if (state.document.layers.candles && !bar.footprint) {
-        this.line(
-          x,
-          g.y(bar.high),
-          x,
-          g.y(bar.low),
-          appearance.wickWidth,
-          bar.tone ?? (up ? colors.wickUp : colors.wickDown),
-          priceClip,
-        );
-        const top = g.y(Math.max(bar.open, bar.close)),
+      previousClose = bar.close;
+      if (candlesShown && !bar.footprint && (type === 'columns' || !drawsClosesOnly(type))) {
+        const body = (top: number, bottom: number, tone: Color) =>
+          this.line(
+            x - candleWidth / 2,
+            (top + bottom) / 2,
+            x + candleWidth / 2,
+            (top + bottom) / 2,
+            Math.max(appearance.candleMinHeight, bottom - top),
+            tone,
+            priceClip,
+          );
+        const high = g.y(bar.high),
+          low = g.y(bar.low),
+          top = g.y(Math.max(bar.open, bar.close)),
           bottom = g.y(Math.min(bar.open, bar.close));
-        this.line(
-          x - candleWidth / 2,
-          (top + bottom) / 2,
-          x + candleWidth / 2,
-          (top + bottom) / 2,
-          Math.max(appearance.candleMinHeight, bottom - top),
-          color,
-          priceClip,
-        );
+        if (type === 'ohlc-bars' || type === 'hlc-bars' || type === 'high-low') {
+          const stroke = Math.max(appearance.wickWidth, Math.min(3, candleWidth / 5)),
+            reach = Math.max(appearance.candleMinHeight, low - high) / 2;
+          this.line(x, (high + low) / 2 - reach, x, (high + low) / 2 + reach, stroke, color, priceClip);
+          // Ticks start at the bar's edge so their ends stay square against it.
+          if (type === 'ohlc-bars')
+            this.line(
+              x - candleWidth / 2,
+              g.y(bar.open),
+              x + stroke / 2,
+              g.y(bar.open),
+              stroke,
+              color,
+              priceClip,
+            );
+          if (type !== 'high-low')
+            this.line(
+              x - stroke / 2,
+              g.y(bar.close),
+              x + candleWidth / 2,
+              g.y(bar.close),
+              stroke,
+              color,
+              priceClip,
+            );
+        } else if (type === 'columns') {
+          body(g.y(bar.close), g.top + g.plotHeight, bar.tone ?? (rising ? colors.up : colors.down));
+        } else if (type === 'hollow-candles') {
+          const tone = bar.tone ?? (rising ? colors.up : colors.down),
+            stroke = appearance.wickWidth;
+          if (up && bottom - top > stroke * 2 && candleWidth > stroke * 3) {
+            // An outlined body, with the wicks stopping at it.
+            this.line(x, high, x, top, stroke, tone, priceClip);
+            this.line(x, bottom, x, low, stroke, tone, priceClip);
+            const left = x - candleWidth / 2 + stroke / 2,
+              right = x + candleWidth / 2 - stroke / 2;
+            this.line(left, top, left, bottom, stroke, tone, priceClip);
+            this.line(right, top, right, bottom, stroke, tone, priceClip);
+            this.line(
+              left - stroke / 2,
+              top + stroke / 2,
+              right + stroke / 2,
+              top + stroke / 2,
+              stroke,
+              tone,
+              priceClip,
+            );
+            this.line(
+              left - stroke / 2,
+              bottom - stroke / 2,
+              right + stroke / 2,
+              bottom - stroke / 2,
+              stroke,
+              tone,
+              priceClip,
+            );
+          } else {
+            this.line(x, high, x, low, stroke, tone, priceClip);
+            body(top, bottom, tone);
+          }
+        } else {
+          this.line(
+            x,
+            high,
+            x,
+            low,
+            appearance.wickWidth,
+            bar.tone ?? (up ? colors.wickUp : colors.wickDown),
+            priceClip,
+          );
+          body(top, bottom, color);
+        }
       }
       if (state.document.layers.volume && g.volumeHeight > 0) {
         const h = (bar.volume / maxVolume) * g.volumeHeight;

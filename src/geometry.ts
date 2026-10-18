@@ -1,4 +1,5 @@
 import type { Anchor, RuntimeState } from './types.ts';
+import { drawsClosesOnly } from './chart-types.ts';
 import type { ViewRanges } from './scale-motion.ts';
 import { themeTokenDefaults } from './theme-tokens.ts';
 import type { ThemeChart } from './theme-tokens.ts';
@@ -108,9 +109,10 @@ export function createGeometry(
   const range = visible.length ? visible : state.candles.slice(-1);
   let low = Infinity,
     high = -Infinity;
+  const closes = drawsClosesOnly(state.document.chartType);
   for (const bar of range) {
-    low = Math.min(low, bar.low);
-    high = Math.max(high, bar.high);
+    low = Math.min(low, closes ? bar.close : bar.low);
+    high = Math.max(high, closes ? bar.close : bar.high);
   }
   // Price-pane overlays such as Bollinger Bands stay inside the fitted range.
   if (state.document.layers.indicator && visible.length)
