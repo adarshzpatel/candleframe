@@ -1,4 +1,4 @@
-import type { Drawing, DrawingInput, DrawingPatch } from './drawing-types.ts';
+import type { Drawing, DrawingGroup, DrawingInput, DrawingPatch } from './drawing-types.ts';
 import type { FlowSignalOptions } from './flow-signals.ts';
 
 export interface Candle {
@@ -277,6 +277,8 @@ export interface ChartDocument {
   /** Active indicators, in pane order. Version 3 layouts migrate to the host's defaults. */
   indicators: DocumentIndicator[];
   drawings: Drawing[];
+  /** Omitted when there are no groups, so documents without groups serialize as before. */
+  drawingGroups?: DrawingGroup[];
 }
 export type ChartCommand =
   | { type: 'layer.set'; layer: Layer; visible: boolean }
@@ -297,6 +299,11 @@ export type ChartCommand =
   | { type: 'drawing.order'; id: string; where: 'front' | 'back' }
   | { type: 'drawing.lockAll'; locked: boolean }
   | { type: 'drawing.clear' }
+  /** Every drawing id, back to front. */
+  | { type: 'drawing.reorder'; ids: string[] }
+  | { type: 'drawing.group'; id: string; drawingIds: string[]; name?: string }
+  | { type: 'drawing.updateGroup'; id: string; name?: string; drawingIds?: string[] }
+  | { type: 'drawing.ungroup'; id: string }
   | { type: 'history.undo' }
   | { type: 'history.redo' }
   | { type: 'feed.pause'; paused: boolean };

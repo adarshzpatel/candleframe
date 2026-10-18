@@ -180,14 +180,29 @@ export type DrawingOptionsPatch = Partial<Omit<DrawingOptions, 'style' | 'toolDe
   style?: Partial<DrawingStyle>;
   toolDefaults?: Record<string, DrawingToolDefaults | null>;
 };
-/** Pointer modifiers: Shift snaps angles to 45°, clone drags a copy of the drawing. */
+/**
+ * Pointer modifiers: Shift snaps angles to 45°, clone drags a copy of the drawing, and
+ * toggle adds or removes the clicked drawing from the selection.
+ */
 export interface DrawingModifiers {
   shift?: boolean;
   clone?: boolean;
+  toggle?: boolean;
+}
+/** Named drawings that select, move, hide and lock together. Stored in `ChartDocument.drawingGroups`. */
+export interface DrawingGroup {
+  id: string;
+  /** 1 to 64 characters. */
+  name: string;
+  /** Member drawing ids. A drawing belongs to at most one group. */
+  drawings: string[];
 }
 export interface DrawingInteractionState {
   tool: string;
+  /** The most recently selected drawing, so single-selection hosts keep working. */
   selected: Drawing | null;
+  /** Every selected drawing, back to front. Contains `selected` when it is set. */
+  selection: Drawing[];
   creating: boolean;
   options: DrawingOptions;
 }

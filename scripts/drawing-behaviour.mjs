@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Drives drawing interactions through real pointer and keyboard input on the offline demo:
 // rail families, Alt hotkeys, Shift angle snapping, Alt-drag cloning, double-click settings,
-// remembered tool defaults and templates across reloads, favourites and interval visibility. Prints ok/FAIL per check and saves
-// screenshots of the menus.
+// remembered tool defaults and templates across reloads, favourites, interval visibility,
+// multi-selection and groups. Prints ok/FAIL per check and saves screenshots of the menus.
 //
 //   node scripts/drawing-behaviour.mjs                                 # starts Vite on 5196
 //   node scripts/drawing-behaviour.mjs --url http://127.0.0.1:5173/ --out artifacts/drawing-behaviour
@@ -590,6 +590,141 @@ try {
     check((await hiddenHint.count()) === 0, 'the drawing is shown again on 5m');
     await page.keyboard.press('Escape');
     await page.evaluate(() => window.candleframe.execute({ type: 'drawing.clear' }));
+  }
+  {
+    // Multi-selection and groups.
+    await page.evaluate(key => localStorage.removeItem(key), templateKey);
+    await load();
+    await page.evaluate(() => window.candleframe.execute({ type: 'drawing.clear' }));
+    const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
+    const revision = () => page.evaluate(() => window.candleframe.inspect().documentRevision);
+    const selectedIds = async () => (await state()).selection.map(d => d.id);
+    const lines = [];
+    for (const fy of [0.3, 0.45, 0.6]) lines.push(await drawLine([0.3, fy], [0.6, fy]));
+    const mid = fy => at(0.45, fy);
+    await click(mid(0.3));
+    await page.keyboard.down(mod);
+    await click(mid(0.45));
+    await page.keyboard.up(mod);
+    check(
+      JSON.stringify(await selectedIds()) === JSON.stringify([lines[0].id, lines[1].id]),
+      `${mod}+click adds a drawing to the selection`,
+      await selectedIds(),
+    );
+    await page.keyboard.down('Shift');
+    await click(mid(0.6));
+    await click(mid(0.3));
+    await page.keyboard.up('Shift');
+    check(
+      (await selectedIds()).join() === [lines[1].id, lines[2].id].join(),
+      'Shift+click adds and removes drawings',
+      await selectedIds(),
+    );
+    check(
+      (await host.locator('.drawing-active-tool').textContent()) === '2 drawings',
+      'the drawing strip names the selection size',
+    );
+    let edits = await revision();
+    await page.mouse.move(mid(0.45).x, mid(0.45).y);
+    await page.mouse.down();
+    await page.mouse.move(mid(0.45).x + 30, mid(0.45).y + 20, { steps: 4 });
+    await page.mouse.move(mid(0.45).x + 60, mid(0.45).y + 40, { steps: 4 });
+    await page.mouse.up();
+    let now = await drawings();
+    check(
+      (await revision()) === edits + 1 &&
+        now[0].points[0].timeMs === lines[0].points[0].timeMs &&
+        now[1].points[0].timeMs !== lines[1].points[0].timeMs &&
+        now[2].points[0].timeMs !== lines[2].points[0].timeMs,
+      'dragging one selected drawing moves the whole selection in one edit',
+    );
+    await page.screenshot({ path: `${out}/multi-selection.png` });
+    await page.evaluate(() => window.candleframe.execute({ type: 'history.undo' }));
+    check(
+      (await drawings()).every((d, i) => d.points[0].timeMs === lines[i].points[0].timeMs),
+      'one undo moves the selection back',
+    );
+    edits = await revision();
+    await host.locator('.drawing-strip input[type=color]').evaluate(input => {
+      input.value = '#33cc99';
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    now = await drawings();
+    check(
+      (await revision()) === edits + 1 &&
+        now[0].style.color !== '#33cc99' &&
+        now[1].style.color === '#33cc99' &&
+        now[2].style.color === '#33cc99',
+      'the strip colour applies to every selected drawing in one edit',
+    );
+    await page.keyboard.press(`${mod}+c`);
+    await page.keyboard.press(`${mod}+v`);
+    check((await drawings()).length === 5 && (await selectedIds()).length === 2, 'paste adds the copied set');
+    edits = await revision();
+    await page.keyboard.press('Delete');
+    check(
+      (await drawings()).length === 3 && (await revision()) === edits + 1,
+      'Delete removes the whole selection in one edit',
+    );
+    await page.keyboard.press('Escape');
+    check((await selectedIds()).length === 0, 'Escape clears the selection');
+    // A modifier drag on empty plot draws a selection box.
+    const from = at(0.25, 0.4),
+      to = at(0.35, 0.65);
+    await page.keyboard.down(mod);
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move((from.x + to.x) / 2, (from.y + to.y) / 2, { steps: 4 });
+    await page.screenshot({ path: `${out}/selection-box.png` });
+    await page.mouse.move(to.x, to.y, { steps: 4 });
+    await page.mouse.up();
+    await page.keyboard.up(mod);
+    check(
+      (await selectedIds()).join() === [lines[1].id, lines[2].id].join(),
+      'a modifier drag on empty plot selects the drawings in the box',
+      await selectedIds(),
+    );
+
+    await host.locator('.drawing-objects-button').click();
+    const objects = host.locator('.drawing-object-panel');
+    await objects.locator('#drawing-group').click();
+    const groupRow = objects.locator('.drawing-group-row');
+    check((await groupRow.count()) === 1, 'Group selection adds a group row');
+    check((await objects.locator('.drawing-object-row.member').count()) === 2, 'the group lists its members');
+    await groupRow.locator('.drawing-object-name').dblclick();
+    await objects.locator('.drawing-group-rename').fill('Support zone');
+    await page.keyboard.press('Enter');
+    const groups = () => page.evaluate(() => window.candleframe.exportDocument().drawingGroups ?? []);
+    check((await groups())[0]?.name === 'Support zone', 'double-clicking a group renames it', await groups());
+    await objects.screenshot({ path: `${out}/objects-group.png` });
+    await page.keyboard.press('Escape');
+    await click(mid(0.3));
+    await click(mid(0.6));
+    check((await selectedIds()).length === 2, 'clicking a grouped drawing selects its group');
+    await groupRow.getByRole('button', { name: /^Hide group/ }).click();
+    check((await drawings()).filter(d => !d.visible).length === 2, 'hiding a group hides its members');
+    await groupRow.getByRole('button', { name: /^Show group/ }).click();
+    await groupRow.locator('.drawing-group-fold').click();
+    check(
+      (await objects.locator('.drawing-object-row.member').count()) === 0,
+      'collapsing a group hides its member rows',
+    );
+    await objects.screenshot({ path: `${out}/objects-group-collapsed.png` });
+    await groupRow.locator('.drawing-group-fold').click();
+    // Drag the ungrouped line onto a member row to put it in the group.
+    const loose = objects.locator(`.drawing-object-row[data-id="${lines[0].id}"]`);
+    const target = objects.locator(`.drawing-object-row[data-id="${lines[1].id}"]`);
+    await loose.dragTo(target, { targetPosition: { x: 40, y: 4 } });
+    check(
+      (await groups())[0]?.drawings.length === 3,
+      'dragging a row beside a member moves it into the group',
+      await groups(),
+    );
+    await page.evaluate(() => window.candleframe.execute({ type: 'history.undo' }));
+    await groupRow.getByRole('button', { name: /^Ungroup/ }).click();
+    check((await groups()).length === 0 && (await drawings()).length === 3, 'Ungroup keeps the drawings');
+    await page.evaluate(() => window.candleframe.execute({ type: 'drawing.clear' }));
+    await page.evaluate(key => localStorage.removeItem(key), templateKey);
   }
 } finally {
   await browser.close();
