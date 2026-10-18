@@ -2,6 +2,13 @@ import { ChartError, toChartError } from './errors.ts';
 import { binBook, HeatmapStore } from './heatmap.ts';
 import { OrderBook } from './order-book.ts';
 import { DrawingRegistry, translateDrawing } from './drawing-tools.ts';
+import {
+  gather,
+  memberIds,
+  MAX_DRAWING_GROUPS,
+  parseDrawingGroups,
+  validGroupName,
+} from './drawing-groups.ts';
 import type { DrawingToolDefinition } from './drawing-types.ts';
 import { intervalToMs, isAligned, isTimeInterval } from './intervals.ts';
 import { createTimeScale } from './time-scale.ts';
@@ -64,7 +71,7 @@ export interface RestoreOptions {
 }
 export interface CommandResult {
   documentRevision: number;
-  /** Ids created by the commands: added indicators (including generated ids) and drawings. */
+  /** Ids created by the commands: added indicators (including generated ids), drawings and groups. */
   created: string[];
 }
 export type PreviewResult =
@@ -260,9 +267,10 @@ export function parseDocument(
       throw new ChartError('LEGACY_MARKET_MISMATCH');
     normalized = { ...input, version: 2, feedId: feed.id, interval: '1m' };
   }
-  const doc = normalized as Partial<Omit<ChartDocument, 'version' | 'drawings'>> & {
+  const doc = normalized as Partial<Omit<ChartDocument, 'version' | 'drawings' | 'drawingGroups'>> & {
     version?: number;
     drawings?: unknown[];
+    drawingGroups?: unknown;
   };
   if (doc.version !== 2 && doc.version !== 3 && doc.version !== 4)
     throw new ChartError('UNSUPPORTED_DOCUMENT_VERSION', undefined, {
@@ -311,6 +319,7 @@ export function parseDocument(
     new TextEncoder().encode(JSON.stringify(drawings)).byteLength > 256 * 1024
   )
     throw new ChartError('DRAWING_LIMIT_EXCEEDED');
+  const drawingGroups = parseDrawingGroups(doc.drawingGroups, drawings);
   return structuredClone({
     version: 4,
     feedId: feed.id,
@@ -323,7 +332,13 @@ export function parseDocument(
     ...style,
     indicators,
     drawings,
+    ...(drawingGroups.length ? { drawingGroups } : {}),
   });
+}
+function nextGroupName(groups: readonly { name: string }[]): string {
+  let n = 1;
+  while (groups.some(group => group.name === `Group ${n}`)) n++;
+  return `Group ${n}`;
 }
 const loading = (): StreamHealth => ({ status: 'loading', message: null, receivedAtMs: null });
 
@@ -1140,6 +1155,70 @@ export class ChartRuntime {
       case 'drawing.clear':
         next.drawings = [];
         break;
+      case 'drawing.reorder': {
+        const ids = command.ids;
+        if (
+          !Array.isArray(ids) ||
+          ids.length !== next.drawings.length ||
+          new Set(ids).size !== ids.length ||
+          !next.drawings.every(d => ids.includes(d.id))
+        )
+          throw new ChartError('INVALID_DRAWING_ORDER', 'ids must list every drawing once, back to front', {
+            path: 'ids',
+          });
+        next.drawings = ids.map(id => next.drawings.find(d => d.id === id)!);
+        break;
+      }
+      case 'drawing.group':
+      case 'drawing.updateGroup': {
+        const groups = (next.drawingGroups ??= []);
+        const existing = groups.find(group => group.id === command.id);
+        if (command.type === 'drawing.group') {
+          if (typeof command.id !== 'string' || !command.id || command.id.length > 128)
+            throw new ChartError('INVALID_DRAWING_GROUP', 'id must be 1 to 128 characters', { path: 'id' });
+          if (existing)
+            throw new ChartError('DRAWING_GROUP_EXISTS', undefined, {
+              path: 'id',
+              details: { id: command.id },
+            });
+          if (groups.length >= MAX_DRAWING_GROUPS)
+            throw new ChartError('DRAWING_LIMIT_EXCEEDED', undefined, {
+              details: { maxGroups: MAX_DRAWING_GROUPS },
+            });
+        } else if (!existing)
+          throw new ChartError('DRAWING_GROUP_NOT_FOUND', undefined, {
+            path: 'id',
+            details: { id: command.id },
+          });
+        else if (command.name === undefined && command.drawingIds === undefined)
+          throw new ChartError('INVALID_DRAWING_GROUP', 'send a name or drawingIds');
+        const name =
+          command.name !== undefined
+            ? validGroupName(command.name)
+            : (existing?.name ?? nextGroupName(groups));
+        const members =
+          command.drawingIds !== undefined || !existing
+            ? memberIds(next.drawings, command.drawingIds)
+            : existing.drawings;
+        // Members leave their old groups; parsing drops groups left empty.
+        for (const group of groups)
+          if (group !== existing) group.drawings = group.drawings.filter(id => !members.includes(id));
+        if (existing) Object.assign(existing, { name, drawings: members });
+        else groups.push({ id: command.id, name, drawings: members });
+        if (command.drawingIds !== undefined) next.drawings = gather(next.drawings, members);
+        if (!existing) this.created.push(command.id);
+        break;
+      }
+      case 'drawing.ungroup': {
+        const index = next.drawingGroups?.findIndex(group => group.id === command.id) ?? -1;
+        if (index < 0)
+          throw new ChartError('DRAWING_GROUP_NOT_FOUND', undefined, {
+            path: 'id',
+            details: { id: command.id },
+          });
+        next.drawingGroups!.splice(index, 1);
+        break;
+      }
       case 'indicator.add': {
         const given = command.indicator;
         if (!given || typeof given !== 'object' || typeof given.kind !== 'string')

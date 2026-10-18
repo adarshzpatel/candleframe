@@ -231,6 +231,33 @@ const commands = {
     ['locked'],
   ),
   'drawing.clear': command('drawing.clear', 'Delete every drawing.'),
+  'drawing.reorder': command(
+    'drawing.reorder',
+    'Set the stacking order. List every drawing id once, back to front.',
+    { ids: { type: 'array', items: id, maxItems: 100 } },
+    ['ids'],
+  ),
+  'drawing.group': command(
+    'drawing.group',
+    'Group drawings under a new id. Members leave other groups and stack next to the frontmost one.',
+    {
+      id,
+      drawingIds: { type: 'array', items: id, minItems: 1, maxItems: 100, uniqueItems: true },
+      name: { type: 'string', minLength: 1, maxLength: 64, description: 'Defaults to "Group N".' },
+    },
+    ['id', 'drawingIds'],
+  ),
+  'drawing.updateGroup': command(
+    'drawing.updateGroup',
+    'Rename a group or replace its members. Send at least one of name and drawingIds.',
+    {
+      id,
+      name: { type: 'string', minLength: 1, maxLength: 64 },
+      drawingIds: { type: 'array', items: id, minItems: 1, maxItems: 100, uniqueItems: true },
+    },
+    ['id'],
+  ),
+  'drawing.ungroup': command('drawing.ungroup', 'Remove a group. Its drawings stay.', { id }, ['id']),
   'history.undo': command('history.undo', 'Undo the last content edit. Not allowed in a batch.'),
   'history.redo': command('history.redo', 'Redo. Not allowed in a batch.'),
   'feed.pause': command(
