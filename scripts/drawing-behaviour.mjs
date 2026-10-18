@@ -56,7 +56,9 @@ try {
   await load();
   await page.evaluate(key => localStorage.removeItem(key), templateKey);
   await load();
-  const stored = () => page.evaluate(key => JSON.parse(localStorage.getItem(key) ?? 'null'), templateKey);
+  // Template writes wait briefly to batch rapid edits, so reads wait a little longer.
+  const stored = () =>
+    sleep(450).then(() => page.evaluate(key => JSON.parse(localStorage.getItem(key) ?? 'null'), templateKey));
   const host = page.locator('#app > *');
   const state = () => page.evaluate(() => window.candleframe.drawingState());
   const drawings = () => page.evaluate(() => window.candleframe.exportDocument().drawings);
@@ -266,6 +268,146 @@ try {
     'the deleted template stays gone after a reload',
     await stored(),
   );
+
+  // Drawing popups open above the demo's order panel, which the trading layer stacks over the widget.
+  const covering = async selector =>
+    page.evaluate(selector => {
+      const [mount, shell] = document.querySelectorAll('#app > div');
+      const popup = mount.shadowRoot.querySelector(selector),
+        panel = shell?.shadowRoot?.querySelector('.panel');
+      if (!popup || !panel) return 'missing';
+      const a = popup.getBoundingClientRect(),
+        b = panel.getBoundingClientRect();
+      const x = (Math.max(a.left, b.left) + Math.min(a.right, b.right)) / 2,
+        y = (Math.max(a.top, b.top) + Math.min(a.bottom, b.bottom)) / 2;
+      if (x < Math.max(a.left, b.left) || y < Math.max(a.top, b.top)) return 'no overlap';
+      return (
+        document.elementFromPoint(x, y) === mount &&
+        !!mount.shadowRoot.elementFromPoint(x, y)?.closest(selector)
+      );
+    }, selector);
+  await page.evaluate(() => window.candleframe.setTool('cursor'));
+  await host.locator('.drawing-group-more').first().click();
+  await sleep(150);
+  check(
+    (await covering('.drawing-flyout')) === true,
+    'the tool menu opens above the order panel',
+    await covering('.drawing-flyout'),
+  );
+  await page.screenshot({ path: `${out}/menu-over-order-panel.png` });
+  await page.keyboard.press('Escape');
+
+  // The Fibonacci levels table edits each level's value, colour and visibility.
+  await page.evaluate(() => {
+    const chart = window.candleframe,
+      { latestCandle: last, feed } = chart.inspect();
+    chart.execute({ type: 'drawing.clear' });
+    chart.execute({
+      type: 'drawing.add',
+      drawing: {
+        id: 'fib',
+        type: 'fib-retracement',
+        points: [
+          { timeMs: last.timeMs - 60 * feed.intervalMs, price: last.close * 0.995 },
+          { timeMs: last.timeMs - 20 * feed.intervalMs, price: last.close * 1.005 },
+        ],
+      },
+    });
+    chart.selectDrawing('fib');
+  });
+  const fib = async () => (await drawings()).find(d => d.id === 'fib');
+  await host.locator('.drawing-settings-button').click();
+  const table = settings.locator('.drawing-level-table');
+  check(
+    (await table.locator('.drawing-level-row').count()) === 7,
+    'the levels table lists the retracement levels',
+  );
+  await settings.getByRole('checkbox', { name: 'Show level 4' }).uncheck();
+  check(
+    (await fib())?.levelStyles?.[3]?.visible === false,
+    'unticking a level hides it',
+    (await fib())?.levelStyles,
+  );
+  await settings
+    .getByRole('textbox', { name: 'Level 2 colour' })
+    .or(settings.locator('[aria-label="Level 2 colour"]'))
+    .first()
+    .evaluate(input => {
+      input.value = '#123456';
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  check(
+    (await fib())?.levelStyles?.[1]?.color === '#123456',
+    'a level colour sticks to its row',
+    (await fib())?.levelStyles,
+  );
+  const value = settings.getByRole('spinbutton', { name: 'Level 7 value' });
+  await value.fill('1.272');
+  await value.press('Enter');
+  check((await fib())?.levels?.[6] === 1.272, 'editing a value changes that level', (await fib())?.levels);
+  await settings.locator('.drawing-level-add').click();
+  check((await fib())?.levels?.length === 8, 'Add level appends a row', (await fib())?.levels);
+  check((await table.locator('.drawing-level-row').count()) === 8, 'the table shows the new row');
+  await settings.screenshot({ path: `${out}/fib-levels.png` });
+  await settings.getByRole('button', { name: 'Reset levels' }).click();
+  const restored = await fib();
+  check(
+    restored?.levels.length === 0 && !restored.levelStyles,
+    'Reset levels restores the built-in levels',
+    restored,
+  );
+  await page.keyboard.press('Escape');
+
+  // Rename keeps the template's look under a new name.
+  await page.evaluate(() => window.candleframe.execute({ type: 'drawing.clear' }));
+  await drawLine([0.55, 0.3], [0.8, 0.4]);
+  await host.locator('.drawing-template-button').click();
+  await menuItem('Save as').click();
+  await page.keyboard.type('Alpha');
+  await page.keyboard.press('Enter');
+  await host.locator('.drawing-template-button').click();
+  await menu.getByRole('button', { name: 'Rename template Alpha' }).click();
+  await page.keyboard.type('Beta');
+  await menu.screenshot({ path: `${out}/template-rename.png` });
+  await page.keyboard.press('Enter');
+  check(
+    (await menu.locator('.drawing-template-row .drawing-tool-item').allTextContents()).join() === 'Beta',
+    'Rename replaces the name in the menu',
+  );
+  check(
+    (await stored())?.templates?.trendline?.map(t => t.name).join() === 'Beta',
+    'the renamed template is stored once the edits settle',
+    await stored(),
+  );
+
+  // Light theme: the strip, template menu and settings form, for a visual check.
+  await page.evaluate(() => window.candleframe.setTheme('paper'));
+  await sleep(200);
+  await page.screenshot({ path: `${out}/light-template-menu.png` });
+  await page.keyboard.press('Escape');
+  await host.locator('.drawing-settings-button').click();
+  await page.screenshot({ path: `${out}/light-settings.png` });
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => {
+    const chart = window.candleframe,
+      { latestCandle: last, feed } = chart.inspect();
+    chart.execute({
+      type: 'drawing.add',
+      drawing: {
+        id: 'fib',
+        type: 'fib-retracement',
+        points: [
+          { timeMs: last.timeMs - 60 * feed.intervalMs, price: last.close * 0.995 },
+          { timeMs: last.timeMs - 20 * feed.intervalMs, price: last.close * 1.005 },
+        ],
+      },
+    });
+    chart.selectDrawing('fib');
+  });
+  await host.locator('.drawing-settings-button').click();
+  await page.screenshot({ path: `${out}/light-fib-settings.png` });
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => window.candleframe.setTheme('evergreen'));
   await page.evaluate(key => localStorage.removeItem(key), templateKey);
 } finally {
   await browser.close();
