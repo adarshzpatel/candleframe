@@ -1,0 +1,71 @@
+{
+  "rotated-rectangle": {
+    "points": [
+      [90, 0.001],
+      [45, 0.005],
+      [55, 0.002]
+    ]
+  },
+  "circle": {
+    "points": [
+      [60, 0.003],
+      [45, 0.005]
+    ]
+  },
+  "path": {
+    "points": [
+      [95, 0.001],
+      [80, 0.005],
+      [65, 0.002],
+      [50, 0.006],
+      [35, 0.003]
+    ]
+  },
+  "arc": {
+    "points": [
+      [90, 0.001],
+      [40, 0.001],
+      [65, 0.006]
+    ]
+  },
+  "curve": {
+    "points": [
+      [90, 0.001],
+      [40, 0.002],
+      [65, 0.006]
+    ]
+  },
+  "double-curve": {
+    "points": [
+      [90, 0.003],
+      [30, 0.003],
+      [75, 0.006]
+    ]
+  },
+  "arrow-marker": {
+    "points": [
+      [85, 0.001],
+      [55, 0.005]
+    ],
+    "text": "Breakout"
+  },
+  "arrow-mark-up": { "points": [[40, 0.001]], "text": "Buy" },
+  "arrow-mark-down": { "points": [[40, 0.003]], "text": "Sell" },
+  "note": { "points": [[50, 0.004]], "text": "Watch this level\nfor a retest" },
+  "price-note": {
+    "points": [
+      [70, 0.003],
+      [45, 0.006]
+    ]
+  },
+  "pin": { "points": [[50, 0.004]], "text": "Entry idea" },
+  "signpost": { "points": [[50, 0.003]], "text": "FOMC" },
+  "flag-mark": { "points": [[50, 0.003]] },
+  "comment": { "points": [[60, 0.003]], "text": "Volume dried up here,\nexpect a bounce" },
+  "table": {
+    "points": [[90, 0.007]],
+    "text": "Level | Price | Note\nR1 | 67,850 | weekly high\nS1\t67,300\tgap fill"
+  },
+  "anchored-text": { "points": [[60, 0.005]], "text": "Anchored text" },
+  "anchored-note": { "points": [[60, 0.005]], "text": "Anchored note" }
+}

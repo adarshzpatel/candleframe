@@ -1,5 +1,6 @@
 import { ChartError, toChartError } from './errors.ts';
 import { DEFAULT_DRAWING_STYLE, DrawingRegistry, translateDrawing } from './drawing-tools.ts';
+import { plotOptions, plotPoint } from './drawing-primitives.ts';
 import { drawingHandles, hitDrawings, sceneTouchesRect, type DrawingRect } from './drawing-scene.ts';
 import { groupOf } from './drawing-groups.ts';
 import type {
@@ -279,6 +280,21 @@ export class DrawingController {
     }
     return this.options.magnet === 'strong' || best <= 12 ? snapped : anchor;
   }
+  /** A `fixedToPlot` drawing stores where its first anchor now sits on the plot. */
+  private pin(drawing: Drawing, context: DrawingContext): void {
+    const p = drawing.points[0],
+      g = context.geometry;
+    if (!p || !this.host.registry.get(drawing.type)?.fixedToPlot) return;
+    drawing.options = { ...drawing.options, ...plotOptions({ x: g.x(p.timeMs), y: g.y(p.price) }, context) };
+  }
+  /** Moves a `fixedToPlot` drawing's anchor to where it is drawn, so a drag starts from there. */
+  private unpin(drawing: Drawing, context: DrawingContext): Drawing {
+    const at = this.host.registry.get(drawing.type)?.fixedToPlot ? plotPoint(drawing, context) : undefined;
+    if (!at) return drawing;
+    const anchor = context.geometry.anchor(at.x, at.y);
+    anchor.price = Math.max(this.host.state().feed.instrument.tickSize, anchor.price);
+    return { ...structuredClone(drawing), points: [anchor, ...drawing.points.slice(1)] };
+  }
   private create(points: Anchor[]): Drawing {
     const defaults = this.options.toolDefaults[this.tool];
     return {
@@ -341,14 +357,15 @@ export class DrawingController {
           copies.set(d.id, crypto.randomUUID());
           return { ...structuredClone(d), id: copies.get(d.id)! };
         };
-        // Hidden, locked and unregistered drawings stay where they are.
+        // Hidden, locked and unregistered drawings stay where they are. Plot-fixed drawings start
+        // from where they are shown.
         const others = state.document.drawings
           .filter(
             d =>
               d.id !== id && together.has(d.id) && d.visible && !d.locked && this.host.registry.get(d.type),
           )
-          .map(copy);
-        const original = copy(hit.drawing);
+          .map(d => this.unpin(copy(d), context));
+        const original = this.unpin(copy(hit.drawing), context);
         this.draft = structuredClone(original);
         this.extra = structuredClone(others);
         this.gesture = {
@@ -374,10 +391,12 @@ export class DrawingController {
         this.draft = this.create(
           definition.create(anchor, { ...context, tickSize: state.feed.instrument.tickSize }),
         );
+        this.pin(this.draft, context);
         this.commit();
         return true;
       }
       this.draft = this.create([anchor]);
+      this.pin(this.draft, context);
       this.fixed = [anchor];
       this.emit();
       if (definition.points === 'freehand')
@@ -468,6 +487,8 @@ export class DrawingController {
         ...this.fixed,
         modifiers.shift ? this.constrain(this.fixed.at(-1)!, anchor, context) : anchor,
       ];
+    this.pin(this.draft, context);
+    for (const d of this.extra) this.pin(d, context);
     return true;
   }
   up(p: DrawingPoint, context: DrawingContext, modifiers: DrawingModifiers = {}): void {
@@ -555,11 +576,16 @@ export class DrawingController {
       editing = this.gesture && this.gesture.mode !== 'freehand' && !cloning;
     const revision = this.gesture?.revision ?? this.creationRevision;
     const drafts = [...extra, draft];
-    const commands: ChartCommand[] = drafts.map(d =>
-      editing
-        ? { type: 'drawing.update', id: d.id, patch: { points: d.points } }
-        : { type: 'drawing.add', drawing: d },
-    );
+    const commands: ChartCommand[] = drafts.map(d => {
+      const pinned = this.host.registry.get(d.type)?.fixedToPlot && d.options;
+      return editing
+        ? {
+            type: 'drawing.update',
+            id: d.id,
+            patch: { points: d.points, ...(pinned ? { options: pinned } : {}) },
+          }
+        : { type: 'drawing.add', drawing: d };
+    });
     if (cloning && this.gesture?.copies)
       commands.push(...this.regroup(this.host.state().document.drawingGroups ?? [], this.gesture.copies));
     this.committing = true;

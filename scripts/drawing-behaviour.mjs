@@ -870,6 +870,76 @@ try {
     await page.evaluate(() => window.candleframe.setTheme('evergreen'));
     await page.evaluate(key => localStorage.removeItem(key), templateKey);
   }
+  {
+    // Anchored text keeps its place on screen while the chart pans underneath it. Earlier blocks
+    // leave drawings behind, and the pan drag must start on empty plot.
+    await page.evaluate(() => window.candleframe.execute({ type: 'drawing.clear' }));
+    await page.evaluate(() => window.candleframe.setTool('anchored-text'));
+    const pinnedAt = at(0.3, 0.3);
+    await click(pinnedAt);
+    await sleep(150);
+    await page.keyboard.press('Escape');
+    const pinned = (await drawings()).at(-1);
+    check(
+      pinned?.type === 'anchored-text' && typeof pinned.options?.plotX === 'number',
+      'anchored text stores its plot position on placement',
+      pinned,
+    );
+    const panFrom = await page.evaluate(() => window.candleframe.exportDocument().viewport.fromMs);
+    await page.mouse.move(at(0.55, 0.72).x, at(0.55, 0.72).y);
+    await page.mouse.down();
+    await page.mouse.move(at(0.35, 0.72).x, at(0.35, 0.72).y, { steps: 8 });
+    await page.mouse.up();
+    await sleep(300);
+    const panTo = await page.evaluate(() => window.candleframe.exportDocument().viewport.fromMs);
+    check(panTo !== panFrom, 'dragging the plot pans the chart', { panFrom, panTo });
+    await page.evaluate(() => window.candleframe.selectDrawing(null));
+    await click({ x: pinnedAt.x + 12, y: pinnedAt.y - 4 });
+    check(
+      (await state()).selected?.id === pinned?.id,
+      'after a pan, anchored text is still where it was placed',
+      (await state()).selected?.type,
+    );
+    await page.keyboard.press('Escape');
+
+    // A path finishes on double-click and keeps its arrow end.
+    await page.evaluate(() => window.candleframe.setTool('path'));
+    for (const [fx, fy] of [
+      [0.25, 0.5],
+      [0.32, 0.4],
+    ])
+      await click(at(fx, fy));
+    await page.mouse.dblclick(at(0.4, 0.55).x, at(0.4, 0.55).y);
+    await sleep(150);
+    const drawnPath = (await drawings()).at(-1);
+    check(
+      drawnPath?.type === 'path' && drawnPath.points.length === 3 && (await state()).tool === 'cursor',
+      'a double-click finishes a path',
+      drawnPath?.points.length,
+    );
+    // Finishing a path opens its settings, like a double-click on any drawing.
+    await page.keyboard.press('Escape');
+
+    // A note's text shows only while the pointer rests on its marker.
+    await page.evaluate(() => window.candleframe.setTool('note'));
+    const noteAt = at(0.5, 0.45);
+    await click(noteAt);
+    await sleep(150);
+    await page.keyboard.press('Escape');
+    check((await drawings()).at(-1)?.type === 'note', 'a click places a note');
+    await page.evaluate(() => window.candleframe.selectDrawing(null));
+    // Both shots keep the crosshair's vertical line at the same x, so only the tooltip differs.
+    await page.mouse.move(noteAt.x, noteAt.y + 40);
+    await sleep(150);
+    const bubble = { x: noteAt.x - 60, y: noteAt.y - 70, width: 120, height: 45 };
+    const idle = await page.screenshot({ clip: bubble });
+    await page.mouse.move(noteAt.x, noteAt.y - 14);
+    await sleep(200);
+    const hovered = await page.screenshot({ clip: bubble });
+    await page.screenshot({ path: `${out}/note-hover.png` });
+    check(!idle.equals(hovered), 'hovering a note shows its text');
+    await page.evaluate(key => localStorage.removeItem(key), templateKey);
+  }
 } finally {
   await browser.close();
   server?.kill();

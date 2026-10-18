@@ -266,7 +266,8 @@ export function renderDrawings(
   ctx.clip();
   for (const d of drawings) {
     if (!drawingShown(d, context.interval)) continue;
-    for (const primitive of registry.project(d, { ...context, selected: ids.has(d.id) })) {
+    const state = { selected: ids.has(d.id), hovered: d.id === options.hoverId };
+    for (const primitive of registry.project(d, { ...context, ...state })) {
       if (primitive.kind === 'axis') {
         tags.push({ drawing: d, primitive });
         continue;

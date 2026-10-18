@@ -46,6 +46,22 @@ export const rectangle = (a: DrawingPoint, b: DrawingPoint): DrawingPoint[] => [
 export const fill = (points: DrawingPoint[], color: string, opacity?: number): DrawingPrimitive =>
   path(points, { closed: true, fill: color, width: 0, ...(opacity === undefined ? {} : { opacity }) });
 
+/** Where a `fixedToPlot` drawing sits: `options.plotX`/`plotY` fractions, else its first anchor. */
+export function plotPoint(d: Drawing, c: DrawingContext): DrawingPoint | undefined {
+  const g = c.geometry,
+    x = d.options?.plotX,
+    y = d.options?.plotY;
+  return typeof x === 'number' && typeof y === 'number'
+    ? { x: g.left + x * g.plotWidth, y: g.top + y * g.plotHeight }
+    : screen(d, c)[0];
+}
+/** The options that fix a drawing to screen point `p`, clamped inside the plot. */
+export function plotOptions(p: DrawingPoint, c: DrawingContext): { plotX: number; plotY: number } {
+  const g = c.geometry,
+    fraction = (v: number) => (Number.isFinite(v) ? Number(Math.min(1, Math.max(0, v)).toFixed(4)) : 0);
+  return { plotX: fraction((p.x - g.left) / g.plotWidth), plotY: fraction((p.y - g.top) / g.plotHeight) };
+}
+
 /** Parametric clipping also handles vertical lines, reversed rays and offscreen anchors. */
 export function clipLine(
   a: DrawingPoint,
