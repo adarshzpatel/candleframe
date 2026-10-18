@@ -35,11 +35,20 @@ export function templateName(value: unknown): string {
   return name;
 }
 
-/** The style, settings and levels a template takes from a drawing. Points and text stay behind. */
-export function drawingTemplateValue(drawing: Drawing): DrawingToolDefaults {
+/**
+ * The style, settings and levels a template takes from a drawing. Points and text stay behind.
+ * Given the tool, option keys it does not declare as settings (per-drawing state such as a
+ * bars pattern's source range) stay behind too.
+ */
+export function drawingTemplateValue(
+  drawing: Drawing,
+  definition?: Pick<DrawingToolDefinition, 'settings'>,
+): DrawingToolDefaults {
+  const keys = definition && new Set(definition.settings?.map(setting => setting.key));
+  const options = Object.entries(drawing.options ?? {}).filter(([key]) => !keys || keys.has(key));
   return {
     style: { ...drawing.style },
-    ...(drawing.options ? { options: { ...drawing.options } } : {}),
+    ...(options.length ? { options: Object.fromEntries(options) } : {}),
     ...(drawing.levels.length ? { levels: [...drawing.levels] } : {}),
   };
 }
