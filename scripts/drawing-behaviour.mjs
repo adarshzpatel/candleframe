@@ -267,6 +267,30 @@ try {
     await stored(),
   );
   await page.evaluate(key => localStorage.removeItem(key), templateKey);
+
+  // The fixed Gann square keeps its price-per-time ratio when a corner is dragged.
+  await page.evaluate(() => window.candleframe.execute({ type: 'drawing.clear' }));
+  await page.evaluate(() => window.candleframe.setTool('gann-square-fixed'));
+  await click(at(0.5, 0.7));
+  await click(at(0.62, 0.45));
+  const square = (await drawings()).find(d => d.type === 'gann-square-fixed');
+  const ratio = d =>
+    Math.abs(d.points[1].price - d.points[0].price) / Math.abs(d.points[1].timeMs - d.points[0].timeMs);
+  await page.evaluate(id => window.candleframe.selectDrawing(id), square?.id);
+  await page.mouse.move(at(0.62, 0.45).x, at(0.62, 0.45).y);
+  await page.mouse.down();
+  await page.mouse.move(at(0.72, 0.3).x, at(0.72, 0.3).y, { steps: 8 });
+  await page.mouse.up();
+  const resized = (await drawings()).find(d => d.type === 'gann-square-fixed');
+  check(
+    !!square &&
+      !!resized &&
+      resized.points[1].timeMs > square.points[1].timeMs &&
+      Math.abs(ratio(resized) / ratio(square) - 1) < 0.01,
+    'dragging a fixed Gann square corner keeps its ratio',
+    { square: square?.points, resized: resized?.points },
+  );
+  await page.screenshot({ path: `${out}/gann-square-fixed.png` });
 } finally {
   await browser.close();
   server?.kill();

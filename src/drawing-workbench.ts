@@ -19,6 +19,7 @@ import {
   MAX_TEMPLATES_PER_TOOL,
   type DrawingTemplates,
 } from './drawing-templates.ts';
+import { usesDrawingLevels } from './drawing-tools.ts';
 import { isChartError } from './errors.ts';
 
 import { createDrawingTextEditor } from './drawing-text-editor.ts';
@@ -905,7 +906,7 @@ export function createDrawingWorkbench(
     settings.querySelector<HTMLInputElement>('[aria-label="Drawing font size"]')!.value = String(
       style.fontSize,
     );
-    settings.querySelector<HTMLElement>('.drawing-levels-field')!.hidden = !d?.type.startsWith('fib-');
+    settings.querySelector<HTMLElement>('.drawing-levels-field')!.hidden = !d || !usesDrawingLevels(d.type);
     settings.querySelector<HTMLInputElement>('[aria-label="Fibonacci levels"]')!.value =
       d?.levels.join(', ') ?? '';
     renderOptions(tool?.settings ?? [], d);

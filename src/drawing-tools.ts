@@ -1,6 +1,6 @@
 import { ChartError } from './errors.ts';
 import { channelTools, cycleTools } from './drawing-tools-channels.ts';
-import { fibTools, gannTools, pitchforkTools } from './drawing-tools-fib.ts';
+import { fibLevelDefaults, fibTools, gannTools, pitchforkTools } from './drawing-tools-fib.ts';
 import { projectionTools, volumeTools } from './drawing-tools-forecast.ts';
 import { elliottTools, patternTools } from './drawing-tools-patterns.ts';
 import { arrowTools, noteTools, shapeTools } from './drawing-tools-shapes.ts';
@@ -67,10 +67,14 @@ const defaultsFor = (type: string): number[] =>
       ? EXTENSION
       : type === 'fib-fan'
         ? FAN
-        : type.startsWith('fib-')
-          ? RETRACEMENT
-          : [];
+        : fibLevelDefaults[type]
+          ? [...fibLevelDefaults[type]]
+          : type.startsWith('fib-')
+            ? RETRACEMENT
+            : [];
 const levelsFor = (d: Drawing): number[] => (d.levels.length ? d.levels : defaultsFor(d.type));
+/** True for tools whose `Drawing.levels` drive their geometry. */
+export const usesDrawingLevels = (type: string): boolean => defaultsFor(type).length > 0;
 
 /** Familiar Fibonacci hues by ratio; other ratios cycle through the same set. */
 const FIB_COLORS: Record<string, string> = {
