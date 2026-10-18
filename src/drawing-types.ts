@@ -18,8 +18,16 @@ export interface Drawing {
   visible: boolean;
   text: string;
   levels: number[];
+  /** Colour and visibility for `levels[i]`, by index. Omitted when every level uses its default. */
+  levelStyles?: DrawingLevelStyle[];
   /** Tool-specific settings keyed by `DrawingSetting.key`. Omitted when every value is the default. */
   options?: DrawingOptionValues;
+}
+/** One Fibonacci level's look. A missing colour uses the level's built-in hue. */
+export interface DrawingLevelStyle {
+  color?: string;
+  /** False hides the level but keeps it in the levels table. */
+  visible?: boolean;
 }
 export type DrawingOptionValue = boolean | number | string;
 export type DrawingOptionValues = Record<string, DrawingOptionValue>;
@@ -45,9 +53,12 @@ export interface DrawingInput {
   visible?: boolean;
   text?: string;
   levels?: number[];
+  levelStyles?: DrawingLevelStyle[];
   options?: DrawingOptionValues;
 }
-export type DrawingPatch = Partial<Pick<Drawing, 'points' | 'locked' | 'visible' | 'text' | 'levels'>> & {
+export type DrawingPatch = Partial<
+  Pick<Drawing, 'points' | 'locked' | 'visible' | 'text' | 'levels' | 'levelStyles'>
+> & {
   style?: Partial<DrawingStyle>;
   /** Merged into the current options. */
   options?: DrawingOptionValues;
@@ -92,6 +103,10 @@ export type DrawingPrimitive =
       border?: string;
       /** Background box opacity; defaults to the theme's annotation opacity. */
       backgroundOpacity?: number;
+      /** Wraps lines longer than this many CSS pixels at spaces. */
+      wrap?: number;
+      /** Rotation in radians around `at`, clockwise on screen, such as text along a line. */
+      angle?: number;
     }
   | {
       /** A tag in the price or time axis gutter, drawn outside the plot clip. */
@@ -155,6 +170,8 @@ export interface DrawingToolDefaults {
   options?: DrawingOptionValues;
   /** Fibonacci levels; empty or omitted uses the tool's built-in levels. */
   levels?: number[];
+  /** Colour and visibility per level, by index into the levels. */
+  levelStyles?: DrawingLevelStyle[];
 }
 /** `toolDefaults` entries replace that tool's defaults; `null` clears them. */
 export type DrawingOptionsPatch = Partial<Omit<DrawingOptions, 'style' | 'toolDefaults'>> & {

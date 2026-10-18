@@ -93,6 +93,8 @@ export {
   builtInDrawingTools,
   DEFAULT_DRAWING_STYLE,
   drawingOption,
+  fibDefaultLevels,
+  fibLevels,
 } from './drawing-tools.ts';
 export type * from './types.ts';
 export type * from './drawing-types.ts';

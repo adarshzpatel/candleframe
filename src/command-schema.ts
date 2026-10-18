@@ -16,16 +16,27 @@ const anchor: Schema = {
   properties: { timeMs: finite, price: { type: 'number', exclusiveMinimum: 0 } },
   additionalProperties: false,
 };
+const color: Schema = { type: 'string', pattern: '^#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$' };
 const style: Schema = {
   type: 'object',
   properties: {
-    color: { type: 'string', pattern: '^#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$' },
+    color,
     width: { type: 'number', minimum: 1, maximum: 8 },
     lineStyle: { enum: ['solid', 'dashed', 'dotted'] },
     fillOpacity: { type: 'number', minimum: 0, maximum: 1 },
     fontSize: { type: 'number', minimum: 10, maximum: 32 },
   },
   additionalProperties: false,
+};
+const levelStyles: Schema = {
+  type: 'array',
+  description: 'Colour and visibility for levels[i], by index. {} keeps a level at its default.',
+  items: {
+    type: ['object', 'null'],
+    properties: { color, visible: { type: 'boolean' } },
+    additionalProperties: false,
+  },
+  maxItems: 24,
 };
 const priceScale: Schema = {
   oneOf: [
@@ -164,6 +175,7 @@ const commands = {
           visible: { type: 'boolean' },
           text: { type: 'string', maxLength: 2000 },
           levels: { type: 'array', items: { type: 'number', minimum: -1000, maximum: 1000 }, maxItems: 24 },
+          levelStyles,
           options: {
             type: 'object',
             description: 'Tool settings; see drawingTools[].settings for keys and defaults.',
@@ -190,6 +202,7 @@ const commands = {
           visible: { type: 'boolean' },
           text: { type: 'string', maxLength: 2000 },
           levels: { type: 'array', items: { type: 'number', minimum: -1000, maximum: 1000 }, maxItems: 24 },
+          levelStyles,
           options: {
             type: 'object',
             description: 'Tool settings; see drawingTools[].settings for keys and defaults.',

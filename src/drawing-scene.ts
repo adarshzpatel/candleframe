@@ -24,6 +24,29 @@ function contains(p: DrawingPoint, points: DrawingPoint[]): boolean {
   }
   return inside;
 }
+/** Breaks one line at spaces to fit `width`; a word wider than that breaks between characters. */
+function wrapLine(line: string, width: number, measure: (value: string) => number): string[] {
+  const rows: string[] = [];
+  let row = '';
+  for (const word of line.split(' ')) {
+    const joined = row ? `${row} ${word}` : word;
+    if (measure(joined) <= width) {
+      row = joined;
+      continue;
+    }
+    if (row) rows.push(row);
+    row = '';
+    for (const char of word) {
+      if (row && measure(row + char) > width) {
+        rows.push(row);
+        row = '';
+      }
+      row += char;
+    }
+  }
+  rows.push(row);
+  return rows;
+}
 function textBox(
   primitive: Extract<DrawingPrimitive, { kind: 'text' }>,
   drawing: Drawing,
@@ -33,10 +56,12 @@ function textBox(
   const theme = context?.theme ?? chartThemes.evergreen;
   const padding = primitive.plain ? 2 : theme.chart.annotationPadding,
     font = `${primitive.italic ? 'italic ' : ''}${primitive.bold ? '600 ' : ''}${size}px ${theme.typography.annotationFamily}`;
-  const lines = primitive.text.split('\n');
-  const width =
-    Math.max(...lines.map(line => context?.measureText?.(line, font) ?? line.length * size * 0.62)) +
-    padding * 2;
+  const measure = (line: string) => context?.measureText?.(line, font) ?? line.length * size * 0.62;
+  const wrap = primitive.wrap,
+    lines = primitive.text
+      .split('\n')
+      .flatMap(line => (wrap && wrap > 0 ? wrapLine(line, wrap, measure) : [line]));
+  const width = Math.max(...lines.map(measure)) + padding * 2;
   const x =
       primitive.at.x - (primitive.align === 'center' ? width / 2 : primitive.align === 'right' ? width : 0),
     height = lines.length * (size + 4) + padding;
@@ -62,11 +87,16 @@ export function hitScene(
     if (primitive.kind === 'axis') return false;
     if (primitive.kind === 'text') {
       const b = textBox(primitive, drawing, context);
+      // Rotated text is tested in its own frame, around its anchor.
+      const { x, y } = primitive.at,
+        cos = Math.cos(primitive.angle ?? 0),
+        sin = Math.sin(primitive.angle ?? 0);
+      const q = { x: x + (p.x - x) * cos + (p.y - y) * sin, y: y - (p.x - x) * sin + (p.y - y) * cos };
       return (
-        p.x >= b.x - tolerance &&
-        p.x <= b.x + b.width + tolerance &&
-        p.y >= b.y - tolerance &&
-        p.y <= b.y + b.height + tolerance
+        q.x >= b.x - tolerance &&
+        q.x <= b.x + b.width + tolerance &&
+        q.y >= b.y - tolerance &&
+        q.y <= b.y + b.height + tolerance
       );
     }
     const points = primitive.points;
@@ -210,6 +240,11 @@ export function renderDrawings(
         if (strokeWidth > 0) ctx.stroke();
       } else {
         const b = textBox(primitive, d, context);
+        if (primitive.angle) {
+          ctx.translate(primitive.at.x, primitive.at.y);
+          ctx.rotate(primitive.angle);
+          ctx.translate(-primitive.at.x, -primitive.at.y);
+        }
         ctx.font = b.font;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'alphabetic';
