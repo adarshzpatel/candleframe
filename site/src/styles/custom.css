@@ -55,10 +55,10 @@
   --cf-on-btn-primary: oklch(19.5% 0.01 95);
   --cf-btn-secondary-hl: oklch(100% 0 0 / 0.06);
   --cf-scrim: oklch(0% 0 0 / 0.6);
-  /* Inline code: gruvbox dark base00, base02 and base06 (ec.config.mjs). */
-  --cf-code-inline-bg: #282828;
-  --cf-code-inline-line: #504945;
-  --cf-code-inline-fg: #ebdbb2;
+  /* Inline code sits on the same card as code blocks (ec.config.mjs). */
+  --cf-code-inline-bg: var(--cf-surface);
+  --cf-code-inline-line: var(--cf-line-strong);
+  --cf-code-inline-fg: var(--cf-ink);
   --cf-e-float: 0 6px 16px -6px oklch(0% 0 0 / 0.45);
   --cf-e-modal:
     0 0 0 1px oklch(100% 0 0 / 0.06), 0 16px 40px -12px oklch(0% 0 0 / 0.5),
@@ -103,10 +103,6 @@
   --cf-on-btn-primary: oklch(98.5% 0.003 95);
   --cf-btn-secondary-hl: oklch(100% 0 0 / 0.6);
   --cf-scrim: oklch(21% 0.014 260 / 0.4);
-  /* Inline code: gruvbox light base00, base02 and base06. */
-  --cf-code-inline-bg: #fbf1c7;
-  --cf-code-inline-line: #d5c4a1;
-  --cf-code-inline-fg: #3c3836;
   --cf-e-float: 0 6px 16px -6px oklch(21% 0.014 260 / 0.12);
   --cf-e-modal: 0 16px 40px -12px oklch(21% 0.014 260 / 0.2), 0 4px 12px -4px oklch(21% 0.014 260 / 0.1);
 }
@@ -262,16 +258,18 @@ header.header {
   height: 20px;
   flex: none;
 }
-.cf-mark rect {
-  fill: var(--cf-accent);
-}
-.cf-mark-line {
+.cf-mark-frame {
   fill: none;
-  stroke: var(--cf-on-accent);
-  stroke-width: 1.5;
+  stroke: var(--cf-ink);
+  stroke-width: 6;
+  stroke-linecap: square;
 }
-.cf-mark-fill {
-  fill: var(--cf-on-accent);
+.cf-mark-wick {
+  stroke: var(--cf-ink);
+  stroke-width: 5;
+}
+.cf-mark-body {
+  fill: var(--cf-accent);
 }
 .cf-version {
   border: 1px solid var(--cf-line-strong);
@@ -546,7 +544,7 @@ main > .content-panel:first-of-type {
   color: var(--cf-link-hover);
   text-decoration-color: currentColor;
 }
-/* Inline code shares the code blocks' gruvbox ground, so code reads as code in running text. */
+/* Inline code shares the code blocks' card, so code reads as code in running text. */
 .sl-markdown-content :not(pre) > code {
   border: 1px solid var(--cf-code-inline-line);
   border-radius: var(--cf-r-inline);
@@ -644,8 +642,21 @@ mobile-starlight-toc .toggle {
   font-size: 0.8125rem;
   font-weight: 620;
 }
+/* The same tree as the sidebar: a hairline thread per level, nested levels indented under
+   their parent's text, and the current heading marked on its thread. */
+starlight-toc nav > ul {
+  margin-top: 8px;
+  border-inline-start: 1px solid var(--cf-line);
+}
+starlight-toc ul ul {
+  margin-inline-start: 12px;
+  border-inline-start: 1px solid var(--cf-line);
+}
 starlight-toc a {
   position: relative;
+  padding-block: 4px;
+  padding-inline: 12px 0;
+  border-radius: 0;
   color: var(--cf-ink-3);
   font-size: 0.8125rem;
   line-height: 1.25rem;
@@ -653,7 +664,12 @@ starlight-toc a {
 starlight-toc a:hover {
   color: var(--cf-ink);
 }
-starlight-toc a[aria-current='true'] {
+/* The section that holds the current heading stays a step brighter, so the path reads. */
+starlight-toc li:has(a[aria-current='true']) > a {
+  color: var(--cf-ink-2);
+}
+starlight-toc a[aria-current='true'],
+starlight-toc li:has(> a[aria-current='true']) > a {
   color: var(--cf-ink);
   font-weight: 550;
 }
@@ -661,8 +677,8 @@ starlight-toc a[aria-current='true']::before {
   content: '';
   position: absolute;
   inset-block: 6px;
-  inset-inline-start: 0;
-  width: 2px;
+  inset-inline-start: -2px;
+  width: 3px;
   border-radius: 1px;
   background: var(--cf-accent-strong);
 }

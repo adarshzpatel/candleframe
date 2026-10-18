@@ -6,10 +6,10 @@ const { siteTitle, siteTitleHref } = Astro.locals.starlightRoute;
 ---
 
 <a href={siteTitleHref} class="cf-site-title">
-  <svg class="cf-mark" viewBox="0 0 20 20" aria-hidden="true">
-    <rect width="20" height="20" rx="4" />
-    <path d="M5 5h4v4H5zM11 5h4v4h-4zM5 11h4v4H5z" class="cf-mark-line" />
-    <path d="M11 11h4v4h-4z" class="cf-mark-fill" />
+  <svg class="cf-mark" viewBox="0 0 64 64" aria-hidden="true">
+    <path d="M6 22V6h16M42 6h16v16M58 42v16H42M22 58H6V42" class="cf-mark-frame" />
+    <path d="M32 11v42" class="cf-mark-wick" />
+    <rect x="23" y="19" width="18" height="26" rx="1.5" class="cf-mark-body" />
   </svg>
   <span translate="no">{siteTitle}</span>
   <span class="cf-version">v{pkg.version}</span>

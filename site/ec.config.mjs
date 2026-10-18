@@ -1,46 +1,48 @@
-// Code blocks use a base16 scheme (https://github.com/chriskempson/base16), so code reads as its
-// own surface against the page. Gruvbox suits the site: warm greys and a yellow that matches the
-// amber accent. Scopes map to base16 slots per the base16 styling guidelines, with one change for
-// docs: comments use base04 instead of base03, which is too faint to read in prose-heavy samples.
+// Code blocks use a base16 scheme (https://github.com/chriskempson/base16) built from the site's
+// own Caret Neutral tokens, so code reads as a raised card without leaving the page's palette:
+// base00 is the card (surface), base01 the header a step off it, base02 the hairline, base03-07
+// the page's inks. The accents are one muted OKLCH lightness and chroma per mode (L .78 C .105 in
+// dark, L .47 C .115 in light), at 6:1 or better on the card. Scopes map to base16 slots per the
+// base16 styling guidelines, except that comments use base04, which stays readable in docs.
 // The header, language chip and copy button are styled in src/styles/custom.css.
 import { defineEcConfig, ExpressiveCodeTheme } from '@astrojs/starlight/expressive-code';
 import { pluginLineNumbers } from '@expressive-code/plugin-line-numbers';
 
-const gruvboxDark = {
-  base00: '#282828',
-  base01: '#3c3836',
-  base02: '#504945',
-  base03: '#665c54',
-  base04: '#bdae93',
-  base05: '#d5c4a1',
-  base06: '#ebdbb2',
-  base07: '#fbf1c7',
-  base08: '#fb4934',
-  base09: '#fe8019',
-  base0A: '#fabd2f',
-  base0B: '#b8bb26',
-  base0C: '#8ec07c',
-  base0D: '#83a598',
-  base0E: '#d3869b',
-  base0F: '#d65d0e',
+const neutralDark = {
+  base00: '#1e1c17', // surface
+  base01: '#282721', // hover
+  base02: '#333129', // line
+  base03: '#7d8086',
+  base04: '#9ca0a7', // ink-3
+  base05: '#bbc1c9', // ink-2
+  base06: '#edf0f5', // ink
+  base07: '#edf0f5',
+  base08: '#f39d93', // red, hue 27
+  base09: '#eca575', // orange, hue 55
+  base0A: '#d6b265', // yellow, hue 85
+  base0B: '#8cc98e', // green, hue 145
+  base0C: '#57cccc', // cyan, hue 195
+  base0D: '#83bdf8', // blue, hue 250
+  base0E: '#c7a6ee', // violet, hue 305
+  base0F: '#cc986e', // brown, hue 60
 };
-const gruvboxLight = {
-  base00: '#fbf1c7',
-  base01: '#ebdbb2',
-  base02: '#d5c4a1',
-  base03: '#bdae93',
-  base04: '#665c54',
-  base05: '#504945',
-  base06: '#3c3836',
-  base07: '#282828',
-  base08: '#9d0006',
-  base09: '#af3a03',
-  base0A: '#b57614',
-  base0B: '#79740e',
-  base0C: '#427b58',
-  base0D: '#076678',
-  base0E: '#8f3f71',
-  base0F: '#d65d0e',
+const neutralLight = {
+  base00: '#fdfcfa', // surface
+  base01: '#eeece8', // hover
+  base02: '#dddbd5', // line
+  base03: '#777a80',
+  base04: '#5f6369', // ink-3
+  base05: '#42464d', // ink-2
+  base06: '#15181f', // ink
+  base07: '#15181f',
+  base08: '#903d36',
+  base09: '#8a4603',
+  base0A: '#785400',
+  base0B: '#296b2e',
+  base0C: '#006d6f',
+  base0D: '#1c5d98',
+  base0E: '#6a488e',
+  base0F: '#865324',
 };
 
 /** A TextMate theme from a base16 scheme. */
@@ -150,8 +152,8 @@ const base16 = (name, type, s) =>
 
 export default defineEcConfig({
   themes: [
-    base16('gruvbox-dark-medium', 'dark', gruvboxDark),
-    base16('gruvbox-light-medium', 'light', gruvboxLight),
+    base16('caret-neutral-dark', 'dark', neutralDark),
+    base16('caret-neutral-light', 'light', neutralLight),
   ],
   plugins: [pluginLineNumbers()],
   defaultProps: { showLineNumbers: true },

@@ -118,6 +118,27 @@ try {
     await guide.screenshot({ path: `${out}/${name}.png`, fullPage: name === 'guide-light' });
     await guide.close();
   }
+  // "On this page" as a tree, with a nested heading current.
+  for (const colorScheme of ['dark', 'light']) {
+    const toc = await browser.newPage({
+      viewport: { width: 1440, height: 1000 },
+      colorScheme,
+      deviceScaleFactor: 2,
+    });
+    await toc.goto(new URL('feeds/static-data/#instrument-metadata', url).href);
+    await toc.waitForFunction(() => !!document.querySelector('starlight-toc a[aria-current="true"]'));
+    const tree = await toc.evaluate(() => ({
+      thread: getComputedStyle(document.querySelector('starlight-toc ul ul')).borderInlineStartWidth,
+      current: document.querySelector('starlight-toc a[aria-current="true"]')?.textContent?.trim(),
+    }));
+    check(
+      tree.thread === '1px' && tree.current === 'Instrument metadata',
+      `${colorScheme}: the page outline is a tree`,
+      tree,
+    );
+    await toc.locator('starlight-toc').screenshot({ path: `${out}/toc-${colorScheme}.png` });
+    await toc.close();
+  }
   // Code up close: a terminal block, a TypeScript block and inline code, in both modes.
   for (const colorScheme of ['dark', 'light']) {
     const code = await browser.newPage({

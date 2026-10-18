@@ -13,7 +13,6 @@ export default defineConfig({
       title: 'CandleFrame',
       description:
         'A framework-free WebGL2 trading chart for the browser and for agents: 13 chart types, 85 drawing tools, indicators and a typed command API.',
-      logo: { src: './src/assets/mark.svg' },
       favicon: '/favicon.svg',
       social: [{ icon: 'github', label: 'GitHub', href: repo }],
       editLink: { baseUrl: `${repo}/edit/main/site/` },
