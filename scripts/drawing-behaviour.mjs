@@ -311,6 +311,27 @@ try {
     'a double-click finishes a path',
     drawnPath?.points.length,
   );
+  // Finishing a path opens its settings, like a double-click on any drawing.
+  await page.keyboard.press('Escape');
+
+  // A note's text shows only while the pointer rests on its marker.
+  await page.evaluate(() => window.candleframe.setTool('note'));
+  const noteAt = at(0.5, 0.45);
+  await click(noteAt);
+  await sleep(150);
+  await page.keyboard.press('Escape');
+  check((await drawings()).at(-1)?.type === 'note', 'a click places a note');
+  await page.evaluate(() => window.candleframe.selectDrawing(null));
+  // Both shots keep the crosshair's vertical line at the same x, so only the tooltip differs.
+  await page.mouse.move(noteAt.x, noteAt.y + 40);
+  await sleep(150);
+  const bubble = { x: noteAt.x - 60, y: noteAt.y - 70, width: 120, height: 45 };
+  const idle = await page.screenshot({ clip: bubble });
+  await page.mouse.move(noteAt.x, noteAt.y - 14);
+  await sleep(200);
+  const hovered = await page.screenshot({ clip: bubble });
+  await page.screenshot({ path: `${out}/note-hover.png` });
+  check(!idle.equals(hovered), 'hovering a note shows its text');
   await page.evaluate(key => localStorage.removeItem(key), templateKey);
 } finally {
   await browser.close();
