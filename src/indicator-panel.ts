@@ -3,7 +3,7 @@ import { uiIcon as svg } from './ui-icons.ts';
 
 /** Scoped styles for the indicator dialog inside the widget shadow root. */
 export const indicatorPanelStyles: string = `
-.widget-dialog.indicator-dialog{inset:calc(var(--toolbar-height) + 40px * var(--space)) auto auto 50%;transform:translateX(-50%);width:min(calc(var(--ui-size) * 40),calc(100% - 20px));height:min(calc(var(--ui-size) * 46),calc(100% - var(--toolbar-height) - var(--footer-height) - 60px * var(--space)))}
+.widget-dialog.indicator-dialog{width:min(calc(var(--ui-size) * 36),calc(100% - 16px));height:min(calc(var(--ui-size) * 46),calc(100% - var(--toolbar-height) - var(--footer-height) - 20px))}
 .indicator-dialog .dialog-content{display:flex;flex-direction:column;flex:1;min-height:0;padding:0;line-height:normal}
 .indicator-panel{display:flex;flex-direction:column;flex:1;min-height:0;font-size:var(--ui-size)}
 .indicator-search{position:relative;flex-shrink:0;padding:calc(10px * var(--space)) calc(12px * var(--space));border-bottom:var(--border-width) solid var(--line)}
@@ -13,12 +13,13 @@ export const indicatorPanelStyles: string = `
 .indicator-scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;padding-bottom:calc(6px * var(--space))}
 .indicator-panel h3{margin:0;padding:calc(12px * var(--space)) calc(16px * var(--space)) calc(4px * var(--space));color:var(--muted);font-size:var(--small-size);font-weight:var(--ui-weight);letter-spacing:.5px;text-transform:uppercase}
 .indicator-list{margin:0;padding:0;list-style:none}
-.indicator-add{display:flex;align-items:center;gap:calc(12px * var(--space));width:100%;min-height:calc(var(--control-height) + 4px);padding:0 calc(16px * var(--space));text-align:left;color:var(--text)}
+.indicator-add{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:calc(2px * var(--space)) calc(12px * var(--space));width:100%;min-height:calc(var(--control-height) + 4px);padding:calc(7px * var(--space)) calc(16px * var(--space));text-align:left;color:var(--text)}
 .indicator-add:hover,.indicator-add:focus-visible{background:var(--hover);color:var(--bright)}
-.indicator-add span{white-space:nowrap}
-.indicator-add small{margin-left:auto;color:var(--muted);font-size:var(--small-size);white-space:nowrap}
+.indicator-add span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.indicator-add small{color:var(--faint);font-size:var(--small-size);white-space:nowrap}
+.indicator-add .indicator-description{grid-column:1/-1;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;color:var(--muted);font-size:var(--small-size);line-height:1.4;white-space:normal}
 .indicator-empty{margin:0;padding:calc(20px * var(--space)) calc(16px * var(--space));color:var(--muted);text-align:center}
-.widget-dialog.settings-dialog{inset:50% auto auto 50%;transform:translate(-50%,-50%);width:min(var(--theme-layout-dialogWidth,364px),calc(100% - 20px))}
+.widget-dialog.settings-dialog{width:min(var(--theme-layout-dialogWidth,364px),calc(100% - 16px))}
 .indicator-settings{display:grid;gap:calc(10px * var(--space))}
 .indicator-settings label{display:grid;grid-template-columns:1fr minmax(7em,auto);align-items:center;gap:calc(10px * var(--space));color:var(--text)}
 .indicator-settings select{height:var(--control-height);padding:0 calc(8px * var(--space));border:var(--border-width) solid var(--line);border-radius:var(--radius);background:var(--bg);color:var(--bright);font:var(--ui-weight) var(--ui-size) var(--ui-font,inherit)}
@@ -38,6 +39,22 @@ export const indicatorPanelStyles: string = `
 `;
 
 const paneNames = { price: 'Overlay', separate: 'Pane', profile: 'Price axis' } as const;
+/** Headings for the built-in kinds; custom kinds list under Other. */
+const kindGroups: Readonly<Record<string, string>> = {
+  sma: 'Trend',
+  ema: 'Trend',
+  bb: 'Trend',
+  rsi: 'Momentum',
+  macd: 'Momentum',
+  regime: 'Market regime',
+  'regime-band': 'Market regime',
+  tideline: 'Market regime',
+  cvd: 'Order flow',
+  vp: 'Order flow',
+  'price-delta': 'Order flow',
+  'big-trades': 'Order flow',
+  'flow-signals': 'Order flow',
+};
 
 /**
  * A search box over every registered kind; clicking one adds it. Indicators on the chart
@@ -80,30 +97,41 @@ export function createIndicatorPanel(
         (!terms || `${kind.name} ${kind.kind} ${kind.description}`.toLowerCase().includes(terms)),
     );
     if (matches.length) {
-      const list = doc.createElement('div');
+      // Grouped while browsing; one flat list of results while searching.
+      const groups = new Map<string, typeof matches>();
       for (const kind of matches) {
-        const button = doc.createElement('button');
-        button.type = 'button';
-        button.className = 'indicator-add';
-        button.title = kind.description;
-        const title = doc.createElement('span');
-        title.textContent = kind.name;
-        const pane = doc.createElement('small');
-        pane.textContent = paneNames[kind.pane];
-        button.append(title, pane);
-        // No re-render: the list does not change, and replacing it would drop keyboard focus.
-        button.addEventListener('click', () =>
-          attempt(() => {
-            chart.execute({ type: 'indicator.add', indicator: { kind: kind.kind } });
-            // The toolbar has no layer switch, so a hidden layer would swallow the new one.
-            if (!chart.inspect().document.layers.indicator)
-              chart.execute({ type: 'layer.set', layer: 'indicator', visible: true });
-            report(`Added ${kind.name}.`);
-          }),
-        );
-        list.append(button);
+        const group = terms ? 'Results' : (kindGroups[kind.kind] ?? 'Other');
+        groups.set(group, [...(groups.get(group) ?? []), kind]);
       }
-      sections.push(heading(terms ? 'Results' : 'All indicators'), list);
+      for (const [group, kinds] of groups) {
+        const list = doc.createElement('div');
+        for (const kind of kinds) {
+          const button = doc.createElement('button');
+          button.type = 'button';
+          button.className = 'indicator-add';
+          button.title = kind.description;
+          const title = doc.createElement('span');
+          title.textContent = kind.name;
+          const pane = doc.createElement('small');
+          pane.textContent = paneNames[kind.pane];
+          const description = doc.createElement('span');
+          description.className = 'indicator-description';
+          description.textContent = kind.description;
+          button.append(title, pane, description);
+          // No re-render: the list does not change, and replacing it would drop keyboard focus.
+          button.addEventListener('click', () =>
+            attempt(() => {
+              chart.execute({ type: 'indicator.add', indicator: { kind: kind.kind } });
+              // The toolbar has no layer switch, so a hidden layer would swallow the new one.
+              if (!chart.inspect().document.layers.indicator)
+                chart.execute({ type: 'layer.set', layer: 'indicator', visible: true });
+              report(`Added ${kind.name}.`);
+            }),
+          );
+          list.append(button);
+        }
+        sections.push(heading(group), list);
+      }
     } else {
       const empty = doc.createElement('p');
       empty.className = 'indicator-empty';

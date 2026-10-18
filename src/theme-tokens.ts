@@ -28,12 +28,13 @@ export const themeTokenSchema = {
   typography: {
     uiFamily: font('"CandleFrame UI", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'),
     headingFamily: font('"CandleFrame UI", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'),
-    numberFamily: font('"SFMono-Regular", Consolas, "Liberation Mono", monospace'),
-    annotationFamily: font('ui-monospace, SFMono-Regular, Menlo, monospace'),
+    // `CandleFrame Mono` is the widget's bundled Paper Mono, so numbers match on every OS.
+    numberFamily: font('"CandleFrame Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace'),
+    annotationFamily: font('"CandleFrame Mono", ui-monospace, SFMono-Regular, Menlo, monospace'),
     uiSize: n(12, 10, 20),
     smallSize: n(10, 8, 18),
-    titleSize: n(18, 14, 36),
-    priceSize: n(17, 10, 28),
+    titleSize: n(14, 12, 36),
+    priceSize: n(15, 10, 28),
     panelTitleSize: n(16, 12, 32),
     axisSize: n(10, 8, 20),
     markerSize: n(11, 8, 22),
@@ -113,7 +114,8 @@ export const themeTokenSchema = {
     crosshairDash: dash(3, 4),
     crosshairLabelBackground: color('@raised'),
     crosshairLabelText: color('@textStrong'),
-    watermarkText: text('candleframe'),
+    // Empty by default: an embedded chart carries the host's brand, not the library's.
+    watermarkText: text(''),
     watermarkOpacity: ratio(1),
     annotationBackground: color('@surface'),
     annotationOpacity: ratio(0.92),

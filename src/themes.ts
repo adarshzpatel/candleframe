@@ -103,7 +103,7 @@ const monochrome: ChartTheme = {
     wickDown: '@borderStrong',
   },
 };
-const rawThemes = { evergreen, graphite, midnight, monochrome, paper, sand };
+const rawThemes = { graphite, evergreen, midnight, monochrome, paper, sand };
 export type ThemeId = keyof typeof rawThemes;
 export type ThemeInput = ThemeId | ChartTheme;
 const paletteKeys = Object.keys(evergreen.palette) as (keyof ThemePalette)[];
@@ -211,6 +211,14 @@ function normalizeTheme(input: unknown): ResolvedChartTheme {
 export const chartThemes = Object.freeze(
   Object.fromEntries(Object.entries(rawThemes).map(([id, theme]) => [id, normalizeTheme(theme)])),
 ) as Readonly<Record<ThemeId, ResolvedChartTheme>>;
+
+/**
+ * The preset a chart starts with when the host names none: neutral Graphite, or Paper
+ * when the system asks for light colors.
+ */
+export function systemThemeId(win: Window | null | undefined = globalThis.window): 'graphite' | 'paper' {
+  return win?.matchMedia?.('(prefers-color-scheme: light)').matches ? 'paper' : 'graphite';
+}
 
 /** Validate before mutation. Old palette-only themes inherit compact visual defaults. */
 export function resolveTheme(input: ThemeInput = 'evergreen'): ResolvedChartTheme {

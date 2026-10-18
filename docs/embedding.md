@@ -51,7 +51,7 @@ The optional order book uses the adapter's depth events. Indicator controls refl
 
 ## Layout storage
 
-The widget autosaves the layout 400 ms after each document change, and saves any pending change when the page is hidden, the market switches or the widget is disposed. It loads the saved layout on mount and after each market switch, keeping the live viewport and an automatic price range; that load adds no undo step. Without a namespace, layouts last for the widget session. Set a stable `storageKey` to use localStorage. Give independently saved charts different namespaces. Keys include the namespace, source, symbol and interval. Save writes immediately; Restore reloads the saved layout, including its viewport.
+The widget autosaves the layout 400 ms after each document change, and saves any pending change when the page is hidden, the market switches or the widget is disposed. It loads the saved layout on mount and after each market switch, keeping the live viewport and an automatic price range; that load adds no undo step. Without a namespace, layouts last for the widget session. Set a stable `storageKey` to use localStorage. Give independently saved charts different namespaces. Keys include the namespace, source, symbol and interval. With a `storageKey`, the header shows Save, which writes immediately, and Revert, which reloads the saved layout, including its viewport. Without one, both stay hidden, since autosave already covers the session.
 
 For server-backed or application storage, supply `layoutStore` and a namespace:
 
@@ -151,11 +151,11 @@ TPs, SLs and flatten are sent with `reduceOnly: true`; adapters should refuse th
 
 ## Drawings and themes
 
-Drawing settings appear in a floating bar when a drawing tool or object is selected. The layers button in the chart header opens the object list. Tool categories and individual drawing tools use a shared SVG icon set, with keyboard labels and tooltips.
+Drawing settings appear in a floating bar when a drawing tool or object is selected. The layers button in the drawing rail opens the object list, with a badge for the drawing count. Tool categories and individual drawing tools use a shared SVG icon set, with keyboard labels and tooltips.
 
 ## Themes
 
-Open Appearance with the palette button in the top toolbar. Evergreen is the default forest-green palette. The widget also includes Graphite and Midnight dark palettes, and Paper and Sand light palettes. Its picker previews each palette and applies changes immediately.
+Open Appearance with the palette button in the top toolbar. Without a `theme` option the widget starts in neutral Graphite, or Paper when `prefers-color-scheme` is light, and follows system changes until the user or host picks a theme. The widget also includes the Evergreen, Midnight and Monochrome dark palettes and the Sand light palette. Its picker previews each palette and applies changes immediately.
 
 Both the bare chart and the complete widget accept the same theme API:
 
@@ -190,11 +190,13 @@ The Appearance panel's **Customize theme** section edits the same tokens with se
 
 Set `--oc-font`, `--oc-serif`, `--oc-text`, `--oc-background`, `--oc-border` or `--oc-accent` on the host to customize widget chrome. These CSS overrides affect controls; use the theme API to coordinate controls with the canvas palette. Styles ship inside the JavaScript module, so there is no CSS loader or stylesheet import requirement.
 
-The widget bundles a Latin WOFF2 build of Inter for controls and headings under the SIL Open Font License. They load once per document under private family names, with system-font fallbacks. Prices retain tabular monospace text. Keep `dist/lib/fonts/` alongside the built modules when serving the plain JavaScript library; bundlers resolve the font URLs as assets. No external font service is required. License notices ship with both build outputs.
+The widget bundles a Latin WOFF2 build of Inter for controls and headings, and Paper Mono for prices, axes and annotations, both under the SIL Open Font License. They load once per document under private family names (`CandleFrame UI`, `CandleFrame Mono`), with system-font fallbacks, so numbers look the same on every operating system. Keep `dist/lib/fonts/` alongside the built modules when serving the plain JavaScript library; bundlers resolve the font URLs as assets. No external font service is required. License notices ship with both build outputs.
 
 The `fonts` option controls loading. `'bundled'` (the default) resolves the files next to the module with `new URL(..., import.meta.url)`, which Vite, webpack 5, Rollup, esbuild and native ES modules handle. If your bundler or CDN does not copy them, serve `dist/lib/fonts/` yourself and pass its URL, for example `fonts: '/static/candleframe-fonts/'`. `fonts: false` skips the files and uses system fonts.
 
-The dialog for indicators, help and inspection keeps keyboard focus inside until Escape or Close, then returns focus to the button that opened it.
+Panels open beside the control that opened them: below a header button, beside a rail button, above the footer. They keep keyboard focus inside until Escape or Close, then return focus to that control.
+
+The widget hides controls that cannot act in its configuration: Layout without `markets`, the source picker with fewer than two sources, Save and Revert without `storageKey`, and Inspect unless `inspector: true`. Below 580px the drawing rail folds behind a header toggle, and the default view shows about one bar per 4px of plot width, up to 180.
 
 Unmount with `dispose()` before removing the host. Repeated disposal is harmless. The widget removes only its own mount element. Headless users can keep importing `ChartRuntime`; importing the public module does not access the DOM until a chart or widget is mounted.
 

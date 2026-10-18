@@ -32,7 +32,7 @@ The build creates the static demo in `dist/` and ES modules with TypeScript decl
 - Layouts autosave per source, symbol and interval and load again on reload or a market switch. Export opens a PNG preview and download link.
 - **Layout** in the header splits the view into up to 8 charts (side by side, stacked, 1 + 2, 2 × 2, 3 × 2, 4 × 2). Click a chart or press Alt + 1 to 8 to choose the one the toolbar controls. Checkboxes sync symbol, interval, crosshair, time and date range across charts. Save named layouts and switch between them; the open one comes back after a reload.
 - Toggle the integrated order book. Stale depth is dimmed independently of the candle stream.
-- Open **Inspect state** for the same semantic state available to an embedding app or agent.
+- Open **Inspect state** in the footer for the same semantic state available to an embedding app or agent. Embedders turn it on with `inspector: true`.
 
 The heatmap has been removed from the demo. The engine retains an experimental opt-in heatmap implementation, disabled by default, with no history or texture allocation in the demo.
 
@@ -97,7 +97,7 @@ chart.dispose(); // Call when the host view unmounts.
 
 Replace `FeedAdapter`, `ChartRenderer` or `IndicatorPlugin` to supply data, rendering or calculations. `ChartRuntime` supports the same documents and commands without a DOM or GPU. See the [working contracts](docs/poc.md), [v0.2 design decisions](docs/v0.2-design.md), [headless example](examples/headless.ts) and [contributor instructions](AGENTS.md).
 
-Evergreen is the default theme. The Appearance picker also includes Graphite, Midnight, Paper and Sand. Use Appearance → Customize theme for colors, typography, density, controls and chart styling, with JSON import/export. Hosts can use `createTheme()`, `theme` and `setTheme()`; see [themes](docs/embedding.md#themes).
+Without a `theme`, charts start in Graphite, or Paper when the system asks for light colors, and the widget follows later system changes until the user picks a theme. The Appearance picker also includes Evergreen (the demo's theme), Midnight, Monochrome and Sand. The library draws no watermark by default; set `chart.watermarkText` to add one. Use Appearance → Customize theme for colors, typography, density, controls and chart styling, with JSON import/export. Hosts can use `createTheme()`, `theme` and `setTheme()`; see [themes](docs/embedding.md#themes).
 
 ## Current scope
 

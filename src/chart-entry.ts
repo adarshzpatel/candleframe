@@ -20,6 +20,7 @@ export {
   chartThemes,
   resolveTheme,
   restoreTheme,
+  systemThemeId,
   compactTheme,
   createTheme,
   themeColor,

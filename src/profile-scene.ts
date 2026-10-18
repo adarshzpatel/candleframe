@@ -156,7 +156,7 @@ function drawSession(
         i === profile.poc
           ? themeColorCSS(theme, '@accent', 0.6)
           : themeColorCSS(theme, '@text', inside ? 0.22 : 0.1);
-      capsule(ctx, x0, y, length, h, 'right');
+      fillBar(ctx, x0, y, length, h);
       return;
     }
     const alpha = inside ? 0.42 : 0.2;
@@ -164,7 +164,7 @@ function drawSession(
     ctx.fillStyle = themeColorCSS(theme, '@positive', alpha);
     ctx.fillRect(x0, y, buy, h);
     ctx.fillStyle = themeColorCSS(theme, '@negative', alpha);
-    capsule(ctx, x0 + buy, y, length - buy, h, 'right');
+    fillBar(ctx, x0 + buy, y, length - buy, h);
   });
   levels(ctx, profile, g, theme, x0, x1, top, bottom, labeled);
   if (!delta) return;
@@ -235,22 +235,10 @@ function rowBar(g: ChartGeometry, low: number, high: number): Bar {
   const gap = h >= 5 ? 1 : h >= 3 ? 0.5 : 0;
   return { y: y0 + gap / 2, h: Math.max(0.5, h - gap) };
 }
-/** A bar rounded only at its free end, so stacks read as one shape. */
-function capsule(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  end: 'left' | 'right',
-): void {
+/** A square-ended bar, so stacked rows read as one crisp histogram. */
+function fillBar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
   if (w <= 0) return;
-  const r = Math.min(2, h / 2, w);
-  ctx.beginPath();
-  if (r >= 0.75 && typeof ctx.roundRect === 'function')
-    ctx.roundRect(x, y, w, h, end === 'left' ? [r, 0, 0, r] : [0, r, r, 0]);
-  else ctx.rect(x, y, w, h);
-  ctx.fill();
+  ctx.fillRect(x, y, w, h);
 }
 /** A fill that fades toward the column's open side, so dense profiles stay airy. */
 function fade(
@@ -320,14 +308,7 @@ function drawVolume(
     const { y, h } = rowBar(g, row.low, row.high);
     if (y > bottom || y + h < top) return;
     ctx.fillStyle = i === profile.poc ? fills.poc : i >= area.low && i <= area.high ? fills.in : fills.out;
-    capsule(
-      ctx,
-      right - (width * volume) / profile.maxVolume,
-      y,
-      (width * volume) / profile.maxVolume,
-      h,
-      'left',
-    );
+    fillBar(ctx, right - (width * volume) / profile.maxVolume, y, (width * volume) / profile.maxVolume, h);
   });
   // Value area: a bracket along the axis edge.
   const vaTop = g.y(profile.rows[area.high].high),
@@ -374,7 +355,7 @@ function drawDelta(
       0.18 + 0.72 * strength ** 0.75,
     );
     const length = Math.max(1, width * strength);
-    capsule(ctx, right - length, y, length, h, 'left');
+    fillBar(ctx, right - length, y, length, h);
     if (delta > 0 && (most < 0 || delta > profile.rows[most].buy - profile.rows[most].sell)) most = i;
     if (delta < 0 && (least < 0 || delta < profile.rows[least].buy - profile.rows[least].sell)) least = i;
   });

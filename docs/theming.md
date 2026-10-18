@@ -15,7 +15,7 @@ The exported `themeTokenSchema` is the authoritative token inventory. Every desc
 ```ts
 import { createTheme, themeTokenSchema } from './dist/lib/index.js';
 
-const theme = createTheme('evergreen', {
+const theme = createTheme('graphite', {
   id: 'terminal', name: 'Terminal',
   typography: { headingFamily: 'Arial, sans-serif', titleSize: 18 },
   layout: { spacingScale: 0.75, railWidth: 36, railButtonSize: 26 },
@@ -29,7 +29,7 @@ chart.setTheme(JSON.parse(portable));
 
 ## Built-in palettes
 
-The five presets are authored in OKLCH in `scripts/palette.mjs`, which writes `src/theme-palettes.ts`. Each theme is a neutral ramp on one hue plus semantic colors. Lightness sets every contrast relationship. Vivid colors use a share of the sRGB chroma limit for their lightness and hue, so different hues look equally saturated. Run `npm run palette:check` after editing. It measures every pair against APCA (Lc) and WCAG 2: body text Lc 75, labels Lc 60, chart graphics and indicator lines Lc 45 and 3:1, and an Lc gap of at least 8 between up and down candles. The six indicator slots skip the accent's hue, and drawings use the accent.
+The six presets are authored in OKLCH in `scripts/palette.mjs`, which writes `src/theme-palettes.ts`. Each theme is a neutral ramp on one hue plus semantic colors. Lightness sets every contrast relationship. Vivid colors use a share of the sRGB chroma limit for their lightness and hue, so different hues look equally saturated. Run `npm run palette:check` after editing. It measures every pair against APCA (Lc) and WCAG 2: body text Lc 75, labels Lc 60, chart graphics and indicator lines Lc 45 and 3:1, and an Lc gap of at least 8 between up and down candles. The six indicator slots skip the accent's hue, and drawings use the accent.
 
 Palette colors require six-digit hex. Visual color tokens also accept references such as `@accent`; references survive serialization. Changing the palette updates linked colors. A concrete hex override stays independent of palette changes. An empty dash array means a solid line.
 

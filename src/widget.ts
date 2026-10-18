@@ -10,6 +10,7 @@ import {
   indicatorColor,
   resolveTheme,
   restoreTheme,
+  systemThemeId,
 } from './themes.ts';
 import type { ThemeInput } from './themes.ts';
 import { FOOTPRINT_DEFAULTS } from './footprint.ts';
@@ -90,8 +91,13 @@ export interface ChartWidgetOptions extends ChartOptions {
   /** Factories return disconnected adapters; the selected adapter owns its connection. */
   markets?: readonly WidgetMarketSource[];
   orderBook?: boolean;
-  /** Enables browser persistence in this namespace. Omit for instance-local session saves. */
+  /**
+   * Enables browser persistence in this namespace, with Save and Revert buttons. Without
+   * it, drawings and settings last for the session and those buttons stay hidden.
+   */
   storageKey?: string;
+  /** Shows an Inspect button that opens the chart's semantic state, for developers. Default false. */
+  inspector?: boolean;
   /**
    * Widget fonts: `'bundled'` (default) loads them next to the module, a URL points at
    * self-hosted copies of `dist/lib/fonts/`, and `false` uses system fonts.
@@ -152,7 +158,7 @@ interface Cell {
   unsubscribe: () => void;
 }
 
-const cellMarkup = `<div class="chart-toolbar" part="chart-summary"><div class="market-summary"><span class="market-name"></span><span class="market-kind"></span><span class="price-heading">Last price</span><strong class="market-price">—</strong></div><div class="ohlc-values"><span>O <b data-ohlc="open">—</b></span><span>H <b data-ohlc="high">—</b></span><span>L <b data-ohlc="low">—</b></span><span>C <b data-ohlc="close">—</b></span><span class="hover-time">Latest candle</span></div><div class="chart-legend"><span class="legend-indicator"></span><span class="legend-volume">Volume</span></div></div><div class="connection-notice" hidden><span class="connection-message"></span><button class="retry">Reconnect</button></div><div class="chart-host"></div>`;
+const cellMarkup = `<div class="chart-toolbar" part="chart-summary"><div class="market-summary"><span class="market-name"></span><span class="market-kind"></span><strong class="market-price" aria-label="Last price">—</strong></div><div class="ohlc-values"><span>O <b data-ohlc="open">—</b></span><span>H <b data-ohlc="high">—</b></span><span>L <b data-ohlc="low">—</b></span><span>C <b data-ohlc="close">—</b></span><span class="hover-time"></span></div><div class="chart-legend"><span class="legend-indicator"></span></div></div><div class="connection-notice" hidden><span class="connection-message"></span><button class="retry">Reconnect</button></div><div class="chart-host"></div>`;
 const assetNames: Record<string, string> = { BTC: 'Bitcoin', ETH: 'Ethereum', SOL: 'Solana' };
 
 /** A complete, instance-isolated workbench. Only the host element's size is required. */
@@ -189,11 +195,16 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
       if (customKey) doc.defaultView?.localStorage.setItem(customKey, JSON.stringify(customIntervals));
     } catch {}
   }
-  let initialTheme = resolveTheme(options.theme);
+  let initialTheme = resolveTheme(options.theme ?? systemThemeId(doc.defaultView));
+  // Without a host or saved theme, the widget follows the system's light or dark setting.
+  let followSystem = !options.theme;
   if (!options.theme && themeKey) {
     try {
       const saved = doc.defaultView?.localStorage.getItem(themeKey);
-      if (saved) initialTheme = restoreTheme(JSON.parse(saved));
+      if (saved) {
+        initialTheme = restoreTheme(JSON.parse(saved));
+        followSystem = false;
+      }
     } catch {
       /* Invalid or unavailable storage leaves the default theme intact. */
     }
@@ -216,12 +227,12 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
   root.innerHTML = `<header class="widget-header">
     <div class="market-controls"><span class="asset-mark" id="asset-mark" aria-hidden="true">B</span><cf-select id="symbol" class="symbol-picker" aria-label="Symbol"></cf-select><span class="toolbar-divider"></span><cf-select id="interval" class="interval-picker" aria-label="Candle interval" search="off"></cf-select><span class="toolbar-divider"></span><button id="chart-type" class="icon-button" aria-label="Chart type" aria-haspopup="dialog" data-tooltip="Chart type">${icon('candles')}</button></div>
     <div class="analysis-controls"><button id="indicator-menu" aria-haspopup="dialog" data-tooltip="Add indicators">${icon('indicators')}<span>Indicators</span></button><button data-layer="volume" aria-label="Toggle volume" aria-pressed="true" data-tooltip="Volume">${icon('volume')}<span>Volume</span></button></div>
-    <div class="widget-actions"><button id="book-toggle" aria-label="Toggle order book" aria-pressed="false" data-tooltip="Order book">${icon('book')}<span>Order book</span></button><span class="toolbar-divider"></span><button id="pause" class="icon-button" aria-label="Pause feed" data-tooltip="Pause feed">${icon('pause')}</button><button id="layout" class="icon-button" aria-label="Chart layout" aria-haspopup="dialog" data-tooltip="Layout">${icon('layout')}</button><button id="save" class="save-button" aria-label="Save layout" data-tooltip="Save layout">${icon('save', 18)}<span>Save</span></button><button id="restore" class="icon-button" aria-label="Restore layout" data-tooltip="Restore layout">${icon('restore')}</button><button id="theme" class="icon-button" aria-label="Chart appearance" data-tooltip="Appearance">${icon('palette')}</button><button id="export" class="icon-button" aria-label="Export PNG" data-tooltip="Export image">${icon('camera')}</button></div>
+    <div class="widget-actions"><button id="draw-toggle" class="icon-button" aria-label="Drawing tools" aria-pressed="false" data-tooltip="Drawing tools">${icon('trendline')}</button><button id="book-toggle" aria-label="Toggle order book" aria-pressed="false" data-tooltip="Order book">${icon('book')}<span>Order book</span></button><span class="toolbar-divider"></span><button id="pause" class="icon-button" aria-label="Pause feed" data-tooltip="Pause feed">${icon('pause')}</button><button id="layout" class="icon-button" aria-label="Chart layout" aria-haspopup="dialog" data-tooltip="Layout">${icon('layout')}</button><button id="save" class="icon-button" aria-label="Save layout" data-tooltip="Save layout">${icon('save')}</button><button id="restore" class="icon-button" aria-label="Revert to saved layout" data-tooltip="Revert to saved">${icon('restore')}</button><button id="theme" class="icon-button" aria-label="Chart appearance" data-tooltip="Appearance">${icon('palette')}</button><button id="export" class="icon-button" aria-label="Export PNG" data-tooltip="Export image">${icon('camera')}</button></div>
   </header>
   <div class="widget-body"><aside class="tool-rail" aria-label="Drawing tools"><button id="cursor" class="rail-button active" aria-label="Cursor tool" data-tooltip="Cursor">${icon('cursor')}</button><span class="rail-separator"></span><button id="trend" class="rail-button">${icon('trendline')}</button><span class="rail-separator"></span><button id="undo" class="rail-button" aria-label="Undo last edit" data-tooltip="Undo · ⌘ / Ctrl Z">${icon('undo')}</button><button id="clear" class="rail-button" aria-label="Clear drawings" data-tooltip="Clear drawings">${icon('trash')}</button><button id="fit" class="rail-button" aria-label="Fit chart to live data" data-tooltip="Fit chart">${icon('fit')}</button><button id="help" class="rail-button rail-bottom" aria-label="Chart controls and shortcuts" data-tooltip="Help & shortcuts">${icon('help')}</button></aside>
   <section class="chart-panel" aria-label="Charts"><div class="cell-tabs" role="tablist" aria-label="Charts"></div><div class="chart-grid" data-preset="1"></div></section>
   <aside class="book-panel" aria-label="Live order book" hidden><div class="panel-title"><h2>Order book</h2><div><span id="book-state" class="book-badge"></span><button id="book-close" class="icon-button" aria-label="Close order book">${icon('close', 16)}</button></div></div><div class="book-subtitle"><span id="book-coverage"></span><span id="book-tick"></span></div><div class="book-columns"><span>Price <small id="book-quote"></small></span><span>Size <small id="book-base"></small></span><span>Total</span></div><div id="asks" class="book-side asks"></div><div class="spread-row"><strong id="book-price">—</strong><span>Spread <b id="spread">—</b></span></div><div id="bids" class="book-side bids"></div><p class="book-note" id="book-note"></p></aside></div>
-  <footer class="widget-footer"><div class="range-buttons" aria-label="Visible candle count"><button data-bars="60">60</button><button data-bars="180">180</button><button data-bars="360">360</button><button data-bars="all">All</button></div><span class="footer-divider"></span><cf-select id="source" class="source-picker" aria-label="Data source"></cf-select><span class="feed-state" id="feed-state"></span><button class="follow-button" id="follow">Following live</button><button class="autoscale-button" id="autoscale" aria-pressed="true" aria-label="Autoscale price" data-tooltip="Fit price to visible candles">Auto</button><button class="autoscale-button" id="log-scale" aria-pressed="false" aria-label="Logarithmic price scale" data-tooltip="Log scale: equal heights for equal percentage moves">Log</button><button id="inspect" class="icon-button" aria-label="Inspect state" data-tooltip="Inspect chart state">${icon('code', 16)}</button><span class="wordmark">CandleFrame<span> / </span></span></footer>
+  <footer class="widget-footer"><div class="range-buttons" role="group" aria-label="Bars in view"><span class="range-label" aria-hidden="true">Bars</span><button data-bars="60" aria-label="Show 60 bars">60</button><button data-bars="180" aria-label="Show 180 bars">180</button><button data-bars="360" aria-label="Show 360 bars">360</button><button data-bars="all" aria-label="Show all bars">All</button></div><span class="footer-divider"></span><cf-select id="source" class="source-picker" aria-label="Data source"></cf-select><span class="feed-state" id="feed-state"></span><button class="follow-button" id="follow">Following live</button><button class="autoscale-button" id="autoscale" aria-pressed="true" aria-label="Autoscale price" data-tooltip="Fit price to visible candles">Auto</button><button class="autoscale-button" id="log-scale" aria-pressed="false" aria-label="Logarithmic price scale" data-tooltip="Log scale: equal heights for equal percentage moves">Log</button><button id="inspect" class="icon-button" aria-label="Inspect state" data-tooltip="Inspect chart state">${icon('code', 16)}</button></footer>
   <div class="widget-tooltip" role="tooltip" hidden></div><div class="widget-toast" role="status" hidden></div><section class="widget-dialog" role="dialog" aria-modal="true" aria-label="Chart panel" hidden><header class="dialog-heading"><h2></h2><button class="icon-button" aria-label="Close dialog">${icon('close')}</button></header><div class="dialog-content"></div></section>`;
   shadow.append(style, root);
   container.append(mount);
@@ -231,6 +242,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
   };
   const set = (id: string, text: string) => put($(`#${id}`), text);
   const abort = new AbortController();
+  let applyingSystemTheme = false;
   let disposed = false,
     toastTimer: ReturnType<typeof setTimeout> | undefined;
   /** Bars shown when switching a wide view to footprints. */
@@ -282,15 +294,60 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     popup.classList.toggle('indicator-dialog', title === 'Indicators');
     popup.classList.toggle('layout-dialog', title === 'Layout');
     popup.classList.toggle('settings-dialog', content.classList.contains('indicator-settings'));
+    popup.classList.toggle(
+      'wide-dialog',
+      ['Chart controls', 'Candle data', 'Chart state', 'Export chart'].includes(title),
+    );
     if (title !== 'Layout') renderLayoutMenu = undefined;
     if (title !== 'Chart type') renderChartTypeMenu = undefined;
     popup.querySelector('h2')!.textContent = title;
     popup.setAttribute('aria-label', title);
     popupContent.replaceChildren(content);
+    // Keep the anchor across panels opened from inside a panel, such as Candle data from Help.
+    if (popup.hidden) popupAnchor = lastInvoker;
     popup.hidden = false;
+    placePanel(popupAnchor);
     (content.querySelector<HTMLElement>('[data-autofocus]') ?? popup.querySelector('button')!).focus({
       preventScroll: true,
     });
+  }
+  let popupAnchor: HTMLElement | null = null;
+  /** Every panel opens beside the control that opened it, clamped inside the widget. */
+  function placePanel(anchor: HTMLElement | null) {
+    const box = root.getBoundingClientRect(),
+      header = $('.widget-header').getBoundingClientRect(),
+      footer = $('.widget-footer').getBoundingClientRect();
+    const a = anchor?.isConnected ? anchor.getBoundingClientRect() : null;
+    const gap = 6,
+      width = popup.offsetWidth;
+    const top = header.bottom - box.top + gap,
+      bottom = box.bottom - footer.top + gap;
+    let left = box.width - width - 8;
+    const style = popup.style;
+    style.top = style.bottom = '';
+    if (a && anchor!.closest('.tool-rail')) {
+      // Beside the rail, level with the button; low buttons grow the panel upward.
+      left = a.right - box.left + gap;
+      if (a.top - box.top > box.height / 2) style.bottom = `${Math.max(bottom, box.bottom - a.bottom)}px`;
+      else style.top = `${Math.max(top, a.top - box.top)}px`;
+    } else if (a && anchor!.closest('.widget-footer')) {
+      left = a.right - box.left - width;
+      style.bottom = `${bottom}px`;
+    } else if (a && !anchor!.closest('.widget-header')) {
+      // Inside the chart, such as a legend's settings button.
+      left = a.left - box.left;
+      style.top = `${Math.max(top, a.bottom - box.top + gap)}px`;
+    } else {
+      if (a) left = a.left - box.left;
+      style.top = `${top}px`;
+    }
+    style.left = `${Math.max(8, Math.min(left, box.width - width - 8))}px`;
+    // One edge anchors; the stylesheet's default top must not stretch a bottom-anchored panel.
+    if (!style.top) style.top = 'auto';
+    if (!style.bottom) style.bottom = 'auto';
+    const fromTop = style.top !== 'auto',
+      offset = Number.parseFloat(fromTop ? style.top : style.bottom);
+    style.maxHeight = `${Math.max(120, box.height - offset - (fromTop ? bottom : top))}px`;
   }
   function closePanel() {
     themeEditor?.dispose();
@@ -431,11 +488,20 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     const instrument = state.feed.instrument;
     put(cell.element.querySelector('.market-name')!, assetNames[instrument.base] ?? instrument.base);
     const kind = cell.element.querySelector<HTMLElement>('.market-kind')!;
-    const label = multi() ? `${instrument.symbol}|${state.feed.interval}` : String(!!state.feed.simulated);
+    // One chart: interval and source, as a legend. The header already names the symbol.
+    const source =
+      markets.find(s => s.id === state.feed.id)?.label ?? (state.feed.simulated ? 'Simulated' : '');
+    const label = multi()
+      ? `${instrument.symbol}|${state.feed.interval}`
+      : `${state.feed.interval}|${source}`;
     if (kind.dataset.label === label) return;
     kind.dataset.label = label;
-    if (!multi()) kind.textContent = state.feed.simulated ? 'Simulated market' : 'Spot market';
-    else {
+    if (!multi()) {
+      const interval = doc.createElement('span');
+      interval.className = 'market-interval';
+      interval.textContent = state.feed.interval;
+      kind.replaceChildren(interval, source ? ` · ${source}` : '');
+    } else {
       // Intervals keep their case: 1m is a minute, 1M would read as a month.
       const interval = doc.createElement('span');
       interval.className = 'market-interval';
@@ -496,7 +562,6 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
       });
       if (focused >= 0) host.querySelectorAll('button')[focused]?.focus({ preventScroll: true });
     }
-    q('.legend-volume').hidden = !state.document.layers.volume;
     if (
       previous &&
       previous.dataRevision === state.dataRevision &&
@@ -707,6 +772,8 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
         onThemeChange(theme) {
           // Appearance applies to every chart; react once, for the active one.
           if (!isActive(cell)) return;
+          // A choice in Appearance or through the API stops the widget following the system.
+          if (!applyingSystemTheme) followSystem = false;
           applyWidgetTheme(mount, theme);
           themeEditor?.sync(theme);
           for (const button of root.querySelectorAll<HTMLButtonElement>('[data-theme]'))
@@ -717,7 +784,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
                   JSON.stringify(chartThemes[theme.id as keyof typeof chartThemes]) === JSON.stringify(theme),
               ),
             );
-          if (themeKey) {
+          if (themeKey && !followSystem) {
             try {
               // Only the differences, so later default changes still reach this widget.
               doc.defaultView?.localStorage.setItem(themeKey, JSON.stringify(compactTheme(theme)));
@@ -747,7 +814,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
           showCandle(cell, bar ?? cell.state?.candles.at(-1));
           put(
             element.querySelector('.hover-time')!,
-            bar ? `${cell.timeFormats.full(bar.timeMs)} ${cell.timeFormats.zone}` : 'Latest candle',
+            bar ? `${cell.timeFormats.full(bar.timeMs)} ${cell.timeFormats.zone}` : '',
           );
           if (isActive(cell)) options.onHover?.(bar);
         },
@@ -820,7 +887,6 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
       cell.chart.setTool(tool);
     }
     workbench?.interaction(cell.chart.drawingState());
-    cell.element.querySelector('.chart-toolbar')!.append(...root.querySelectorAll('.drawing-objects-button'));
     renderGrid();
     scheduleWorkspaceSave();
   }
@@ -1105,6 +1171,32 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     })) {
       (root.matches(selector) ? root : root.querySelector(selector))?.setAttribute('part', part);
     }
+    const on = (selector: string, action: () => void) =>
+      $(selector).addEventListener('click', () => attempt(action), { signal: abort.signal });
+    // Controls that cannot act are hidden rather than left inert.
+    $('#layout').hidden = !markets.length;
+    $('#source').hidden = markets.length < 2;
+    $('#save').hidden = $('#restore').hidden = !options.storageKey;
+    $('#inspect').hidden = !options.inspector;
+    // Narrow widgets fold the drawing rail away; the header toggle brings it back.
+    on('#draw-toggle', () => {
+      const open = !root.hasAttribute('data-rail-open');
+      root.toggleAttribute('data-rail-open', open);
+      $('#draw-toggle').setAttribute('aria-pressed', String(open));
+    });
+    doc.defaultView?.matchMedia?.('(prefers-color-scheme: light)').addEventListener(
+      'change',
+      () => {
+        if (!followSystem || disposed) return;
+        applyingSystemTheme = true;
+        try {
+          chart.setTheme(systemThemeId(doc.defaultView));
+        } finally {
+          applyingSystemTheme = false;
+        }
+      },
+      { signal: abort.signal },
+    );
     const book = $('.book-panel');
     book.hidden = !options.orderBook || mount.clientWidth <= 850;
     // Remembers the user's choice while a feed without a book hides the panel.
@@ -1321,8 +1413,6 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     }
     for (const id of ['source', 'symbol', 'interval'])
       $(`#${id}`).addEventListener('change', changeMarket, { signal: abort.signal });
-    const on = (selector: string, action: () => void) =>
-      $(selector).addEventListener('click', () => attempt(action), { signal: abort.signal });
     on('#pause', () => chart.execute({ type: 'feed.pause', paused: !lastState?.paused }));
     function toggleBook() {
       book.hidden = !book.hidden;
@@ -1499,6 +1589,18 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
             }
           },
         );
+        const note = doc.createElement('p');
+        note.className = 'chart-type-note';
+        const hasCells = state.candles.some(candle => candle.footprint?.length);
+        if (type !== 'footprint') {
+          // Footprint settings appear once footprints are on.
+          note.textContent = hasCells
+            ? 'Footprints split each bar into volume at each price.'
+            : 'This feed sends no volume at price, so footprints draw as candles.';
+          content.append(note);
+          if (focusKey) content.querySelector<HTMLElement>(`[data-focus-key="${focusKey}"]`)?.focus();
+          return;
+        }
         heading('Footprint cells');
         choices(
           'Footprint cells',
@@ -1519,7 +1621,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
         const toggles = doc.createElement('div');
         toggles.className = 'layout-sync';
         for (const [key, text] of [
-          ['imbalance', 'Imbalances (3:1)'],
+          ['imbalance', 'Highlight 3:1 imbalances'],
           ['poc', 'Point of control'],
           ['summary', 'Delta and volume'],
         ] as const) {
@@ -1541,9 +1643,7 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
           toggles.append(label);
         }
         content.append(toggles);
-        const note = doc.createElement('p');
-        note.className = 'chart-type-note';
-        note.textContent = state.candles.some(candle => candle.footprint?.length)
+        note.textContent = hasCells
           ? 'Zoom in to read cells. Wide views draw candles.'
           : 'This feed sends no volume at price, so its bars draw as candles.';
         content.append(note);
@@ -1757,8 +1857,11 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     });
     on('#help', () => {
       const content = doc.createElement('div');
-      content.innerHTML =
-        '<p>Drag the plot to pan time and price. Drag either axis to resize it; double-click to reset. Scroll over the chart to zoom.</p><dl class="shortcuts"><dt>Drawing tools</dt><dd>Choose a category on the left. Click anchors or drag freehand. Enter finishes a polyline.</dd><dt>Objects</dt><dd>Edit text, styles, coordinates, Fibonacci levels, visibility and locks.</dd><dt>Ctrl / ⌘ Z</dt><dd>Undo. Shift + Ctrl / ⌘ Z redoes.</dd><dt>Ctrl / ⌘ C, V, D</dt><dd>Copy, paste or duplicate a selected drawing.</dd><dt>Delete</dt><dd>Delete the selected unlocked drawing.</dd><dt>Escape</dt><dd>Cancel drawing or close this panel.</dd><dt>Home / + / −</dt><dd>Return to live / zoom in / zoom out.</dd><dt>Alt + 1 to 8</dt><dd>Choose a chart in a grid layout.</dd></dl><p>Save and Load apply to the selected source, symbol and interval. A source or symbol change clears drawings. An interval change preserves anchors. Layout holds the grid, sync settings and saved layouts.</p>';
+      const gridRow = markets.length ? '<dt>Alt + 1 to 8</dt><dd>Choose a chart in a grid layout.</dd>' : '';
+      const saving = options.storageKey
+        ? "Drawings and settings save as you work, per source, symbol and interval. An interval change keeps a drawing's anchors."
+        : 'Drawings and settings last until the page reloads.';
+      content.innerHTML = `<p>Drag the plot to pan time and price. Drag either axis to resize it; double-click to reset. Scroll over the chart to zoom.</p><dl class="shortcuts"><dt>Drawing tools</dt><dd>Choose a category on the left. Click anchors or drag freehand. Enter finishes a polyline.</dd><dt>Objects</dt><dd>Edit text, styles, coordinates, Fibonacci levels, visibility and locks.</dd><dt>Ctrl / ⌘ Z</dt><dd>Undo. Shift + Ctrl / ⌘ Z redoes.</dd><dt>Ctrl / ⌘ C, V, D</dt><dd>Copy, paste or duplicate a selected drawing.</dd><dt>Delete</dt><dd>Delete the selected unlocked drawing.</dd><dt>Escape</dt><dd>Cancel drawing or close this panel.</dd><dt>Home / + / −</dt><dd>Return to live / zoom in / zoom out.</dd>${gridRow}</dl><p>${saving}</p>`;
       const button = doc.createElement('button');
       button.className = 'button';
       button.textContent = 'Accessible candle data';

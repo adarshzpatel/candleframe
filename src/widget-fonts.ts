@@ -6,7 +6,23 @@
  */
 export type WidgetFontSource = 'bundled' | string | false;
 
-const FILE = 'inter-latin.woff2';
+const FACES = [
+  // Inter covers UI text and headings. The other names keep themes saved before the
+  // switch, or before the rename from OpenChart, on the same font.
+  {
+    file: 'inter-latin.woff2',
+    url: () => new URL('./fonts/inter-latin.woff2', import.meta.url).href,
+    families: ['CandleFrame UI', 'CandleFrame Editorial', 'OpenChart UI', 'OpenChart Editorial'],
+    weight: '100 900',
+  },
+  // Paper Mono sets prices, axes and annotations the same way on every system.
+  {
+    file: 'paper-mono.woff2',
+    url: () => new URL('./fonts/paper-mono.woff2', import.meta.url).href,
+    families: ['CandleFrame Mono'],
+    weight: '100 800',
+  },
+];
 
 /** Registered once per document under private names. */
 const loaded = new WeakSet<Document>();
@@ -14,21 +30,19 @@ export function loadWidgetFonts(doc: Document, source: WidgetFontSource = 'bundl
   const Font = doc.defaultView?.FontFace;
   if (source === false || !Font || !doc.fonts || loaded.has(doc)) return;
   loaded.add(doc);
-  const href =
-    source === 'bundled'
-      ? new URL('./fonts/inter-latin.woff2', import.meta.url).href
-      : new URL(FILE, source.endsWith('/') ? source : `${source}/`).href;
-  // Inter covers UI text and headings. The other names keep themes saved before the
-  // switch, or before the rename from OpenChart, on the same font.
-  for (const family of ['CandleFrame UI', 'CandleFrame Editorial', 'OpenChart UI', 'OpenChart Editorial']) {
-    const face = new Font(family, `url("${href}") format("woff2")`, {
-      weight: '100 900',
-      style: 'normal',
-      display: 'swap',
-    });
-    doc.fonts.add(face);
-    void face.load().catch(() => {
-      doc.fonts.delete(face);
-    });
+  for (const { file, url, families, weight } of FACES) {
+    const href =
+      source === 'bundled' ? url() : new URL(file, source.endsWith('/') ? source : `${source}/`).href;
+    for (const family of families) {
+      const face = new Font(family, `url("${href}") format("woff2")`, {
+        weight,
+        style: 'normal',
+        display: 'swap',
+      });
+      doc.fonts.add(face);
+      void face.load().catch(() => {
+        doc.fonts.delete(face);
+      });
+    }
   }
 }
