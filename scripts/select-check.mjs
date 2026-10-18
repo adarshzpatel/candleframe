@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Checks the custom <cf-select> pickers on the demo: the interval list opens grouped,
 // arrow keys and Enter change the interval, Escape closes and returns focus, type-ahead
-// jumps, a click chooses, and the symbol list filters as you type.
+// jumps, a click chooses, the symbol list filters as you type, and a picker in the
+// transformed drawing strip opens beside its trigger without scrolling the widget.
 //
 //   node scripts/select-check.mjs                          # starts Vite on 5199
 //   node scripts/select-check.mjs --url http://127.0.0.1:5173 --out artifacts/select
@@ -109,6 +110,60 @@ try {
     await page.screenshot({ path: `${out}/symbol-search.png` });
   } else console.log('note symbol list is short, so it has no search box');
   await page.keyboard.press('Escape');
+
+  // A picker inside a transformed bar (the drawing strip centres itself with translateX)
+  // still opens under its trigger, and opening it scrolls none of the widget's panels.
+  await page.evaluate(() => {
+    const chart = window.candleframe,
+      { latestCandle: last, feed } = chart.inspect();
+    chart.execute({
+      type: 'drawing.add',
+      drawing: {
+        id: 'select-check',
+        type: 'fib-retracement',
+        points: [
+          { timeMs: last.timeMs - 40 * feed.intervalMs, price: last.close * 0.998 },
+          { timeMs: last.timeMs - 10 * feed.intervalMs, price: last.close * 1.002 },
+        ],
+      },
+    });
+    chart.selectDrawing('select-check');
+  });
+  const style = page.getByRole('combobox', { name: /^Drawing line style/ });
+  await style.click();
+  const styleList = page.getByRole('listbox');
+  await styleList.waitFor();
+  const trigger = await style.boundingBox(),
+    popup = await styleList.boundingBox();
+  const gap =
+    popup.y >= trigger.y ? popup.y - (trigger.y + trigger.height) : trigger.y - (popup.y + popup.height);
+  check(
+    gap >= 0 && gap < 24 && Math.abs(popup.x - trigger.x) < 40,
+    'a picker in the drawing strip opens beside its trigger',
+    { trigger, popup },
+  );
+  const scrolled = await page.evaluate(() => {
+    const found = [];
+    const walk = root =>
+      root.querySelectorAll('*').forEach(el => {
+        if ((el.scrollTop || el.scrollLeft) && el.getAttribute('role') !== 'listbox')
+          found.push(el.className || el.tagName);
+        if (el.shadowRoot) walk(el.shadowRoot);
+      });
+    walk(document);
+    return found;
+  });
+  check(scrolled.length === 0, 'opening it scrolls no panel', scrolled);
+  await page.screenshot({ path: `${out}/drawing-strip-select.png` });
+  await styleList.getByRole('option', { name: 'Dashed' }).click();
+  check(
+    await page.evaluate(
+      () =>
+        window.candleframe.exportDocument().drawings.find(d => d.id === 'select-check')?.style.lineStyle ===
+        'dashed',
+    ),
+    'choosing Dashed restyles the drawing',
+  );
 } finally {
   await browser.close();
   server?.kill();

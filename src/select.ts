@@ -57,6 +57,8 @@ const STYLE = `
   box-shadow: var(--theme-shadow, 0 8px 24px rgb(0 0 0 / 0.45)); font: inherit; font-weight: normal;
 }
 .popup[hidden] { display: none; }
+/* In the top layer, the popup escapes ancestors' transforms and overflow; fixed coordinates stay viewport ones. */
+.popup:popover-open { margin: 0; inset: auto; overflow: visible; }
 .search {
   margin: 0 0 4px; padding: 6px 8px; border-radius: var(--radius, 4px); border: var(--border-width, 1px) solid var(--line, #333);
   background: var(--bg, var(--tr-background, #000)); color: var(--bright, var(--tr-strong, #fff)); font: inherit; outline: none;
@@ -118,7 +120,7 @@ export function defineSelect(registry: CustomElementRegistry = customElements): 
       root.innerHTML = `<style>${STYLE}</style>
         <button class="trigger" part="trigger" type="button" role="combobox" aria-haspopup="listbox" aria-expanded="false"
           aria-controls="${this.#id}-list"><span class="label" part="label"></span>${CHEVRON}</button>
-        <div class="popup" part="popup" hidden>
+        <div class="popup" part="popup" popover="manual" hidden>
           <input class="search" type="text" aria-label="Search" placeholder="Search" autocomplete="off" spellcheck="false" hidden>
           <div class="list" role="listbox" id="${this.#id}-list"></div>
         </div>`;
@@ -272,6 +274,7 @@ export function defineSelect(registry: CustomElementRegistry = customElements): 
       this.#search.placeholder = this.getAttribute('search-placeholder') ?? 'Search';
       this.#render();
       this.#popup.hidden = false;
+      if (typeof this.#popup.showPopover === 'function') this.#popup.showPopover();
       this.#place();
       const selected = this.#shown.findIndex(s => s.item.value === this.#value);
       this.#move(selected >= 0 ? selected : this.#firstEnabled(0, 1));
@@ -286,6 +289,7 @@ export function defineSelect(registry: CustomElementRegistry = customElements): 
       this.toggleAttribute('open', false);
       this.#trigger.setAttribute('aria-expanded', 'false');
       this.#trigger.removeAttribute('aria-activedescendant');
+      if (this.#popup.matches(':popover-open')) this.#popup.hidePopover();
       this.#popup.hidden = true;
       window.removeEventListener('pointerdown', this.#outside, true);
       window.removeEventListener('resize', this.#onResize);
@@ -305,8 +309,19 @@ export function defineSelect(registry: CustomElementRegistry = customElements): 
       this.#list.style.maxHeight = `${Math.max(120, (up ? above : below) - (this.#search.hidden ? 12 : 48))}px`;
       popup.style.top = up ? '' : `${box.bottom + 4}px`;
       popup.style.bottom = up ? `${window.innerHeight - box.top + 4}px` : '';
-      const width = popup.offsetWidth;
-      popup.style.left = `${Math.max(4, Math.min(box.left, window.innerWidth - width - 4))}px`;
+      const width = popup.offsetWidth,
+        left = Math.max(4, Math.min(box.left, window.innerWidth - width - 4));
+      popup.style.left = `${left}px`;
+      // Without the top layer, a transformed ancestor (such as a bar centred with translateX)
+      // becomes the containing block for position: fixed. Shift by its offset.
+      const placed = popup.getBoundingClientRect(),
+        dx = placed.left - left,
+        dy = up ? placed.bottom - (box.top - 4) : placed.top - (box.bottom + 4);
+      if (Math.abs(dx) > 0.5) popup.style.left = `${left - dx}px`;
+      if (Math.abs(dy) > 0.5) {
+        if (up) popup.style.bottom = `${window.innerHeight - box.top + 4 + dy}px`;
+        else popup.style.top = `${box.bottom + 4 - dy}px`;
+      }
     }
 
     #outside = (event: Event) => {
@@ -334,7 +349,15 @@ export function defineSelect(registry: CustomElementRegistry = customElements): 
       target.element.classList.add('active');
       this.#trigger.setAttribute('aria-activedescendant', target.element.id);
       this.#search.setAttribute('aria-activedescendant', target.element.id);
-      if (scroll) target.element.scrollIntoView({ block: 'nearest' });
+      // Scroll the list only: scrollIntoView would also scroll the widget's panels.
+      if (scroll) {
+        const list = this.#list,
+          top =
+            target.element.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop,
+          bottom = top + target.element.offsetHeight;
+        if (top < list.scrollTop) list.scrollTop = top;
+        else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight;
+      }
     }
 
     #choose(index: number) {
