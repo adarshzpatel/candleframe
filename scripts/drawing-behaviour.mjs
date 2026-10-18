@@ -266,6 +266,72 @@ try {
     'the deleted template stays gone after a reload',
     await stored(),
   );
+
+  // Forecasting: a bars pattern copy moves without changing the bars it copied.
+  await page.evaluate(() => window.candleframe.execute({ type: 'drawing.clear' }));
+  await page.evaluate(() => window.candleframe.setTool('bars-pattern'));
+  await click(at(0.6, 0.5));
+  await click(at(0.72, 0.3));
+  const pattern = (await drawings()).at(-1);
+  check(
+    pattern?.type === 'bars-pattern' && typeof pattern.options?.sourceFrom === 'number',
+    'a bars pattern remembers the bars it copied',
+    pattern,
+  );
+  const cursorAt = async p => {
+    await page.mouse.move(p.x, p.y);
+    return host
+      .locator('.chart-host')
+      .first()
+      .evaluate(el => [el, ...el.querySelectorAll('*')].map(e => e.style.cursor).find(c => c) ?? '');
+  };
+  // The copy sits over the bars it copied; scan down the middle for a stroke to grab.
+  let grab;
+  for (let fy = 0.05; fy < 0.95 && !grab; fy += 0.005)
+    if ((await cursorAt(at(0.66, fy))) === 'move') grab = at(0.66, fy);
+  check(!!grab, 'the bars pattern copy can be grabbed');
+  if (grab) {
+    await page.mouse.move(grab.x, grab.y);
+    await page.mouse.down();
+    await page.mouse.move(grab.x + 60, grab.y - 80, { steps: 6 });
+    await page.mouse.up();
+    const moved = (await drawings()).at(-1);
+    check(
+      moved.points[0].timeMs > pattern.points[0].timeMs &&
+        JSON.stringify(moved.options) === JSON.stringify(pattern.options),
+      'dragging the copy moves it and keeps its source bars',
+      moved,
+    );
+    // The end handle sits level with the start, 60px right and 80px up after the drag.
+    const end = { x: at(0.72, 0).x + 60, y: at(0, 0.5).y - 80 };
+    await page.mouse.move(end.x, end.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x + 40, end.y + 50, { steps: 4 });
+    await page.mouse.up();
+    const stretched = (await drawings()).at(-1);
+    check(
+      stretched.points[1].timeMs > moved.points[1].timeMs &&
+        stretched.points[1].price === moved.points[1].price &&
+        stretched.points[0].timeMs === moved.points[0].timeMs,
+      'the end handle stretches the copy in time only',
+      stretched,
+    );
+    await page.screenshot({ path: `${out}/bars-pattern-moved.png` });
+  }
+  await page.evaluate(() => window.candleframe.setTool('anchored-vwap'));
+  const vwapClick = at(0.62, 0.15);
+  await click(vwapClick);
+  const vwap = (await drawings()).at(-1),
+    clicked = await page.evaluate(p => window.candleframe.priceAt(p.x, p.y), vwapClick),
+    interval = await page.evaluate(() => window.candleframe.inspect().feed.intervalMs);
+  check(
+    vwap?.type === 'anchored-vwap' &&
+      vwap.points[0].timeMs % interval === 0 &&
+      Math.abs(vwap.points[0].price - clicked.price) > 1,
+    'anchored VWAP snaps its anchor onto the bar under the click',
+    { vwap, clicked },
+  );
+  await page.evaluate(() => window.candleframe.execute({ type: 'drawing.clear' }));
   await page.evaluate(key => localStorage.removeItem(key), templateKey);
 
   // The fixed Gann square keeps its price-per-time ratio when a corner is dragged.

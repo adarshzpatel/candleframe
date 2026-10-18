@@ -448,7 +448,7 @@ export function createDrawingWorkbench(
     const remembered = selection.options.toolDefaults[type];
     // The look a new drawing of this tool would get.
     const defaults = { ...remembered, style: { ...selection.options.style, ...remembered?.style } };
-    return { type, tool, drawing, defaults, value: drawing ? drawingTemplateValue(drawing) : defaults };
+    return { type, tool, drawing, defaults, value: drawing ? drawingTemplateValue(drawing, tool) : defaults };
   }
   function closeTemplates() {
     templateMenu.hidden = true;
