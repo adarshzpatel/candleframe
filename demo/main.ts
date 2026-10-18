@@ -1,5 +1,4 @@
 import {
-  createPaperBroker,
   createChartWidget,
   createSimulatedFeed,
   createBinanceFeed,
@@ -10,6 +9,7 @@ import {
 import type { ResolvedChartTheme, WidgetMarketSource } from '../src/index.ts';
 import './style.css';
 import { sampleEquityFeed } from './sample-equity.ts';
+import { attachTrading, createPaperBroker } from '../src/trading-entry.ts';
 
 const host = document.querySelector<HTMLElement>('#app')!;
 
@@ -62,8 +62,6 @@ const chart = createChartWidget(host, {
   autoscaleOnPan: true,
   storageKey: 'demo',
   inspector: true,
-  // Paper trading against the chart's own prices: tick Trading in the order panel.
-  trading: { broker: createPaperBroker({ accounts: ['Paper'] }) },
   layoutStore: {
     load(key) {
       // Keep layouts saved by the previous demo available after the UI migration.
@@ -83,4 +81,12 @@ declare global {
   }
 }
 window.candleframe = chart;
-if (import.meta.hot) import.meta.hot.dispose(() => chart.dispose());
+// The trading plugin is opt-in: `?trading` adds paper trading against the chart's own prices.
+const trading = new URLSearchParams(location.search).has('trading')
+  ? attachTrading(chart, { broker: createPaperBroker({ accounts: ['Paper'] }), host, storageKey: 'demo' })
+  : null;
+if (import.meta.hot)
+  import.meta.hot.dispose(() => {
+    trading?.dispose();
+    chart.dispose();
+  });

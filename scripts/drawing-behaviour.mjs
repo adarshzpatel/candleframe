@@ -2,7 +2,8 @@
 // Drives drawing interactions through real pointer and keyboard input on the offline demo:
 // rail families, Alt hotkeys, Shift angle snapping, Alt-drag cloning, double-click settings,
 // remembered tool defaults and templates across reloads, favourites, interval visibility,
-// multi-selection and groups. Prints ok/FAIL per check and saves screenshots of the menus.
+// multi-selection and groups. Loads the demo with the trading plugin, so popups are checked
+// against its order panel. Prints ok/FAIL per check and saves screenshots of the menus.
 //
 //   node scripts/drawing-behaviour.mjs                                 # starts Vite on 5196
 //   node scripts/drawing-behaviour.mjs --url http://127.0.0.1:5173/ --out artifacts/drawing-behaviour
@@ -47,7 +48,7 @@ try {
   page.on('pageerror', e => check(false, `page error: ${e.message}`));
   const templateKey = JSON.stringify(['demo', 'drawing-templates']);
   const load = async () => {
-    await page.goto(`${url}?offline`, { waitUntil: 'load' });
+    await page.goto(`${url}?offline&trading`, { waitUntil: 'load' });
     await page.waitForFunction(() => window.candleframe?.inspect().candleCount > 100, null, {
       timeout: 15000,
     });
@@ -62,7 +63,7 @@ try {
   const host = page.locator('#app > *');
   const state = () => page.evaluate(() => window.candleframe.drawingState());
   const drawings = () => page.evaluate(() => window.candleframe.exportDocument().drawings);
-  // The plot's right half stays clear of the demo's order ticket.
+  // The plot's right half stays clear of the trading plugin's order panel.
   const plot = await host.locator('.chart-host').first().boundingBox();
   const at = (fx, fy) => ({ x: plot.x + plot.width * fx, y: plot.y + plot.height * fy });
   const click = async p => page.mouse.click(p.x, p.y);
@@ -729,7 +730,7 @@ try {
     await page.evaluate(key => localStorage.removeItem(key), templateKey);
   }
   {
-    // Drawing popups open above the demo's order panel, which the trading layer stacks over the widget.
+    // Drawing popups open above the trading plugin's order panel (`?trading`), which stacks over the widget.
     const covering = async selector =>
       page.evaluate(selector => {
         const [mount, shell] = document.querySelectorAll('#app > div');

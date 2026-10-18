@@ -20,7 +20,6 @@ import { createThemeEditor } from './theme-editor.ts';
 import { createChart } from './chart.ts';
 import { createChartGroup } from './chart-group.ts';
 import { createChartSwitch } from './chart-switch.ts';
-import { attachTrading, type TradingOptions } from './trading.ts';
 import type { ChartSwitch } from './chart-switch.ts';
 import { createGeometry } from './geometry.ts';
 import type { ChartApi, ChartOptions } from './chart.ts';
@@ -129,11 +128,6 @@ export interface ChartWidgetOptions extends ChartOptions {
    * charts copy the active chart's market. A saved layout replaces this once it loads.
    */
   layout?: { preset?: LayoutPreset; sync?: Partial<WidgetSync> };
-  /**
-   * Trading through a broker adapter: an order panel, order and position lines, drag
-   * to place and move orders, and a right-click order menu. See `attachTrading`.
-   */
-  trading?: Omit<TradingOptions, 'host' | 'storageKey'>;
 }
 /** The widget acts on its active chart, like its toolbar. */
 export interface ChartWidgetApi extends ChartApi {
@@ -1907,7 +1901,6 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
     if (layout.preset !== '1') applyPreset(layout.preset);
     else renderGrid();
     void loadWorkspaces();
-    let trading: ReturnType<typeof attachTrading> | null = null;
     const api: ChartWidgetApi = {
       ...chart,
       charts: () => cells.map(cell => cell.chart),
@@ -1934,7 +1927,6 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
         if (disposed) return;
         flushAll();
         disposed = true;
-        trading?.dispose();
         abort.abort();
         clearTimeout(toastTimer);
         clearTimeout(workspaceTimer);
@@ -1953,12 +1945,6 @@ export function createChartWidget(container: HTMLElement, options: ChartWidgetOp
         mount.remove();
       },
     };
-    if (options.trading)
-      trading = attachTrading(api, {
-        ...options.trading,
-        host: container,
-        ...(options.storageKey ? { storageKey: options.storageKey } : {}),
-      });
     return api;
   } catch (error) {
     disposed = true;

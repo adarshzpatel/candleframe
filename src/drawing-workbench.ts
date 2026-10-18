@@ -98,7 +98,7 @@ export function createDrawingWorkbench(
   root.append(flyout);
   /**
    * Popups open in the top layer where the browser supports it, so overlays a host stacks
-   * over the widget, such as the demo's order ticket, cannot cover them. They are then fixed
+   * over the widget, such as the trading plugin's order panel, cannot cover them. They are then fixed
    * to the viewport, and `frame` shifts their root- or panel-relative coordinates there.
    */
   const topLayer = typeof flyout.showPopover === 'function';

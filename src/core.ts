@@ -30,18 +30,6 @@ export {
 export type { IntervalSpec, TimeIntervalUnit, TradeIntervalUnit } from './intervals.ts';
 export { TradeBarBuilder } from './trade-bars.ts';
 export { detectFlowSignals } from './flow-signals.ts';
-export { createPaperBroker } from './paper-broker.ts';
-export type { PaperBroker, PaperBrokerOptions } from './paper-broker.ts';
-export {
-  describeOrder,
-  entryTypeAt,
-  exitAt,
-  formatPnl,
-  pnlAt,
-  positionEffect,
-  positionOf,
-} from './trading-logic.ts';
-export type * from './trading-types.ts';
 export type { FlowSignal, FlowSignalOptions } from './flow-signals.ts';
 export {
   footprintBar,
