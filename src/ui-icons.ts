@@ -84,6 +84,11 @@ const paths: Record<string, string> = {
     '<path d="M5 3v18"/><rect x="8" y="5" width="12" height="14" rx="1"/><path d="M8 9.7h12M8 14.3h12M14 5v14"/>',
   layout: '<rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M12 4v16M3 12h9"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16v4Zm9-13 4 4"/>',
+  folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/>',
+  group:
+    '<rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="2 2.5"/><rect x="7" y="7" width="6" height="6" rx=".5"/><rect x="11" y="11" width="6" height="6" rx=".5"/>',
+  ungroup:
+    '<rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/><path d="M15 5h4v4M9 19H5v-4" stroke-dasharray="2 2"/>',
   template:
     '<rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><path d="M16.5 13v7M13 16.5h7"/>',
 };

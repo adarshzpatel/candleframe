@@ -2,9 +2,11 @@ import { createPositionEditor } from './position-editor.ts';
 import { isPosition, positionMetrics } from './position-drawing.ts';
 import type { ChartApi } from './chart.ts';
 import { activeChart } from './chart-switch.ts';
-import type { RuntimeState } from './types.ts';
+import type { ChartCommand, RuntimeState } from './types.ts';
+import { drawingTree, MAX_GROUP_NAME_LENGTH, treeMoveCommands } from './drawing-groups.ts';
 import type {
   Drawing,
+  DrawingGroup,
   DrawingInteractionState,
   DrawingOptionValue,
   DrawingSetting,
@@ -63,6 +65,10 @@ export function createDrawingWorkbench(
   const toolList = flyout.querySelector<HTMLElement>('.drawing-tool-list')!;
   let openGroup = groups[0],
     lastDrawings: readonly Drawing[] | undefined,
+    lastGroups: readonly DrawingGroup[] | undefined,
+    /** Group rows folded in the Objects tree. View state, kept for the widget session. */
+    collapsed = new Set<string>(),
+    renaming: { id: string; draft: string } | null = null,
     lastHistory = '',
     selection: DrawingInteractionState = chart.drawingState();
   const buttons = new Map<string, HTMLButtonElement>(),
@@ -72,6 +78,12 @@ export function createDrawingWorkbench(
     buttons.forEach(b => b.setAttribute('aria-expanded', 'false'));
     moreButtons.forEach(b => b.setAttribute('aria-expanded', 'false'));
   }
+  /** Runs one command, or a batch as a single undo step. */
+  function run(commands: ChartCommand[]) {
+    if (commands.length) chart.execute(commands.length === 1 ? commands[0] : commands);
+  }
+  /** True while several drawings are selected; the strip then edits all of them. */
+  const many = () => selection.selection.length > 1;
   function attempt(action: () => void) {
     try {
       action();
@@ -315,7 +327,7 @@ export function createDrawingWorkbench(
   objects.className = 'drawing-object-panel';
   objects.hidden = true;
   objects.setAttribute('aria-label', 'Drawing objects and properties');
-  objects.innerHTML = `<div class="drawing-panel-heading"><strong>Drawings</strong><span class="drawing-heading-actions"><button id="drawing-hide-all" aria-pressed="false" aria-label="Hide all drawings" title="Hide all">${svg('eye', 16)}</button><button id="drawing-lock-all" aria-pressed="false" aria-label="Lock all drawings" title="Lock all">${svg('unlock', 16)}</button><button class="drawing-close" aria-label="Close drawing objects">${svg('close', 16)}</button></span></div><div class="drawing-object-list"></div>`;
+  objects.innerHTML = `<div class="drawing-panel-heading"><strong>Drawings</strong><span class="drawing-heading-actions"><button id="drawing-group" aria-label="Group selected drawings" title="Group selection">${svg('group', 16)}</button><button id="drawing-hide-all" aria-pressed="false" aria-label="Hide all drawings" title="Hide all">${svg('eye', 16)}</button><button id="drawing-lock-all" aria-pressed="false" aria-label="Lock all drawings" title="Lock all">${svg('unlock', 16)}</button><button class="drawing-close" aria-label="Close drawing objects">${svg('close', 16)}</button></span></div><div class="drawing-object-list"></div>`;
   const settings = owner.createElement('section');
   settings.className = 'drawing-settings';
   settings.id = 'drawing-settings';
@@ -373,21 +385,25 @@ export function createDrawingWorkbench(
     'click',
     () =>
       attempt(() => {
-        const d = selection.selected;
-        if (d) chart.execute({ type: 'drawing.update', id: d.id, patch: { locked: !d.locked } });
+        const all = selection.selection,
+          locked = !all.every(d => d.locked);
+        run(all.map(d => ({ type: 'drawing.update', id: d.id, patch: { locked } })));
       }),
     { signal: abort.signal },
   );
-  strip.querySelector('.drawing-delete-button')!.addEventListener(
-    'click',
-    () =>
-      attempt(() => {
-        if (selection.selected) chart.execute({ type: 'drawing.remove', id: selection.selected.id });
-      }),
-    { signal: abort.signal },
-  );
+  strip
+    .querySelector('.drawing-delete-button')!
+    .addEventListener(
+      'click',
+      () =>
+        attempt(() =>
+          run(selection.selection.filter(d => !d.locked).map(d => ({ type: 'drawing.remove', id: d.id }))),
+        ),
+      { signal: abort.signal },
+    );
   /** The tool whose defaults an edit should update: the selection's, else the active tool. */
-  const editedType = () => selection.selected?.type ?? (selection.tool === 'cursor' ? null : selection.tool);
+  const editedType = () =>
+    many() ? null : (selection.selected?.type ?? (selection.tool === 'cursor' ? null : selection.tool));
   /** Sets a tool's defaults on every chart and saves them; `null` returns it to the built-in look. */
   function setDefaults(type: string, value: DrawingToolDefaults | null) {
     chart.setDrawingOptions({ toolDefaults: { [type]: value } });
@@ -406,8 +422,8 @@ export function createDrawingWorkbench(
   }
   function editStyle(patch: Partial<DrawingStyle>) {
     attempt(() => {
-      if (selection.selected)
-        chart.execute({ type: 'drawing.update', id: selection.selected.id, patch: { style: patch } });
+      if (selection.selection.length)
+        run(selection.selection.map(d => ({ type: 'drawing.update', id: d.id, patch: { style: patch } })));
       else if (selection.tool === 'cursor') chart.setDrawingOptions({ style: patch });
       remember({ style: patch });
     });
@@ -727,6 +743,16 @@ export function createDrawingWorkbench(
       () => chart.setDrawingOptions({ stayInDrawingMode: !selection.options.stayInDrawingMode }),
       { signal: abort.signal },
     );
+  objects.querySelector('#drawing-group')!.addEventListener(
+    'click',
+    () =>
+      attempt(() => {
+        const id = crypto.randomUUID();
+        chart.execute({ type: 'drawing.group', id, drawingIds: selection.selection.map(d => d.id) });
+        collapsed.delete(id);
+      }),
+    { signal: abort.signal },
+  );
   objects
     .querySelector('#drawing-hide-all')!
     .addEventListener('click', () => chart.setDrawingOptions({ hidden: !selection.options.hidden }), {
@@ -965,10 +991,106 @@ export function createDrawingWorkbench(
         });
     }
   }
+  /** Selects `ids`, or with Ctrl, Command or Shift adds them, or removes them when all are selected. */
+  function pick(ids: string[], event: MouseEvent) {
+    const current = selection.selection.map(d => d.id);
+    if (!(event.ctrlKey || event.metaKey || event.shiftKey)) return chart.selectDrawing(ids);
+    chart.selectDrawing(
+      ids.every(id => current.includes(id))
+        ? current.filter(id => !ids.includes(id))
+        : [...current.filter(id => !ids.includes(id)), ...ids],
+    );
+  }
+  function rowButton(icon: string, label: string, on: boolean, action: () => void) {
+    const b = owner.createElement('button');
+    b.className = `drawing-row-action${on ? ' on' : ''}`;
+    b.innerHTML = svg(icon, 16);
+    b.title = label.split(' ')[0];
+    b.setAttribute('aria-label', label);
+    b.addEventListener('click', () => attempt(action), { signal: abort.signal });
+    return b;
+  }
+  let dragged: string | null = null;
+  /** Rows reorder by drag. The drop lands in front of a row's top half or behind its bottom half. */
+  function draggable(row: HTMLElement, id: string) {
+    row.draggable = true;
+    row.dataset.id = id;
+    const clear = () =>
+      objects
+        .querySelectorAll('.drop-before, .drop-after')
+        .forEach(r => r.classList.remove('drop-before', 'drop-after'));
+    const where = (event: DragEvent) => {
+      const box = row.getBoundingClientRect();
+      return event.clientY < box.top + box.height / 2 ? 'before' : 'after';
+    };
+    row.addEventListener(
+      'dragstart',
+      event => {
+        dragged = id;
+        event.dataTransfer?.setData('text/plain', id);
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+        row.classList.add('dragging');
+      },
+      { signal: abort.signal },
+    );
+    row.addEventListener(
+      'dragover',
+      event => {
+        if (!dragged || dragged === id) return;
+        event.preventDefault();
+        clear();
+        row.classList.add(`drop-${where(event)}`);
+      },
+      { signal: abort.signal },
+    );
+    row.addEventListener('dragleave', clear, { signal: abort.signal });
+    row.addEventListener(
+      'drop',
+      event => {
+        event.preventDefault();
+        clear();
+        const source = dragged;
+        dragged = null;
+        if (!source) return;
+        const doc = chart.exportDocument();
+        attempt(() =>
+          run(treeMoveCommands(doc.drawings, doc.drawingGroups, source, { target: id, where: where(event) })),
+        );
+      },
+      { signal: abort.signal },
+    );
+    row.addEventListener(
+      'dragend',
+      () => {
+        dragged = null;
+        clear();
+        row.classList.remove('dragging');
+      },
+      { signal: abort.signal },
+    );
+  }
+  function startRename(group: DrawingGroup) {
+    renaming = { id: group.id, draft: group.name };
+    renderObjects();
+  }
+  function finishRename(save: boolean) {
+    const current = renaming;
+    renaming = null;
+    const name = current?.draft.trim();
+    if (save && current && name && lastGroups?.find(g => g.id === current.id)?.name !== name)
+      attempt(() => chart.execute({ type: 'drawing.updateGroup', id: current.id, name }));
+    renderObjects();
+    objects
+      .querySelector<HTMLElement>(`[data-id="${CSS.escape(current?.id ?? '')}"] .drawing-object-name`)
+      ?.focus({ preventScroll: true });
+  }
   function renderObjects() {
     const list = objects.querySelector('.drawing-object-list')!;
+    // Rebuilding would drop the name being typed and its focus.
+    const typing = list.querySelector('.drawing-group-rename') === activeElement();
     list.replaceChildren();
-    const drawings = lastDrawings ?? [];
+    const drawings = lastDrawings ?? [],
+      groups = lastGroups ?? [];
     objectToggle.querySelector('span')!.textContent = String(drawings.length);
     const hideAll = objects.querySelector<HTMLButtonElement>('#drawing-hide-all')!,
       lockAll = objects.querySelector<HTMLButtonElement>('#drawing-lock-all')!;
@@ -983,68 +1105,162 @@ export function createDrawingWorkbench(
     lockAll.setAttribute('aria-label', locked ? 'Unlock all drawings' : 'Lock all drawings');
     lockAll.setAttribute('aria-pressed', String(locked));
     hideAll.disabled = lockAll.disabled = !drawings.length;
+    objects.querySelector<HTMLButtonElement>('#drawing-group')!.disabled = selection.selection.length < 2;
     if (!drawings.length) {
       const p = owner.createElement('p');
       p.className = 'drawing-empty';
       p.textContent = 'No drawings';
       list.append(p);
     }
-    for (const [index, d] of [...drawings].reverse().entries()) {
+    const chosen = new Set(selection.selection.map(d => d.id));
+    const drawingRow = (d: Drawing, member: boolean) => {
       const row = owner.createElement('div');
-      row.className = `drawing-object-row${d.id === selection.selected?.id ? ' selected' : ''}`;
+      row.className = `drawing-object-row${chosen.has(d.id) ? ' selected' : ''}${member ? ' member' : ''}`;
       const label = catalog.find(t => t.type === d.type)?.label ?? `Unsupported: ${d.type}`,
-        number = drawings.length - index;
-      const pick = owner.createElement('button');
-      pick.className = 'drawing-object-name';
-      pick.innerHTML = svg(d.type, 16);
-      pick.append(`${label} ${number}`);
-      pick.style.setProperty('--drawing-color', d.style.color);
-      pick.setAttribute('aria-label', `Select ${label.toLowerCase()} ${number}`);
-      pick.addEventListener('click', () => chart.selectDrawing(d.id), { signal: abort.signal });
-      const hide = owner.createElement('button');
-      hide.className = `drawing-row-action${d.visible ? '' : ' on'}`;
-      hide.innerHTML = svg(d.visible ? 'eye' : 'eye-off', 16);
-      hide.title = d.visible ? 'Hide' : 'Show';
-      hide.setAttribute('aria-label', `${d.visible ? 'Hide' : 'Show'} ${label.toLowerCase()} ${number}`);
-      hide.addEventListener(
-        'click',
-        () => chart.execute({ type: 'drawing.update', id: d.id, patch: { visible: !d.visible } }),
-        { signal: abort.signal },
+        number = drawings.indexOf(d) + 1,
+        name = `${label.toLowerCase()} ${number}`;
+      const pick_ = owner.createElement('button');
+      pick_.className = 'drawing-object-name';
+      pick_.innerHTML = svg(d.type, 16);
+      pick_.append(`${label} ${number}`);
+      pick_.style.setProperty('--drawing-color', d.style.color);
+      pick_.setAttribute('aria-label', `Select ${name}`);
+      pick_.addEventListener('click', event => pick([d.id], event), { signal: abort.signal });
+      row.append(
+        pick_,
+        rowButton(d.visible ? 'eye' : 'eye-off', `${d.visible ? 'Hide' : 'Show'} ${name}`, !d.visible, () =>
+          chart.execute({ type: 'drawing.update', id: d.id, patch: { visible: !d.visible } }),
+        ),
+        rowButton(d.locked ? 'lock' : 'unlock', `${d.locked ? 'Unlock' : 'Lock'} ${name}`, d.locked, () =>
+          chart.execute({ type: 'drawing.update', id: d.id, patch: { locked: !d.locked } }),
+        ),
+        rowButton('trash', `Delete ${name}`, false, () =>
+          chart.execute({ type: 'drawing.remove', id: d.id }),
+        ),
       );
-      const lock = owner.createElement('button');
-      lock.className = `drawing-row-action${d.locked ? ' on' : ''}`;
-      lock.innerHTML = svg(d.locked ? 'lock' : 'unlock', 16);
-      lock.title = d.locked ? 'Unlock' : 'Lock';
-      lock.setAttribute('aria-label', `${d.locked ? 'Unlock' : 'Lock'} ${label.toLowerCase()} ${number}`);
-      lock.addEventListener(
-        'click',
-        () => chart.execute({ type: 'drawing.update', id: d.id, patch: { locked: !d.locked } }),
-        { signal: abort.signal },
-      );
-      const remove = owner.createElement('button');
-      remove.className = 'drawing-row-action';
-      remove.innerHTML = svg('trash', 16);
-      remove.title = 'Delete';
-      remove.setAttribute('aria-label', `Delete ${label.toLowerCase()} ${number}`);
-      remove.addEventListener(
-        'click',
-        () => attempt(() => chart.execute({ type: 'drawing.remove', id: d.id })),
-        {
-          signal: abort.signal,
-        },
-      );
-      row.append(pick, hide, lock, remove);
+      draggable(row, d.id);
       list.append(row);
+    };
+    for (const item of drawingTree(drawings, groups)) {
+      if (item.kind === 'drawing') {
+        drawingRow(
+          drawings.find(d => d.id === item.id)!,
+          false,
+        );
+        continue;
+      }
+      const group = groups.find(g => g.id === item.id)!,
+        members = item.members.map(id => drawings.find(d => d.id === id)!),
+        open = !collapsed.has(group.id),
+        allHidden = members.every(d => !d.visible),
+        allLocked = members.every(d => d.locked),
+        all = members.every(d => chosen.has(d.id));
+      const row = owner.createElement('div');
+      row.className = `drawing-object-row drawing-group-row${all ? ' selected' : ''}`;
+      const fold = owner.createElement('button');
+      fold.className = 'drawing-group-fold';
+      fold.innerHTML = svg('chevron', 14);
+      fold.setAttribute('aria-expanded', String(open));
+      fold.setAttribute('aria-label', `${open ? 'Collapse' : 'Expand'} ${group.name}`);
+      fold.addEventListener(
+        'click',
+        () => {
+          if (open) collapsed.add(group.id);
+          else collapsed.delete(group.id);
+          renderObjects();
+          objects
+            .querySelector<HTMLElement>(`[data-id="${CSS.escape(group.id)}"] .drawing-group-fold`)
+            ?.focus({ preventScroll: true });
+        },
+        { signal: abort.signal },
+      );
+      let title: HTMLElement;
+      if (renaming?.id === group.id) {
+        const input = owner.createElement('input');
+        input.className = 'drawing-group-rename';
+        input.value = renaming.draft;
+        input.maxLength = MAX_GROUP_NAME_LENGTH;
+        input.setAttribute('aria-label', 'Group name');
+        input.addEventListener('input', () => renaming && (renaming.draft = input.value), {
+          signal: abort.signal,
+        });
+        input.addEventListener(
+          'keydown',
+          event => {
+            if (event.key !== 'Enter' && event.key !== 'Escape') return;
+            event.preventDefault();
+            event.stopPropagation();
+            finishRename(event.key === 'Enter');
+          },
+          { signal: abort.signal },
+        );
+        input.addEventListener('blur', () => renaming?.id === group.id && finishRename(true), {
+          signal: abort.signal,
+        });
+        title = input;
+        if (!typing) queueMicrotask(() => input.isConnected && (input.focus(), input.select()));
+      } else {
+        const name = owner.createElement('button');
+        name.className = 'drawing-object-name';
+        name.innerHTML = svg('folder', 16);
+        const text = owner.createElement('span');
+        text.textContent = group.name;
+        const count = owner.createElement('span');
+        count.className = 'drawing-group-count';
+        count.textContent = String(members.length);
+        // Member rows show the drawings while the group is open.
+        name.append(text, ...(open ? [] : [count]));
+        name.title = 'Double-click or press F2 to rename';
+        name.setAttribute('aria-label', `Select group ${group.name}, ${members.length} drawings`);
+        name.addEventListener('click', event => pick(group.drawings, event), { signal: abort.signal });
+        name.addEventListener('dblclick', () => startRename(group), { signal: abort.signal });
+        name.addEventListener(
+          'keydown',
+          event => {
+            if (event.key !== 'F2') return;
+            event.preventDefault();
+            startRename(group);
+          },
+          { signal: abort.signal },
+        );
+        title = name;
+      }
+      row.append(
+        fold,
+        title,
+        rowButton(
+          allHidden ? 'eye-off' : 'eye',
+          `${allHidden ? 'Show' : 'Hide'} group ${group.name}`,
+          allHidden,
+          () => run(members.map(d => ({ type: 'drawing.update', id: d.id, patch: { visible: allHidden } }))),
+        ),
+        rowButton(
+          allLocked ? 'lock' : 'unlock',
+          `${allLocked ? 'Unlock' : 'Lock'} group ${group.name}`,
+          allLocked,
+          () => run(members.map(d => ({ type: 'drawing.update', id: d.id, patch: { locked: !allLocked } }))),
+        ),
+        rowButton('ungroup', `Ungroup ${group.name}`, false, () =>
+          chart.execute({ type: 'drawing.ungroup', id: group.id }),
+        ),
+        rowButton('trash', `Delete group ${group.name} and its drawings`, false, () =>
+          run(members.map(d => ({ type: 'drawing.remove', id: d.id }))),
+        ),
+      );
+      draggable(row, group.id);
+      list.append(row);
+      if (open) members.forEach(d => drawingRow(d, true));
     }
   }
   function interaction(value: DrawingInteractionState) {
     selection = value;
+    const several = value.selection.length > 1;
     textEditor.selection(value.options.hidden ? null : (value.selected?.id ?? null));
     positionEditor.selection(value.options.hidden ? null : (value.selected?.id ?? null));
-    editPositionButton.hidden = !isPosition(value.selected);
+    editPositionButton.hidden = several || !isPosition(value.selected);
     editPositionButton.disabled = !!value.selected?.locked;
     editTextButton.hidden =
-      !value.selected || !catalog.find(t => t.type === value.selected!.type)?.editableText;
+      several || !value.selected || !catalog.find(t => t.type === value.selected!.type)?.editableText;
     editTextButton.disabled = !!value.selected?.locked;
     strip.hidden = value.tool === 'cursor' && !value.selected;
     const definition = catalog.find(t => t.type === value.tool);
@@ -1052,9 +1268,11 @@ export function createDrawingWorkbench(
       lastTool.set(definition.group, definition);
       showLast(definition.group);
     }
-    strip.querySelector('.drawing-active-tool')!.textContent = value.selected
-      ? (catalog.find(t => t.type === value.selected!.type)?.label ?? value.selected.type)
-      : (definition?.label ?? 'Cursor');
+    strip.querySelector('.drawing-active-tool')!.textContent = several
+      ? `${value.selection.length} drawings`
+      : value.selected
+        ? (catalog.find(t => t.type === value.selected!.type)?.label ?? value.selected.type)
+        : (definition?.label ?? 'Cursor');
     strip
       .querySelector('.drawing-active-tool')!
       .setAttribute('title', definition?.hint ?? 'Select or move a drawing');
@@ -1062,7 +1280,9 @@ export function createDrawingWorkbench(
     const cursor = rail.querySelector('#cursor')!;
     cursor.classList.toggle('active', value.tool === 'cursor');
     cursor.setAttribute('aria-pressed', String(value.tool === 'cursor'));
-    const textOnly = ['text', 'price-label'].includes(value.selected?.type ?? value.tool);
+    const textOnly = several
+      ? value.selection.every(d => ['text', 'price-label'].includes(d.type))
+      : ['text', 'price-label'].includes(value.selected?.type ?? value.tool);
     strip.querySelector<CfSelectElement>('[aria-label="Drawing line width"]')!.hidden = textOnly;
     strip.querySelector<CfSelectElement>('[aria-label="Drawing line style"]')!.hidden = textOnly;
     const style = value.selected?.style ?? {
@@ -1087,12 +1307,16 @@ export function createDrawingWorkbench(
       .setAttribute('aria-pressed', String(value.options.stayInDrawingMode));
     const lockButton = strip.querySelector<HTMLButtonElement>('.drawing-lock-button')!;
     lockButton.hidden = strip.querySelector<HTMLElement>('.drawing-delete-button')!.hidden = !value.selected;
-    lockButton.innerHTML = svg(value.selected?.locked ? 'lock' : 'unlock', 18);
-    lockButton.setAttribute('aria-pressed', String(!!value.selected?.locked));
-    lockButton.setAttribute('aria-label', value.selected?.locked ? 'Unlock drawing' : 'Lock drawing');
-    lockButton.dataset.tooltip = value.selected?.locked ? 'Unlock' : 'Lock';
+    const locked = !!value.selection.length && value.selection.every(d => d.locked),
+      noun = several ? 'drawings' : 'drawing';
+    lockButton.innerHTML = svg(locked ? 'lock' : 'unlock', 18);
+    lockButton.setAttribute('aria-pressed', String(locked));
+    lockButton.setAttribute('aria-label', `${locked ? 'Unlock' : 'Lock'} ${noun}`);
+    lockButton.dataset.tooltip = locked ? 'Unlock' : 'Lock';
+    strip.querySelector('.drawing-delete-button')!.setAttribute('aria-label', `Delete ${noun}`);
+    settingsButton.hidden = several;
     templateButtons[0].hidden = !templateTarget();
-    if (strip.hidden) toggleSettings(false);
+    if (strip.hidden || several) toggleSettings(false);
     if (!templateMenu.hidden) {
       // A name being typed keeps its form; the menu follows the selection.
       if (templateMode === 'menu') renderTemplates();
@@ -1111,8 +1335,9 @@ export function createDrawingWorkbench(
       rail.querySelector<HTMLButtonElement>('#undo')!.disabled = !state.history.canUndo;
       redo.disabled = !state.history.canRedo;
     }
-    if (state.document.drawings !== lastDrawings) {
+    if (state.document.drawings !== lastDrawings || state.document.drawingGroups !== lastGroups) {
       lastDrawings = state.document.drawings;
+      lastGroups = state.document.drawingGroups;
       renderObjects();
     }
   }
